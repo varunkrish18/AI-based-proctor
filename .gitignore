@@ -1,0 +1,45 @@
+# Environment & Secrets
+.env
+*.env
+.env.*
+!.env.example
+application-local.yml
+application-local.properties
+secrets.yml
+*.pem
+*.key
+
+# Java / Maven (Backend)
+backend/target/
+**/target/
+*.class
+*.jar
+*.war
+.mvn/wrapper/maven-wrapper.jar
+
+# Frontend (Node / React / Vite)
+frontend/node_modules/
+**/node_modules/
+frontend/dist/
+**/dist/
+.vite/
+
+# Python (AI Service & Training)
+ai-service/__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+ai-service/.venv/
+ai-service/venv/
+.venv/
+venv/
+env/
+*.onnx
+ai-service/labeler/exports/
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
