@@ -46,8 +46,8 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 // Public: landing page data, exam listing, student verification, admin login
+                .requestMatchers(HttpMethod.GET, "/", "/api/exams/public/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/admin/auth/login", "/api/admin/auth/refresh").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/exams/public/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/exams/*/verify-student").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/ws/**").permitAll() // WebSocket handshake; per-session auth handled at connect time
@@ -65,7 +65,7 @@ public class SecurityConfig {
 
     private CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(allowedOrigins.split(",")));
+        config.setAllowedOriginPatterns(List.of(allowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setAllowCredentials(true);
