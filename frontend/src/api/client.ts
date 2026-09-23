@@ -117,10 +117,20 @@ async function request<T>(
     throw netErr;
   }
 
-  if (res.status === 401 && auth === "admin" && !isRetry && getAdminRefreshToken()) {
-    const refreshed = await tryRefreshAdminToken();
-    if (refreshed) {
-      return request<T>(path, options, true);
+  if ((res.status === 401 || res.status === 403) && auth === "admin" && !isRetry) {
+    if (getAdminRefreshToken()) {
+      const refreshed = await tryRefreshAdminToken();
+      if (refreshed) {
+        return request<T>(path, options, true);
+      }
+    }
+    clearToken("admin");
+    if (
+      typeof window !== "undefined" &&
+      window.location.pathname.startsWith("/admin") &&
+      window.location.pathname !== "/admin/login"
+    ) {
+      window.location.href = "/admin/login?expired=true";
     }
   }
 

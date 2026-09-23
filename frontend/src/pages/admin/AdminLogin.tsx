@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, setAdminRefreshToken, setToken } from "../../api/client";
 import type { AuthResponse } from "../../types";
 
 export default function AdminLogin() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isExpired = searchParams.get("expired") === "true";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +34,11 @@ export default function AdminLogin() {
     <div className="max-w-md mx-auto px-4 py-16">
       <h1 className="text-xl font-bold text-slate-900 mb-6">Admin Login</h1>
       <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+        {isExpired && !error && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3 rounded-md mb-4">
+            Your admin session expired. Please sign in again.
+          </div>
+        )}
         <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
         <input
           type="email"

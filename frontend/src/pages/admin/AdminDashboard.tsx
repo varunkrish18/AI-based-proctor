@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, clearToken, getAdminRefreshToken, getToken } from "../../api/client";
+import { api, ApiError, clearToken, getAdminRefreshToken, getToken } from "../../api/client";
 import type { AdminAttemptSummary, DashboardCharts, DashboardSummary, Exam } from "../../types";
 import {
   ResponsiveContainer,
@@ -86,7 +86,10 @@ export default function AdminDashboard() {
           setAiDegraded({ degraded: false, reason: null });
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          return;
+        }
         setAiDegraded({ degraded: true, reason: "AI service is offline — all computer-vision monitoring is disabled." });
       });
   }, [navigate]);
@@ -101,6 +104,10 @@ export default function AdminDashboard() {
           api.get<Exam[]>("/api/admin/exams", "admin"),
           api.get<DashboardSummary>("/api/admin/dashboard/summary", "admin").catch(() => null),
         ]);
+        if (exs) {
+          setExams(exs);
+          setError(null);
+        }
         if (sumRes) setSummary(sumRes);
 
         const publishedIds = exs.filter((e) => e.status === "PUBLISHED" || e.status === "OPEN").map((e) => e.id);
