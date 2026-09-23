@@ -61,7 +61,9 @@ export default function ExamTake() {
   const lastStrikeTimeRef = useRef<number>(0);
   const lastPersonBehindPhotoTime = useRef<number>(0);
   const lastObjectPhotoTime = useRef<number>(0);
-  const lastVoiceLogTime = useRef<number>(0);
+  const lastVoiceStrikeTimeRef = useRef<number>(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
 
   const consecutiveFrameErrors = useRef(0);
   const nextCaptureDelayRef = useRef(1000);
@@ -123,6 +125,17 @@ export default function ExamTake() {
     }
     if (bgVideoRef.current) {
       bgVideoRef.current.srcObject = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.onend = null;
+        speechRecognitionRef.current.stop();
+      } catch {}
+      speechRecognitionRef.current = null;
     }
   }, []);
 
@@ -253,9 +266,31 @@ export default function ExamTake() {
           video: webcamRequired
             ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
             : false,
-          audio: micRequired,
+          audio: micRequired
+            ? {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              }
+            : false,
         });
         webcamStreamRef.current = userMedia;
+
+        // Unlock and pre-initialize AudioContext within the direct user gesture
+        if (micRequired) {
+          try {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioCtx) {
+              const ctx = new AudioCtx();
+              if (ctx.state === "suspended") {
+                await ctx.resume().catch(() => {});
+              }
+              audioContextRef.current = ctx;
+            }
+          } catch (e) {
+            console.warn("[ExamTake] Could not pre-init AudioContext:", e);
+          }
+        }
 
         if (videoRef.current) {
           videoRef.current.srcObject = userMedia;
@@ -486,23 +521,51 @@ export default function ExamTake() {
     };
   }, [session, screenGatePassed, issueWarningStrike]);
 
-  // Voice detection loop: Highpass filtered human vocal formant tracking (120Hz - 3400Hz)
+  // Dual-Layer Voice Detection: Web Speech Recognition (Google Engine) + Web Audio Acoustic Formants
   useEffect(() => {
     const micRequired = session?.microphoneRequired ?? true;
     if (!session || !screenGatePassed || submittedRef.current || !micRequired) return;
 
-    let audioContext: AudioContext | null = null;
+    let audioContext: AudioContext | null = audioContextRef.current;
     let analyser: AnalyserNode | null = null;
     let biquadFilter: BiquadFilterNode | null = null;
     let microphone: MediaStreamAudioSourceNode | null = null;
     let fallbackStream: MediaStream | null = null;
     let isMounted = true;
     let animationFrameId: number;
-    let voiceStartRef: number | null = null;
-    let voiceWarnedRef = false;
-    let lastSoundTime = 0;
+    let recognition: any = null;
+
+    // Acoustic analysis variables
+    let calibrationFrames = 0;
+    let ambientBaselineRms = 1.0;
+    let ambientBaselineVocal = 1.0;
+    let vocalAccumulator = 0;
     let lastUiUpdate = 0;
 
+    // Helper: Issue voice strike with debounce and proctor event logging
+    const triggerVoiceStrike = (reasonTitle: string, details: string, rmsLevel?: number) => {
+      if (!isMounted || submittedRef.current) return;
+      const now = Date.now();
+      // Debounce voice strikes by 4.5 seconds to give candidate time to pause speaking
+      if (now - lastVoiceStrikeTimeRef.current < 4500) return;
+      lastVoiceStrikeTimeRef.current = now;
+
+      console.warn(`[VoiceDetection] 🚨 VOICE STRIKE: ${reasonTitle} - ${details}`);
+
+      logEvent("VOICE_DETECTED", undefined, {
+        reason: details,
+        rms: rmsLevel !== undefined ? Math.round(rmsLevel) : undefined,
+        timestamp: new Date().toISOString(),
+      });
+      flushNow();
+
+      issueWarningStrike(
+        reasonTitle,
+        details.length > 130 ? details.slice(0, 130) + "..." : details
+      );
+    };
+
+    // User gesture handler to ensure AudioContext stays running
     const resumeContext = () => {
       if (audioContext && audioContext.state === "suspended") {
         audioContext.resume().catch(() => {});
@@ -511,13 +574,90 @@ export default function ExamTake() {
     window.addEventListener("click", resumeContext);
     window.addEventListener("keydown", resumeContext);
 
+    // =========================================================================
+    // LAYER 1: Web Speech Recognition (Zero false-alarms from fans; captures real words)
+    // =========================================================================
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRec) {
+      try {
+        recognition = new SpeechRec();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = navigator.language || "en-US";
+        recognition.maxAlternatives = 1;
+
+        recognition.onresult = (event: any) => {
+          if (!isMounted || submittedRef.current) return;
+          let transcriptText = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const item = event.results[i];
+            if (item && item[0] && item[0].transcript) {
+              transcriptText += item[0].transcript.trim() + " ";
+            }
+          }
+          transcriptText = transcriptText.trim();
+          if (transcriptText.length > 0) {
+            console.log(`[WebSpeech] Detected spoken words: "${transcriptText}"`);
+            triggerVoiceStrike(
+              "Speech / Speaking Detected",
+              `Spoken words detected: "${transcriptText}"`
+            );
+          }
+        };
+
+        recognition.onspeechstart = () => {
+          if (!isMounted || submittedRef.current) return;
+          console.log("[WebSpeech] Vocal speech started detected by engine");
+          triggerVoiceStrike(
+            "Voice / Speaking Detected",
+            "Human speaking activity detected in front of camera"
+          );
+        };
+
+        recognition.onerror = (e: any) => {
+          // "no-speech" or "aborted" are normal pauses during candidate quiet periods
+          if (e.error !== "no-speech" && e.error !== "aborted") {
+            console.warn("[WebSpeech] Recognition status:", e.error);
+          }
+        };
+
+        recognition.onend = () => {
+          if (isMounted && !submittedRef.current) {
+            try {
+              recognition.start();
+            } catch {
+              // Ignore if already active
+            }
+          }
+        };
+
+        try {
+          recognition.start();
+          speechRecognitionRef.current = recognition;
+          console.log("[WebSpeech] Engine active and listening for vocal infractions");
+        } catch (startErr) {
+          console.warn("[WebSpeech] Start error:", startErr);
+        }
+      } catch (err) {
+        console.warn("[WebSpeech] SpeechRecognition init failed:", err);
+      }
+    }
+
+    // =========================================================================
+    // LAYER 2: Web Audio Acoustic Formant & Energy Accumulator (Fallback + Acoustic Formants)
+    // =========================================================================
     async function initAudioDetection() {
       try {
-        // 1. Locate an active audio stream from webcamStreamRef or acquire dedicated microphone stream
         let streamToUse: MediaStream | null = webcamStreamRef.current;
         if (!streamToUse || streamToUse.getAudioTracks().length === 0 || !streamToUse.getAudioTracks()[0].enabled) {
           try {
-            fallbackStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            fallbackStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
+            });
             streamToUse = fallbackStream;
           } catch (micErr) {
             console.warn("[VoiceDetection] Could not acquire audio stream fallback:", micErr);
@@ -528,19 +668,22 @@ export default function ExamTake() {
         if (!isMounted || !streamToUse || streamToUse.getAudioTracks().length === 0) return;
 
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        audioContext = new AudioContextClass();
+        if (!audioContext || audioContext.state === "closed") {
+          audioContext = new AudioContextClass();
+        }
         if (audioContext.state === "suspended") {
           audioContext.resume().catch(() => {});
         }
+        audioContextRef.current = audioContext;
 
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 1024;
-        analyser.smoothingTimeConstant = 0.3;
+        analyser.smoothingTimeConstant = 0.25;
 
-        // Biquad highpass filter at 120Hz to eliminate AC line hum (50Hz/60Hz) and PC fan rumbles
+        // 100Hz highpass filter to strip 50Hz/60Hz AC electrical hum and PC chassis fan rumble
         biquadFilter = audioContext.createBiquadFilter();
         biquadFilter.type = "highpass";
-        biquadFilter.frequency.setValueAtTime(120, audioContext.currentTime);
+        biquadFilter.frequency.setValueAtTime(100, audioContext.currentTime);
 
         microphone = audioContext.createMediaStreamSource(streamToUse);
         microphone.connect(biquadFilter);
@@ -553,11 +696,11 @@ export default function ExamTake() {
         const sampleRate = audioContext.sampleRate || 48000;
         const binResolution = sampleRate / analyser.fftSize;
 
-        // Speech formant band: 200 Hz to 3400 Hz
+        // Human vocal formant band: 200 Hz to 3400 Hz
         const speechMinBin = Math.max(1, Math.floor(200 / binResolution));
         const speechMaxBin = Math.min(bufferLength - 1, Math.ceil(3400 / binResolution));
 
-        console.log(`[VoiceDetection] Calibrated vocal speech band: 200Hz - 3400Hz (bins ${speechMinBin}-${speechMaxBin})`);
+        console.log(`[VoiceDetection] Acoustic analyzer active: bins ${speechMinBin}-${speechMaxBin}`);
 
         const checkAudio = () => {
           if (!isMounted || submittedRef.current) return;
@@ -590,51 +733,53 @@ export default function ExamTake() {
           }
           const vocalAvg = vocalCount > 0 ? vocalSum / vocalCount : 0;
 
-          // Throttled UI volume meter update (every 100ms)
+          // 3. Dynamic ambient baseline noise learning
+          if (calibrationFrames < 35) {
+            calibrationFrames++;
+            ambientBaselineRms = ambientBaselineRms * 0.9 + rms * 0.1;
+            ambientBaselineVocal = ambientBaselineVocal * 0.9 + vocalAvg * 0.1;
+          } else {
+            // Running EMA floor adjustment for gradual background shifts
+            if (rms < ambientBaselineRms * 1.3) {
+              ambientBaselineRms = ambientBaselineRms * 0.995 + rms * 0.005;
+            }
+          }
+
           const now = Date.now();
+
+          // 4. Live UI volume meter update (every 100ms)
           if (now - lastUiUpdate > 100) {
             lastUiUpdate = now;
-            const normalizedVol = Math.min(100, Math.round((rms / 25) * 100));
+            // Responsive meter: scale rms up to 100%
+            const normalizedVol = Math.min(100, Math.round((rms / 10) * 100));
             setMicAudioLevel(normalizedVol);
           }
 
-          // Voice Speaking Thresholds:
-          // Ambient fan/room noise after 120Hz highpass typically yields rms < 6 and maxVocal < 22.
-          // Genuine speaking / loud speech in front of the camera yields rms >= 10-14 and maxVocal >= 30.
-          const isSpeaking = (rms >= 10.0 && maxVocal >= 30) || (rms >= 15.0) || (vocalAvg >= 16.0 && maxVocal >= 38);
+          // 5. Intelligent Vocal Energy Classification:
+          // Notice: Normal conversational speech at 50cm produces RMS between 2.8 and 7.5.
+          // maxVocal jumps to 20-80 inside the 200-3400Hz speech band.
+          const isAboveNoise = rms > Math.max(2.6, ambientBaselineRms + 1.4);
+          const hasVocalEnergy = maxVocal >= 18 || vocalAvg >= (ambientBaselineVocal + 3.0);
+          const isLoudSound = rms >= 5.5;
 
-          if (isSpeaking) {
-            lastSoundTime = now;
-            if (!voiceStartRef) {
-              voiceStartRef = now;
-            } else {
-              const elapsed = now - voiceStartRef;
-              // Sustained speech for 800ms triggers warning
-              if (elapsed >= 800 && !voiceWarnedRef) {
-                if (now - lastVoiceLogTime.current >= 5000) {
-                  voiceWarnedRef = true;
-                  lastVoiceLogTime.current = now;
-                  logEvent("VOICE_DETECTED", undefined, {
-                    durationSeconds: Math.round(elapsed / 1000) || 1,
-                    reason: "Acoustic speech / voice activity detected in front of camera",
-                    rms: Math.round(rms),
-                    maxVocal,
-                  });
-                  flushNow();
+          const isVocalActivity = (isAboveNoise && hasVocalEnergy) || isLoudSound;
 
-                  issueWarningStrike(
-                    "Voice / Speaking Detected",
-                    "Speaking, reading aloud, or external voices were detected in front of the camera. Voice activity is strictly prohibited during the exam."
-                  );
-                }
-              }
-            }
+          // 6. Leaky-bucket accumulator:
+          // Robust against brief consonant pauses while instantly reacting to spoken phrases
+          if (isVocalActivity) {
+            vocalAccumulator += 3;
           } else {
-            // When silence / quiet is restored for 600ms, reset voiceStartRef and allow future voice warnings
-            if (now - lastSoundTime > 600) {
-              voiceStartRef = null;
-              voiceWarnedRef = false;
-            }
+            vocalAccumulator = Math.max(0, vocalAccumulator - 1);
+          }
+
+          if (vocalAccumulator >= 9) {
+            // ~200-300ms of sustained vocal speaking confirmed!
+            vocalAccumulator = 0;
+            triggerVoiceStrike(
+              "Voice / Speaking Detected",
+              `Speaking detected in front of camera (RMS: ${rms.toFixed(1)})`,
+              rms
+            );
           }
 
           animationFrameId = requestAnimationFrame(checkAudio);
@@ -642,7 +787,7 @@ export default function ExamTake() {
 
         checkAudio();
       } catch (err) {
-        console.error("[VoiceDetection] Audio detection error:", err);
+        console.error("[VoiceDetection] Acoustic analyzer error:", err);
       }
     }
 
@@ -653,8 +798,11 @@ export default function ExamTake() {
       window.removeEventListener("click", resumeContext);
       window.removeEventListener("keydown", resumeContext);
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
-      if (audioContext && audioContext.state !== "closed") {
-        audioContext.close().catch(() => {});
+      if (recognition) {
+        try {
+          recognition.onend = null;
+          recognition.stop();
+        } catch {}
       }
       if (fallbackStream) {
         fallbackStream.getTracks().forEach((t) => t.stop());
