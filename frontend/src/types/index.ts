@@ -143,7 +143,8 @@ export interface WarningResponse {
 
 export interface RiskPoint {
   timestamp: string;
-  score: number;
+  score?: number;
+  riskScore?: number;
   eventType?: string | null;
   warningLevel?: number | null;
 }

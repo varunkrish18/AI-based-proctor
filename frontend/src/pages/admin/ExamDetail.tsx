@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, BASE_URL, getToken } from "../../api/client";
 import type {
@@ -783,6 +783,8 @@ function ResultsTab({ examId }: { examId: number }) {
   const [events, setEvents] = useState<ProctoringEvent[]>([]);
   const [riskTimeline, setRiskTimeline] = useState<RiskTimelineResponse | null>(null);
   const [eventsLoading, setEventsLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const timelineSectionRef = useRef<HTMLDivElement | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string; subtitle: string } | null>(null);
@@ -913,6 +915,11 @@ function ResultsTab({ examId }: { examId: number }) {
     setSelectedAttempt(attempt);
     setQuickScore(attempt.score !== null && attempt.score !== undefined ? String(attempt.score) : "");
     setEventsLoading(true);
+    setTimelineError(null);
+    setTimeout(() => {
+      timelineSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+
     const params = new URLSearchParams();
     if (sev) params.append("severity", sev);
     if (type) params.append("type", type);
@@ -926,7 +933,7 @@ function ResultsTab({ examId }: { examId: number }) {
         setEvents(evs);
         setRiskTimeline(rtl);
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => setTimelineError(e.message))
       .finally(() => setEventsLoading(false));
   }
 
@@ -1220,7 +1227,7 @@ function ResultsTab({ examId }: { examId: number }) {
 
       {/* Drill-down Integrity & Proctoring Timeline */}
       {selectedAttempt && (
-        <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-6">
+        <div ref={timelineSectionRef} className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-6 scroll-mt-20">
           <div className="flex justify-between items-start border-b border-slate-100 pb-4">
             <div>
               <div className="flex items-center gap-3">
@@ -1242,7 +1249,7 @@ function ResultsTab({ examId }: { examId: number }) {
                   ? `Ended: ${new Date(selectedAttempt.endTime).toLocaleTimeString()}`
                   : "Currently In Progress"}{" "}
                 &middot; Score: {selectedAttempt.score ?? "—"} &middot; Current Risk Score:{" "}
-                <strong className="text-slate-800">{riskTimeline?.currentRiskScore.toFixed(1) ?? "0.0"}</strong>
+                <strong className="text-slate-800">{Number(riskTimeline?.currentRiskScore ?? 0).toFixed(1)}</strong>
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1274,6 +1281,11 @@ function ResultsTab({ examId }: { examId: number }) {
               </button>
             </div>
           </div>
+          {timelineError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg text-xs">
+              {timelineError}
+            </div>
+          )}
 
           {/* Quick Marks & Verification Bar */}
           <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -1343,7 +1355,7 @@ function ResultsTab({ examId }: { examId: number }) {
                       <p className="text-slate-800 font-medium">{w.message}</p>
                     </div>
                     <span className="text-slate-500 font-semibold shrink-0">
-                      Score: {w.riskScoreAtTime.toFixed(1)}
+                      Score: {Number(w.riskScoreAtTime ?? 0).toFixed(1)}
                     </span>
                   </div>
                 ))}
@@ -1630,13 +1642,18 @@ function RiskScoreChart({ history }: { history: RiskPoint[] }) {
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
 
-  const maxScore = Math.max(100, ...history.map((p) => p.score));
+  const validScores = history
+    .map((p) => Number(p.score ?? (p as any).riskScore ?? 0))
+    .filter((n) => !isNaN(n));
+  const maxScore = Math.max(100, ...(validScores.length > 0 ? validScores : [100]));
 
   const points = history.map((pt, i) => {
+    const rawVal = Number(pt.score ?? (pt as any).riskScore ?? 0);
+    const scoreVal = isNaN(rawVal) ? 0 : rawVal;
     const x =
-      padding.left + (history.length === 1 ? innerWidth / 2 : (i / (history.length - 1)) * innerWidth);
-    const y = padding.top + innerHeight - (pt.score / maxScore) * innerHeight;
-    return { x, y, ...pt };
+      padding.left + (history.length === 1 ? innerWidth / 2 : (i / Math.max(1, history.length - 1)) * innerWidth);
+    const y = padding.top + innerHeight - (scoreVal / Math.max(1, maxScore)) * innerHeight;
+    return { x, y, scoreVal, ...pt };
   });
 
   const pathD = points.reduce(
@@ -1644,11 +1661,13 @@ function RiskScoreChart({ history }: { history: RiskPoint[] }) {
     ""
   );
 
-  const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${
+  const lastPoint = points[points.length - 1];
+  const firstPoint = points[0];
+  const areaD = `${pathD} L ${(lastPoint?.x ?? 0).toFixed(1)} ${
     padding.top + innerHeight
-  } L ${points[0].x.toFixed(1)} ${padding.top + innerHeight} Z`;
+  } L ${(firstPoint?.x ?? 0).toFixed(1)} ${padding.top + innerHeight} Z`;
 
-  const thresholdY = padding.top + innerHeight - (75 / maxScore) * innerHeight;
+  const thresholdY = padding.top + innerHeight - (75 / Math.max(1, maxScore)) * innerHeight;
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-4">
@@ -1661,7 +1680,7 @@ function RiskScoreChart({ history }: { history: RiskPoint[] }) {
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto overflow-visible">
         {/* Y Grid lines */}
         {[0, 25, 50, 75, 100].map((val) => {
-          const y = padding.top + innerHeight - (val / maxScore) * innerHeight;
+          const y = padding.top + innerHeight - (val / Math.max(1, maxScore)) * innerHeight;
           return (
             <g key={val}>
               <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#f1f5f9" strokeWidth="1" />
@@ -1711,12 +1730,12 @@ function RiskScoreChart({ history }: { history: RiskPoint[] }) {
             key={i}
             cx={pt.x}
             cy={pt.y}
-            r={pt.score >= 75 ? 4.5 : 3}
-            fill={pt.score >= 75 ? "#ef4444" : "#2563eb"}
+            r={pt.scoreVal >= 75 ? 4.5 : 3}
+            fill={pt.scoreVal >= 75 ? "#ef4444" : "#2563eb"}
             stroke="#ffffff"
             strokeWidth="1.5"
           >
-            <title>{`${pt.eventType || "Event"}: ${pt.score.toFixed(1)} (${new Date(
+            <title>{`${pt.eventType || "Event"}: ${pt.scoreVal.toFixed(1)} (${new Date(
               pt.timestamp
             ).toLocaleTimeString()})`}</title>
           </circle>
