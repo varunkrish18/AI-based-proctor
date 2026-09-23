@@ -130,3 +130,45 @@ export const api = {
   delete: <T = void>(path: string, auth?: TokenKind) =>
     request<T>(path, { method: "DELETE", auth }),
 };
+
+export async function downloadFile(
+  path: string,
+  filename: string,
+  auth?: TokenKind
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "ngrok-skip-browser-warning": "true",
+  };
+  if (auth) {
+    const token = getToken(auth);
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Export failed with status ${res.status}`);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/html")) {
+    const text = await res.text();
+    if (text.includes("ngrok") || text.includes("Visit Site")) {
+      throw new Error("Tunnel warning intercepted download. Please retry.");
+    }
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+

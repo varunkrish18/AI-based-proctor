@@ -225,6 +225,30 @@ public class ReportExportService {
                 }
                 doc.add(wTable);
             }
+
+            // Student Questions & Answers Evaluation
+            List<ExamAnswer> studentAnswers = answerRepository.findByAttemptId(attemptId);
+            if (!studentAnswers.isEmpty()) {
+                doc.add(com.lowagie.text.Chunk.NEWLINE);
+                doc.add(new com.lowagie.text.Paragraph("Student Answers & Examination Evaluation (" + studentAnswers.size() + " Questions)", sectionFont));
+                com.lowagie.text.pdf.PdfPTable qaTable = new com.lowagie.text.pdf.PdfPTable(4);
+                qaTable.setWidthPercentage(100);
+                float[] qaWidths = {0.8f, 4.5f, 2.2f, 2.5f};
+                qaTable.setWidths(qaWidths);
+                addPdfHeaderRow(qaTable, "Q#", "Question", "Student Answer", "Result / Score");
+                int qIdx = 1;
+                for (ExamAnswer ans : studentAnswers) {
+                    ExamQuestion q = ans.getQuestion();
+                    String qText = q != null ? q.getQuestionText() : ("Question " + qIdx);
+                    String selOpt = ans.getSelectedOption() != null ? ("Option " + (char)('A' + ans.getSelectedOption())) : "Not Answered";
+                    String correctOpt = q != null && q.getCorrectAnswer() != null ? ("Option " + (char)('A' + q.getCorrectAnswer())) : "—";
+                    String result = Boolean.TRUE.equals(ans.getIsCorrect())
+                            ? ("Correct (" + (ans.getMarksAwarded() != null ? ans.getMarksAwarded().toPlainString() : "1") + " pts)")
+                            : ("Incorrect (Key: " + correctOpt + ")");
+                    addPdfRow(qaTable, String.valueOf(qIdx++), qText, selOpt, result);
+                }
+                doc.add(qaTable);
+            }
         } catch (Exception e) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generate PDF: " + e.getMessage());
         } finally {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, BASE_URL, getToken } from "../../api/client";
+import { api, downloadFile } from "../../api/client";
 import type {
   AdminAttemptSummary,
   Exam,
@@ -801,21 +801,11 @@ function ResultsTab({ examId }: { examId: number }) {
   async function handleExportCumulativePdf() {
     setExportingCumulative(true);
     try {
-      const res = await fetch(`${BASE_URL}/api/admin/exams/${examId}/report/cumulative-pdf`, {
-        headers: {
-          Authorization: `Bearer ${getToken("admin")}`,
-        },
-      });
-      if (!res.ok) throw new Error(`Cumulative PDF export failed with status ${res.status}`);
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `exam-${examId}-cumulative-results.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadFile(
+        `/api/admin/exams/${examId}/report/cumulative-pdf`,
+        `exam-${examId}-cumulative-results.pdf`,
+        "admin"
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to export cumulative PDF");
     } finally {
@@ -883,22 +873,12 @@ function ResultsTab({ examId }: { examId: number }) {
   async function handleExport(attemptId: number, format: "pdf" | "csv" | "excel") {
     setExportingId(attemptId);
     try {
-      const res = await fetch(`${BASE_URL}/api/admin/attempts/${attemptId}/report/export?format=${format}`, {
-        headers: {
-          Authorization: `Bearer ${getToken("admin")}`,
-        },
-      });
-      if (!res.ok) throw new Error(`Export failed: ${res.status}`);
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
       const ext = format === "excel" ? "xlsx" : format;
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `attempt-${attemptId}-report.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadFile(
+        `/api/admin/attempts/${attemptId}/report/export?format=${format}`,
+        `attempt-${attemptId}-report.${ext}`,
+        "admin"
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Export failed");
     } finally {

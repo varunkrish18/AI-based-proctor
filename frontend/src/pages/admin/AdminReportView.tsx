@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, BASE_URL, getToken } from "../../api/client";
+import { api, downloadFile } from "../../api/client";
 import type { AdminAttemptReport } from "../../types";
 import {
   ResponsiveContainer,
@@ -74,25 +74,12 @@ export default function AdminReportView() {
     if (!attemptId) return;
     setDownloading(format);
     try {
-      const res = await fetch(
-        `${BASE_URL}/api/admin/attempts/${attemptId}/report/export?format=${format}`,
-        {
-          headers: {
-            Authorization: `Bearer ${getToken("admin")}`,
-          },
-        }
-      );
-      if (!res.ok) throw new Error(`Export failed with status ${res.status}`);
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
       const ext = format === "excel" ? "xlsx" : format;
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `attempt-${attemptId}-report.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadFile(
+        `/api/admin/attempts/${attemptId}/report/export?format=${format}`,
+        `attempt-${attemptId}-report.${ext}`,
+        "admin"
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Export failed");
     } finally {
