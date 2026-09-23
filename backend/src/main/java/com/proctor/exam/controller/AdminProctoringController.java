@@ -152,6 +152,26 @@ public class AdminProctoringController {
     }
 
     /**
+     * Export consolidated cumulative exam report as PDF.
+     */
+    @GetMapping({"/exams/{examId}/report/cumulative-pdf", "/exams/{examId}/report/export"})
+    public ResponseEntity<byte[]> exportCumulativeExamPdf(
+            @PathVariable Long examId,
+            Authentication authentication) {
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        auditLogService.logAdmin(adminEmail, "EXPORT_CUMULATIVE_REPORT",
+                "Exported cumulative exam " + examId + " PDF report");
+
+        byte[] bytes = reportExportService.exportCumulativeExamPdf(examId);
+        String filename = "exam-" + examId + "-cumulative-results.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
      * Admin evaluates attempt: verifies proctoring integrity, awards marks/score, and finalizes status.
      */
     @PutMapping("/attempts/{attemptId}/evaluate")

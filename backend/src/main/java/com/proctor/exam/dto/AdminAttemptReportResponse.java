@@ -43,5 +43,8 @@ public record AdminAttemptReportResponse(
         long lowEvents,
         long mediumEvents,
         long highEvents,
-        long criticalEvents
+        long criticalEvents,
+
+        // --- Question & Answer analysis ---
+        List<AdminQuestionAnswerResponse> answers
 ) {}

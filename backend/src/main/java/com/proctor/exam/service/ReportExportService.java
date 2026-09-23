@@ -34,17 +34,29 @@ public class ReportExportService {
     private final WarningRepository warningRepository;
     private final StudentRepository studentRepository;
     private final RiskEngine riskEngine;
+    private final ExamRepository examRepository;
+    private final ExamAnswerRepository answerRepository;
+    private final ExamQuestionRepository questionRepository;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public ReportExportService(ExamAttemptRepository attemptRepository,
                                ProctoringEventRepository eventRepository,
                                WarningRepository warningRepository,
                                StudentRepository studentRepository,
-                               RiskEngine riskEngine) {
+                               RiskEngine riskEngine,
+                               ExamRepository examRepository,
+                               ExamAnswerRepository answerRepository,
+                               ExamQuestionRepository questionRepository,
+                               com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.attemptRepository = attemptRepository;
         this.eventRepository = eventRepository;
         this.warningRepository = warningRepository;
         this.studentRepository = studentRepository;
         this.riskEngine = riskEngine;
+        this.examRepository = examRepository;
+        this.answerRepository = answerRepository;
+        this.questionRepository = questionRepository;
+        this.objectMapper = objectMapper;
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -256,6 +268,48 @@ public class ReportExportService {
                         w.getLevel(), w.getMessage(), w.getRiskScoreAtTime(), w.getCreatedAt()))
                 .toList();
 
+        // Build question and answer responses for human examination analysis
+        List<AdminQuestionAnswerResponse> answerResponses = new ArrayList<>();
+        List<Long> orderedQuestionIds = decodeOrder(a.getQuestionOrder());
+        List<ExamQuestion> questionsToDisplay;
+        if (orderedQuestionIds != null && !orderedQuestionIds.isEmpty()) {
+            Map<Long, ExamQuestion> qMap = new HashMap<>();
+            questionRepository.findAllById(orderedQuestionIds).forEach(q -> qMap.put(q.getId(), q));
+            questionsToDisplay = new ArrayList<>();
+            for (Long qid : orderedQuestionIds) {
+                ExamQuestion q = qMap.get(qid);
+                if (q != null) questionsToDisplay.add(q);
+            }
+        } else {
+            questionsToDisplay = questionRepository.findByExamIdOrderByDisplayOrderAsc(exam.getId());
+        }
+
+        List<ExamAnswer> studentAnswers = answerRepository.findByAttemptId(attemptId);
+        Map<Long, ExamAnswer> answerByQuestion = new HashMap<>();
+        studentAnswers.forEach(ans -> answerByQuestion.put(ans.getQuestion().getId(), ans));
+
+        int displayOrder = 1;
+        for (ExamQuestion q : questionsToDisplay) {
+            ExamAnswer ans = answerByQuestion.get(q.getId());
+            Short selected = ans != null ? ans.getSelectedOption() : null;
+            Boolean isCorrect = ans != null ? ans.getIsCorrect() : null;
+            BigDecimal awarded = ans != null && ans.getMarksAwarded() != null ? ans.getMarksAwarded() : BigDecimal.ZERO;
+            answerResponses.add(new AdminQuestionAnswerResponse(
+                    q.getId(),
+                    displayOrder++,
+                    q.getQuestionText(),
+                    q.getOptionA(),
+                    q.getOptionB(),
+                    q.getOptionC(),
+                    q.getOptionD(),
+                    selected,
+                    q.getCorrectAnswer(),
+                    isCorrect,
+                    awarded,
+                    q.getMarks() != null ? q.getMarks() : BigDecimal.valueOf(1.0)
+            ));
+        }
+
         return new AdminAttemptReportResponse(
                 a.getId(), exam.getId(), a.getStudentEmail(), studentName, a.getAttemptNumber(),
                 exam.getName(), exam.getSubject(), exam.getDurationMinutes(),
@@ -267,8 +321,137 @@ public class ReportExportService {
                 severityCounts.getOrDefault("LOW", 0L),
                 severityCounts.getOrDefault("MEDIUM", 0L),
                 severityCounts.getOrDefault("HIGH", 0L),
-                severityCounts.getOrDefault("CRITICAL", 0L)
+                severityCounts.getOrDefault("CRITICAL", 0L),
+                answerResponses
         );
+    }
+
+    /**
+     * Generates a single consolidated cumulative PDF report for all students in an examination.
+     */
+    @Transactional(readOnly = true)
+    public byte[] exportCumulativeExamPdf(Long examId) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found: " + examId));
+        List<ExamAttempt> attempts = attemptRepository.findByExamId(examId);
+
+        com.lowagie.text.Document doc = new com.lowagie.text.Document();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            com.lowagie.text.pdf.PdfWriter.getInstance(doc, out);
+            doc.open();
+
+            com.lowagie.text.Font titleFont = new com.lowagie.text.Font(
+                    com.lowagie.text.Font.HELVETICA, 16, com.lowagie.text.Font.BOLD);
+            com.lowagie.text.Font subtitleFont = new com.lowagie.text.Font(
+                    com.lowagie.text.Font.HELVETICA, 10, com.lowagie.text.Font.ITALIC);
+            com.lowagie.text.Font sectionFont = new com.lowagie.text.Font(
+                    com.lowagie.text.Font.HELVETICA, 12, com.lowagie.text.Font.BOLD);
+
+            // Title block
+            doc.add(new com.lowagie.text.Paragraph("Cumulative Examination & Proctoring Evaluation Report", titleFont));
+            doc.add(new com.lowagie.text.Paragraph("Comprehensive Multi-Candidate Assessment Audit & Verified Marks Roster", subtitleFont));
+            doc.add(com.lowagie.text.Chunk.NEWLINE);
+
+            // Examination Overview Table
+            doc.add(new com.lowagie.text.Paragraph("Examination Overview", sectionFont));
+            com.lowagie.text.pdf.PdfPTable examTable = new com.lowagie.text.pdf.PdfPTable(2);
+            examTable.setWidthPercentage(100);
+            addPdfRow(examTable, "Examination Title", exam.getName());
+            addPdfRow(examTable, "Subject / Category", exam.getSubject() != null ? exam.getSubject() : "General");
+            addPdfRow(examTable, "Duration", exam.getDurationMinutes() + " minutes");
+            addPdfRow(examTable, "Configured Questions", String.valueOf(exam.getNumQuestions()));
+            addPdfRow(examTable, "Total Candidate Attempts", String.valueOf(attempts.size()));
+
+            long submittedCount = attempts.stream()
+                    .filter(at -> "SUBMITTED".equalsIgnoreCase(at.getStatus()) || "VERIFIED".equalsIgnoreCase(at.getStatus()))
+                    .count();
+            long verifiedCount = attempts.stream()
+                    .filter(at -> "VERIFIED".equalsIgnoreCase(at.getStatus()))
+                    .count();
+            long flaggedCount = attempts.stream()
+                    .filter(at -> Boolean.TRUE.equals(at.getFlaggedForReview()))
+                    .count();
+            addPdfRow(examTable, "Completed Submissions", String.valueOf(submittedCount));
+            addPdfRow(examTable, "Admin Evaluated & Verified", String.valueOf(verifiedCount));
+            addPdfRow(examTable, "Flagged For Review", String.valueOf(flaggedCount));
+
+            OptionalDouble avgScoreOpt = attempts.stream()
+                    .filter(at -> at.getScore() != null)
+                    .mapToDouble(at -> at.getScore().doubleValue())
+                    .average();
+            String avgScoreStr = avgScoreOpt.isPresent() ? String.format("%.2f pts", avgScoreOpt.getAsDouble()) : "Pending Evaluation";
+            addPdfRow(examTable, "Class Average Marks", avgScoreStr);
+
+            doc.add(examTable);
+            doc.add(com.lowagie.text.Chunk.NEWLINE);
+
+            // Consolidated Candidates Table
+            doc.add(new com.lowagie.text.Paragraph("Consolidated Student Roster & Marks Summary (" + attempts.size() + " Candidates)", sectionFont));
+            com.lowagie.text.pdf.PdfPTable rosterTable = new com.lowagie.text.pdf.PdfPTable(7);
+            rosterTable.setWidthPercentage(100);
+            float[] widths = {2.2f, 3.0f, 0.8f, 1.4f, 1.3f, 1.2f, 1.4f};
+            rosterTable.setWidths(widths);
+            addPdfHeaderRow(rosterTable, "Student", "Email", "Att#", "Status", "Marks", "Risk", "Integrity");
+
+            Map<String, Integer> weights = riskEngine.resolveWeights(exam);
+
+            for (ExamAttempt at : attempts) {
+                String sName = studentRepository.findByEmailIgnoreCase(at.getStudentEmail())
+                        .map(Student::getFullName)
+                        .orElse("Student");
+                List<ProctoringEvent> evs = eventRepository.findByAttemptIdOrderByOccurredAtAsc(at.getId());
+                BigDecimal rScore = riskEngine.computeDecayedRiskScore(evs, weights, Instant.now());
+                String scoreStr = at.getScore() != null ? at.getScore().toPlainString() + " pts" : "—";
+                String integrityStr = Boolean.TRUE.equals(at.getFlaggedForReview()) ? "FLAGGED" : "Clear";
+
+                addPdfRow(rosterTable,
+                        sName,
+                        at.getStudentEmail(),
+                        String.valueOf(at.getAttemptNumber()),
+                        at.getStatus() != null ? at.getStatus() : "—",
+                        scoreStr,
+                        rScore.toPlainString(),
+                        integrityStr
+                );
+            }
+            doc.add(rosterTable);
+            doc.add(com.lowagie.text.Chunk.NEWLINE);
+
+            // Detailed Candidate Summaries
+            if (!attempts.isEmpty()) {
+                doc.add(new com.lowagie.text.Paragraph("Individual Candidate Evaluation Summaries", sectionFont));
+                for (ExamAttempt at : attempts) {
+                    com.lowagie.text.pdf.PdfPTable detailTable = new com.lowagie.text.pdf.PdfPTable(2);
+                    detailTable.setWidthPercentage(100);
+                    addPdfRow(detailTable, "Student Identification", at.getStudentEmail() + " (Attempt #" + at.getAttemptNumber() + ")");
+                    addPdfRow(detailTable, "Marks / Score Awarded", at.getScore() != null ? at.getScore().toPlainString() + " pts" : "Pending Evaluation");
+                    addPdfRow(detailTable, "Evaluation Status", at.getStatus() != null ? at.getStatus() : "—");
+                    List<ProctoringEvent> evs = eventRepository.findByAttemptIdOrderByOccurredAtAsc(at.getId());
+                    long critHigh = evs.stream().filter(e -> "CRITICAL".equalsIgnoreCase(e.getSeverity()) || "HIGH".equalsIgnoreCase(e.getSeverity())).count();
+                    addPdfRow(detailTable, "Proctoring Telemetry", evs.size() + " total events (" + critHigh + " Critical/High violations)");
+                    doc.add(detailTable);
+                    doc.add(new com.lowagie.text.Paragraph(" "));
+                }
+            }
+
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generate cumulative PDF: " + e.getMessage());
+        } finally {
+            doc.close();
+        }
+        return out.toByteArray();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Long> decodeOrder(String json) {
+        if (json == null || json.isBlank()) return Collections.emptyList();
+        try {
+            List<Integer> raw = objectMapper.readValue(json, List.class);
+            return raw.stream().map(Integer::longValue).toList();
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────

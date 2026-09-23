@@ -36,6 +36,7 @@ export default function ExamTake() {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [webcamStatus, setWebcamStatus] = useState<string>("UNKNOWN");
   const [micStatus, setMicStatus] = useState<string>("UNKNOWN");
+  const [micAudioLevel, setMicAudioLevel] = useState<number>(0);
   const [screenStatus, setScreenStatus] = useState<string>("UNKNOWN");
   const [fullscreenExited, setFullscreenExited] = useState<boolean>(false);
   const [fullscreenFrozen, setFullscreenFrozen] = useState<boolean>(false);
@@ -485,13 +486,14 @@ export default function ExamTake() {
     };
   }, [session, screenGatePassed, issueWarningStrike]);
 
-  // Voice detection loop (Phase 3 & 4: 30Hz+ continuous sound detection)
+  // Voice detection loop: Highpass filtered human vocal formant tracking (120Hz - 3400Hz)
   useEffect(() => {
     const micRequired = session?.microphoneRequired ?? true;
     if (!session || !screenGatePassed || submittedRef.current || !micRequired) return;
 
     let audioContext: AudioContext | null = null;
     let analyser: AnalyserNode | null = null;
+    let biquadFilter: BiquadFilterNode | null = null;
     let microphone: MediaStreamAudioSourceNode | null = null;
     let fallbackStream: MediaStream | null = null;
     let isMounted = true;
@@ -499,6 +501,7 @@ export default function ExamTake() {
     let voiceStartRef: number | null = null;
     let voiceWarnedRef = false;
     let lastSoundTime = 0;
+    let lastUiUpdate = 0;
 
     const resumeContext = () => {
       if (audioContext && audioContext.state === "suspended") {
@@ -531,11 +534,17 @@ export default function ExamTake() {
         }
 
         analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048; // High frequency resolution (~21.5 Hz - 23.4 Hz per bin) to capture down to 30 Hz
-        analyser.smoothingTimeConstant = 0.25;
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.3;
+
+        // Biquad highpass filter at 120Hz to eliminate AC line hum (50Hz/60Hz) and PC fan rumbles
+        biquadFilter = audioContext.createBiquadFilter();
+        biquadFilter.type = "highpass";
+        biquadFilter.frequency.setValueAtTime(120, audioContext.currentTime);
 
         microphone = audioContext.createMediaStreamSource(streamToUse);
-        microphone.connect(analyser);
+        microphone.connect(biquadFilter);
+        biquadFilter.connect(analyser);
 
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
@@ -544,12 +553,11 @@ export default function ExamTake() {
         const sampleRate = audioContext.sampleRate || 48000;
         const binResolution = sampleRate / analyser.fftSize;
 
-        // Calculate bin boundaries with 50 Hz minimum frequency
-        const minBin50Hz = Math.max(1, Math.floor(50 / binResolution)); // Starts strictly at 50 Hz
-        const lowBandEnd = Math.min(bufferLength - 1, Math.ceil(250 / binResolution)); // 50 Hz - 250 Hz (sub-bass, low hums, deep voices)
-        const vocalBandEnd = Math.min(bufferLength - 1, Math.ceil(3500 / binResolution)); // 50 Hz - 3500 Hz (full speech & murmur spectrum)
+        // Speech formant band: 200 Hz to 3400 Hz
+        const speechMinBin = Math.max(1, Math.floor(200 / binResolution));
+        const speechMaxBin = Math.min(bufferLength - 1, Math.ceil(3400 / binResolution));
 
-        console.log(`[VoiceDetection] Listening for voice (50Hz+ minBin=${minBin50Hz} binRes=${binResolution.toFixed(1)}Hz)`);
+        console.log(`[VoiceDetection] Calibrated vocal speech band: 200Hz - 3400Hz (bins ${speechMinBin}-${speechMaxBin})`);
 
         const checkAudio = () => {
           if (!isMounted || submittedRef.current) return;
@@ -561,35 +569,20 @@ export default function ExamTake() {
           analyser!.getByteFrequencyData(dataArray as any);
           analyser!.getByteTimeDomainData(timeDataArray as any);
 
-          // 1. Time-domain analysis: catches acoustic vibration & waveform displacement
-          let maxDeviation = 0;
+          // 1. Time-domain analysis: RMS amplitude centered at 128
           let sumSquares = 0;
           const timeLen = timeDataArray.length;
           for (let i = 0; i < timeLen; i++) {
             const dev = Math.abs(timeDataArray[i] - 128);
-            if (dev > maxDeviation) maxDeviation = dev;
             sumSquares += dev * dev;
           }
           const rms = Math.sqrt(sumSquares / timeLen);
 
-          // 2. Frequency-domain analysis starting from 50 Hz minimum:
-          // A) Low frequency band: 50 Hz to 250 Hz
-          let lowFreqSum = 0;
-          let maxLowFreq = 0;
-          let lowCount = 0;
-          for (let i = minBin50Hz; i <= lowBandEnd; i++) {
-            const val = dataArray[i];
-            lowFreqSum += val;
-            if (val > maxLowFreq) maxLowFreq = val;
-            lowCount++;
-          }
-          const lowFreqAvg = lowCount > 0 ? lowFreqSum / lowCount : 0;
-
-          // B) Full speech & murmur band: 50 Hz to 3500 Hz
+          // 2. Frequency-domain analysis within speech formant band
           let vocalSum = 0;
           let maxVocal = 0;
           let vocalCount = 0;
-          for (let i = minBin50Hz; i <= vocalBandEnd; i++) {
+          for (let i = speechMinBin; i <= speechMaxBin; i++) {
             const val = dataArray[i];
             vocalSum += val;
             if (val > maxVocal) maxVocal = val;
@@ -597,45 +590,48 @@ export default function ExamTake() {
           }
           const vocalAvg = vocalCount > 0 ? vocalSum / vocalCount : 0;
 
-          // Sound detection starting from 50 Hz minimum:
-          const isSoundDetected =
-            rms >= 2.0 ||
-            maxDeviation >= 8 ||
-            lowFreqAvg >= 6 ||
-            maxLowFreq >= 16 ||
-            vocalAvg >= 5 ||
-            maxVocal >= 18;
-
+          // Throttled UI volume meter update (every 100ms)
           const now = Date.now();
+          if (now - lastUiUpdate > 100) {
+            lastUiUpdate = now;
+            const normalizedVol = Math.min(100, Math.round((rms / 25) * 100));
+            setMicAudioLevel(normalizedVol);
+          }
 
-          if (isSoundDetected) {
+          // Voice Speaking Thresholds:
+          // Ambient fan/room noise after 120Hz highpass typically yields rms < 6 and maxVocal < 22.
+          // Genuine speaking / loud speech in front of the camera yields rms >= 10-14 and maxVocal >= 30.
+          const isSpeaking = (rms >= 10.0 && maxVocal >= 30) || (rms >= 15.0) || (vocalAvg >= 16.0 && maxVocal >= 38);
+
+          if (isSpeaking) {
             lastSoundTime = now;
             if (!voiceStartRef) {
               voiceStartRef = now;
             } else {
               const elapsed = now - voiceStartRef;
-              if (elapsed >= 2000 && !voiceWarnedRef) {
-                if (now - lastVoiceLogTime.current >= 6000) {
+              // Sustained speech for 800ms triggers warning
+              if (elapsed >= 800 && !voiceWarnedRef) {
+                if (now - lastVoiceLogTime.current >= 5000) {
                   voiceWarnedRef = true;
                   lastVoiceLogTime.current = now;
                   logEvent("VOICE_DETECTED", undefined, {
-                    durationSeconds: Math.round(elapsed / 1000),
-                    reason: "Continuous sound or voice (50Hz+) detected for 2+ seconds",
+                    durationSeconds: Math.round(elapsed / 1000) || 1,
+                    reason: "Acoustic speech / voice activity detected in front of camera",
+                    rms: Math.round(rms),
+                    maxVocal,
                   });
                   flushNow();
 
                   issueWarningStrike(
-                    "Voice / Sound Detected",
-                    "Acoustic activity above 50Hz was detected. Speaking, reading aloud, or external voices are strictly prohibited during the exam."
+                    "Voice / Speaking Detected",
+                    "Speaking, reading aloud, or external voices were detected in front of the camera. Voice activity is strictly prohibited during the exam."
                   );
                 }
               }
             }
           } else {
-            // Human speech naturally has 50ms - 200ms pauses between words and syllables.
-            // Do not wipe voiceStartRef immediately on a 16ms dip!
-            // Only reset after 650ms of continuous silence:
-            if (now - lastSoundTime > 650) {
+            // When silence / quiet is restored for 600ms, reset voiceStartRef and allow future voice warnings
+            if (now - lastSoundTime > 600) {
               voiceStartRef = null;
               voiceWarnedRef = false;
             }
@@ -664,7 +660,7 @@ export default function ExamTake() {
         fallbackStream.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [session, screenGatePassed, micStatus, issueWarningStrike, logEvent, flushNow]);
+  }, [session, screenGatePassed, issueWarningStrike, logEvent, flushNow]);
 
   // (Warning polling removed — proctoring infractions are now handled directly
   //  via the issueWarningStrike() 3-Strike system without any server round-trip.)
@@ -1347,20 +1343,30 @@ export default function ExamTake() {
                     </span>
                   )}
 
-                  {/* Hardware Status Dots */}
-                  <div className="flex items-center gap-1 bg-black/60 px-2 py-0.5 rounded-full border border-white/10 text-[10px]">
+                  {/* Hardware Status Dots & Live Mic Audio Meter */}
+                  <div className="flex items-center gap-1.5 bg-black/60 px-2 py-0.5 rounded-full border border-white/10 text-[10px]">
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
                         webcamStatus === "ACTIVE" ? "bg-emerald-400" : "bg-rose-400"
                       }`}
                       title={`Webcam: ${webcamStatus}`}
                     />
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        micStatus === "ACTIVE" ? "bg-emerald-400" : "bg-rose-400"
-                      }`}
-                      title={`Mic: ${micStatus}`}
-                    />
+                    <div className="flex items-center gap-0.5" title={`Mic: ${micStatus} (Level: ${micAudioLevel}%)`}>
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          micStatus === "ACTIVE"
+                            ? micAudioLevel > 30
+                              ? "bg-amber-400 animate-ping"
+                              : "bg-emerald-400"
+                            : "bg-rose-400"
+                        }`}
+                      />
+                      {micAudioLevel > 10 && (
+                        <span className="text-[9px] text-emerald-400 font-mono">
+                          {micAudioLevel > 35 ? "🔊" : "🎤"}
+                        </span>
+                      )}
+                    </div>
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
                         screenStatus === "ACTIVE" ? "bg-emerald-400" : "bg-rose-400"

@@ -792,8 +792,34 @@ function ResultsTab({ examId }: { examId: number }) {
   const [attemptSeverityFilter, setAttemptSeverityFilter] = useState<string>("");
   const [attemptEventTypeFilter, setAttemptEventTypeFilter] = useState<string>("");
   const [exportingId, setExportingId] = useState<number | null>(null);
+  const [exportingCumulative, setExportingCumulative] = useState<boolean>(false);
   const [quickScore, setQuickScore] = useState<string>("");
   const [savingQuickScore, setSavingQuickScore] = useState<boolean>(false);
+
+  async function handleExportCumulativePdf() {
+    setExportingCumulative(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/exams/${examId}/report/cumulative-pdf`, {
+        headers: {
+          Authorization: `Bearer ${getToken("admin")}`,
+        },
+      });
+      if (!res.ok) throw new Error(`Cumulative PDF export failed with status ${res.status}`);
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `exam-${examId}-cumulative-results.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to export cumulative PDF");
+    } finally {
+      setExportingCumulative(false);
+    }
+  }
 
   async function handleQuickEvaluate() {
     if (!selectedAttempt) return;
@@ -1013,13 +1039,23 @@ function ResultsTab({ examId }: { examId: number }) {
 
       {/* Attempts Table */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs">
-        <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-          <h3 className="font-semibold text-slate-800 text-sm">Student Attempts ({attempts.length})</h3>
+        <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap justify-between items-center gap-3 bg-slate-50/50">
+          <div className="flex items-center gap-3">
+            <h3 className="font-semibold text-slate-800 text-sm">Student Attempts ({attempts.length})</h3>
+            <button
+              onClick={() => loadAttempts()}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+            >
+              ↻ Refresh
+            </button>
+          </div>
           <button
-            onClick={() => loadAttempts()}
-            className="text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+            onClick={handleExportCumulativePdf}
+            disabled={exportingCumulative || attempts.length === 0}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
+            title="Download cumulative PDF containing all candidate results, verified marks & proctoring audit"
           >
-            ↻ Refresh
+            <span>📄 {exportingCumulative ? "Generating PDF…" : "Export Cumulative Exam PDF (All Students)"}</span>
           </button>
         </div>
         <table className="w-full text-sm">
@@ -1145,10 +1181,10 @@ function ResultsTab({ examId }: { examId: number }) {
                       </button>
                       <Link
                         to={`/admin/exams/${examId}/attempts/${a.attemptId}`}
-                        className="text-slate-700 hover:text-slate-900 font-medium text-xs bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 transition-colors"
-                        title="Open full report page"
+                        className="text-blue-700 hover:text-blue-900 font-bold text-xs bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded transition-colors"
+                        title="Evaluate student answers & assign verified marks"
                       >
-                        Report ↗
+                        Evaluate & Marks ↗
                       </Link>
                       <button
                         onClick={() => handleExport(a.attemptId, "pdf")}

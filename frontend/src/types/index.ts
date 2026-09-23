@@ -230,6 +230,22 @@ export interface AdminAttemptReport {
   mediumEvents: number;
   highEvents: number;
   criticalEvents: number;
+  answers?: AdminQuestionAnswer[];
+}
+
+export interface AdminQuestionAnswer {
+  questionId: number;
+  displayOrder: number;
+  questionText: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  selectedOption: number | null;
+  correctAnswer: number;
+  isCorrect: boolean | null;
+  marksAwarded: number;
+  maxMarks: number;
 }
 
 export interface AdminAttemptEvaluationRequest {
