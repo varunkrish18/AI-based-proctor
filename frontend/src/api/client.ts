@@ -1,4 +1,4 @@
-export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://caecally-shiftable-cammy.ngrok-free.dev";
 
 type TokenKind = "admin" | "student";
 
@@ -85,6 +85,7 @@ async function request<T>(
   const { auth, headers, ...rest } = options;
   const finalHeaders: Record<string, string> = {
     "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "true",
     ...(headers as Record<string, string>),
   };
 
