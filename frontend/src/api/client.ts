@@ -6,10 +6,15 @@ let memoryAdminRefreshToken: string | null = null;
 
 export function setAdminRefreshToken(token: string | null) {
   memoryAdminRefreshToken = token;
+  if (token) {
+    sessionStorage.setItem("aeps.adminRefreshToken", token);
+  } else {
+    sessionStorage.removeItem("aeps.adminRefreshToken");
+  }
 }
 
 export function getAdminRefreshToken(): string | null {
-  return memoryAdminRefreshToken;
+  return memoryAdminRefreshToken || sessionStorage.getItem("aeps.adminRefreshToken");
 }
 
 function tokenKey(kind: TokenKind) {
@@ -28,6 +33,7 @@ export function clearToken(kind: TokenKind) {
   sessionStorage.removeItem(tokenKey(kind));
   if (kind === "admin") {
     memoryAdminRefreshToken = null;
+    sessionStorage.removeItem("aeps.adminRefreshToken");
   }
 }
 
@@ -43,7 +49,8 @@ let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
 async function tryRefreshAdminToken(): Promise<boolean> {
-  if (!memoryAdminRefreshToken) return false;
+  const rt = getAdminRefreshToken();
+  if (!rt) return false;
   if (isRefreshing && refreshPromise) return refreshPromise;
 
   isRefreshing = true;
@@ -51,14 +58,17 @@ async function tryRefreshAdminToken(): Promise<boolean> {
     try {
       const res = await fetch(`${BASE_URL}/api/admin/auth/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: memoryAdminRefreshToken }),
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: JSON.stringify({ refreshToken: rt }),
       });
       if (res.ok) {
         const data = await res.json();
         setToken("admin", data.accessToken);
         if (data.refreshToken) {
-          memoryAdminRefreshToken = data.refreshToken;
+          setAdminRefreshToken(data.refreshToken);
         }
         return true;
       } else {
@@ -94,9 +104,20 @@ async function request<T>(
     if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...rest, headers: finalHeaders });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...rest, headers: finalHeaders });
+  } catch (netErr: unknown) {
+    // If it's a transient network error (like "Failed to fetch") on a GET request, retry once after 800ms
+    const method = options.method || "GET";
+    if (!isRetry && method === "GET") {
+      await new Promise((r) => setTimeout(r, 800));
+      return request<T>(path, options, true);
+    }
+    throw netErr;
+  }
 
-  if (res.status === 401 && auth === "admin" && !isRetry && memoryAdminRefreshToken) {
+  if (res.status === 401 && auth === "admin" && !isRetry && getAdminRefreshToken()) {
     const refreshed = await tryRefreshAdminToken();
     if (refreshed) {
       return request<T>(path, options, true);
@@ -115,6 +136,15 @@ async function request<T>(
   }
 
   if (res.status === 204) return undefined as T;
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/html")) {
+    const text = await res.text();
+    if (text.includes("ngrok") || text.includes("Visit Site")) {
+      throw new ApiError(res.status, "Tunnel warning intercepted response. Please retry.");
+    }
+  }
+
   const text = await res.text();
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }

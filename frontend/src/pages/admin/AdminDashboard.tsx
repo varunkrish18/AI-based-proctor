@@ -70,6 +70,8 @@ export default function AdminDashboard() {
 
         if (exsRes.status === "rejected") {
           setError(exsRes.reason?.message || "Failed to load exams");
+        } else {
+          setError(null);
         }
       })
       .catch((e) => setError(e.message))

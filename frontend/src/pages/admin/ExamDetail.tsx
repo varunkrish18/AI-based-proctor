@@ -32,6 +32,7 @@ export default function ExamDetail() {
       .then(([e, qs]) => {
         setExam(e);
         setQuestions(qs);
+        setError(null);
       })
       .catch((e) => setError(e.message));
   }
@@ -853,7 +854,10 @@ function ResultsTab({ examId }: { examId: number }) {
 
     api
       .get<AdminAttemptSummary[]>(`/api/admin/exams/${examId}/attempts${query}`, "admin")
-      .then(setAttempts)
+      .then((data) => {
+        setAttempts(data);
+        setError(null);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }
