@@ -18,7 +18,6 @@ import {
   Legend,
 } from "recharts";
 
-const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || "http://localhost:8000";
 const PIE_COLORS = ["#3b82f6", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6", "#ec4899", "#6366f1", "#14b8a6"];
 
 export default function AdminDashboard() {
@@ -76,12 +75,11 @@ export default function AdminDashboard() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
 
-    // Check AI service health
-    fetch(`${AI_SERVICE_URL}/health`)
-      .then((r) => r.json())
+    // Check AI service health through backend proxy
+    api.get<{ status?: string; degraded_mode?: boolean; degraded_reason?: string }>("/api/admin/system/ai-health", "admin")
       .then((data) => {
-        if (data.degraded_mode) {
-          setAiDegraded({ degraded: true, reason: data.degraded_reason ?? "Gaze detection unavailable." });
+        if (data?.degraded_mode) {
+          setAiDegraded({ degraded: true, reason: data.degraded_reason || "Gaze detection unavailable." });
         } else {
           setAiDegraded({ degraded: false, reason: null });
         }

@@ -76,6 +76,20 @@ public class AiProxyService {
         return isAiServiceAvailable.get();
     }
 
+    public Map<String, Object> getHealth() {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> resp = restClient.get()
+                    .uri("/health")
+                    .retrieve()
+                    .body(Map.class);
+            return resp != null ? resp : Map.of("status", "UP", "degraded_mode", false);
+        } catch (Exception e) {
+            log.warn("Failed to reach AI service health check: {}", e.getMessage());
+            return Map.of("status", "DOWN", "degraded_mode", true, "degraded_reason", "AI service unreachable: " + e.getMessage());
+        }
+    }
+
     private AiFrameAnalysisResponse fallbackResponse() {
         return new AiFrameAnalysisResponse(
                 true, // Default to true on fallback so missing AI doesn't produce false positive penalties

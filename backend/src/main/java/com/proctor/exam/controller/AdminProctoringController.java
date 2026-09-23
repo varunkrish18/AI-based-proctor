@@ -27,6 +27,7 @@ public class AdminProctoringController {
     private final ReportExportService reportExportService;
     private final AuditLogService auditLogService;
     private final ExamAttemptRepository attemptRepository;
+    private final AiProxyService aiProxyService;
 
     public AdminProctoringController(ProctoringSessionService sessionService,
                                      ProctoringEventService eventService,
@@ -34,7 +35,8 @@ public class AdminProctoringController {
                                      AdminDashboardService dashboardService,
                                      ReportExportService reportExportService,
                                      AuditLogService auditLogService,
-                                     ExamAttemptRepository attemptRepository) {
+                                     ExamAttemptRepository attemptRepository,
+                                     AiProxyService aiProxyService) {
         this.sessionService = sessionService;
         this.eventService = eventService;
         this.riskEngine = riskEngine;
@@ -42,6 +44,12 @@ public class AdminProctoringController {
         this.reportExportService = reportExportService;
         this.auditLogService = auditLogService;
         this.attemptRepository = attemptRepository;
+        this.aiProxyService = aiProxyService;
+    }
+
+    @GetMapping("/system/ai-health")
+    public ResponseEntity<?> getAiHealth() {
+        return ResponseEntity.ok(aiProxyService.getHealth());
     }
 
     @GetMapping("/dashboard/summary")
