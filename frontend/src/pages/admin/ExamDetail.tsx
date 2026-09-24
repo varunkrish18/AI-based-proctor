@@ -90,7 +90,7 @@ export default function ExamDetail() {
   if (!exam) return <p className="max-w-3xl mx-auto px-4 py-10 text-slate-500">Loading…</p>;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <button onClick={() => navigate("/admin/dashboard")} className="text-sm text-slate-500 hover:underline mb-4 cursor-pointer">
         ← Back to Dashboard
       </button>
@@ -1049,164 +1049,169 @@ function ResultsTab({ examId }: { examId: number }) {
             <span>📄 {exportingCumulative ? "Generating PDF…" : "Export Cumulative Exam PDF (All Students)"}</span>
           </button>
         </div>
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-left">
-            <tr>
-              <th className="px-4 py-3">Student</th>
-              <th className="px-4 py-3">Attempt</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Score</th>
-              <th className="px-4 py-3">Risk Score</th>
-              <th className="px-4 py-3">Review</th>
-              <th className="px-4 py-3">Live Media</th>
-              <th className="px-4 py-3">Events</th>
-              <th className="px-4 py-3 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {attempts.map((a) => {
-              const scoreVal = a.currentRiskScore ?? 0;
-              const riskBadgeClass =
-                scoreVal >= 75
-                  ? "bg-rose-100 text-rose-800 border-rose-200"
-                  : scoreVal >= 40
-                  ? "bg-amber-100 text-amber-800 border-amber-200"
-                  : "bg-emerald-100 text-emerald-800 border-emerald-200";
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600 text-left border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Student</th>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Attempt</th>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Status</th>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Score</th>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Risk Score</th>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Review</th>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Live Media</th>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Events</th>
+                <th className="px-4 py-3 text-right whitespace-nowrap font-semibold min-w-[340px]">Actions & Export</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {attempts.map((a) => {
+                const scoreVal = a.currentRiskScore ?? 0;
+                const riskBadgeClass =
+                  scoreVal >= 75
+                    ? "bg-rose-100 text-rose-800 border-rose-200"
+                    : scoreVal >= 40
+                    ? "bg-amber-100 text-amber-800 border-amber-200"
+                    : "bg-emerald-100 text-emerald-800 border-emerald-200";
 
-              return (
-                <tr key={a.attemptId} className="hover:bg-slate-50/60 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-900">{a.studentEmail}</td>
-                  <td className="px-4 py-3 text-slate-600">#{a.attemptNumber}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        a.status === "SUBMITTED"
-                          ? "bg-green-100 text-green-700"
-                          : a.status === "IN_PROGRESS"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {a.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-slate-800">
-                    {a.score !== null ? a.score : "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${riskBadgeClass}`}>
-                      {scoreVal.toFixed(1)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {a.flaggedForReview ? (
-                      <span className="bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                        FLAGGED
+                return (
+                  <tr key={a.attemptId} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">{a.studentEmail}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">#{a.attemptNumber}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
+                          a.status === "SUBMITTED"
+                            ? "bg-green-100 text-green-700"
+                            : a.status === "IN_PROGRESS"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {a.status}
                       </span>
-                    ) : (
-                      <span className="text-slate-400 text-xs">Clear</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {a.proctoringSession ? (
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            a.proctoringSession.webcamStatus === "ACTIVE"
-                              ? "bg-emerald-500"
-                              : "bg-slate-300"
-                          }`}
-                          title={`Cam: ${a.proctoringSession.webcamStatus}`}
-                        />
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            a.proctoringSession.microphoneStatus === "ACTIVE"
-                              ? "bg-emerald-500"
-                              : "bg-slate-300"
-                          }`}
-                          title={`Mic: ${a.proctoringSession.microphoneStatus}`}
-                        />
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            a.proctoringSession.screenStatus === "ACTIVE"
-                              ? "bg-emerald-500"
-                              : "bg-slate-300"
-                          }`}
-                          title={`Screen: ${a.proctoringSession.screenStatus}`}
-                        />
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-800 whitespace-nowrap">
+                      {a.score !== null ? a.score : "—"}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${riskBadgeClass}`}>
+                        {scoreVal.toFixed(1)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {a.flaggedForReview ? (
+                        <span className="bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                          FLAGGED
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">Clear</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {a.proctoringSession ? (
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              a.proctoringSession.webcamStatus === "ACTIVE"
+                                ? "bg-emerald-500"
+                                : "bg-slate-300"
+                            }`}
+                            title={`Cam: ${a.proctoringSession.webcamStatus}`}
+                          />
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              a.proctoringSession.microphoneStatus === "ACTIVE"
+                                ? "bg-emerald-500"
+                                : "bg-slate-300"
+                            }`}
+                            title={`Mic: ${a.proctoringSession.microphoneStatus}`}
+                          />
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              a.proctoringSession.screenStatus === "ACTIVE"
+                                ? "bg-emerald-500"
+                                : "bg-slate-300"
+                            }`}
+                            title={`Screen: ${a.proctoringSession.screenStatus}`}
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        {a.highEvents + a.criticalEvents > 0 && (
+                          <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                            {a.highEvents + a.criticalEvents} High
+                          </span>
+                        )}
+                        {a.mediumEvents > 0 && (
+                          <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                            {a.mediumEvents} Med
+                          </span>
+                        )}
+                        {a.lowEvents > 0 && (
+                          <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                            {a.lowEvents} Low
+                          </span>
+                        )}
+                        {a.totalEvents === 0 && (
+                          <span className="text-xs text-slate-400 font-medium">Clean</span>
+                        )}
                       </div>
-                    ) : (
-                      <span className="text-slate-400 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      {a.highEvents + a.criticalEvents > 0 && (
-                        <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full font-medium">
-                          {a.highEvents + a.criticalEvents} High
-                        </span>
-                      )}
-                      {a.mediumEvents > 0 && (
-                        <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">
-                          {a.mediumEvents} Med
-                        </span>
-                      )}
-                      {a.lowEvents > 0 && (
-                        <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded-full font-medium">
-                          {a.lowEvents} Low
-                        </span>
-                      )}
-                      {a.totalEvents === 0 && (
-                        <span className="text-xs text-slate-400 font-medium">Clean</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => loadTimeline(a)}
-                        className="text-blue-600 hover:text-blue-800 font-medium text-xs bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition-colors cursor-pointer"
-                        title="Inline quick timeline"
-                      >
-                        Quick View
-                      </button>
-                      <Link
-                        to={`/admin/exams/${examId}/attempts/${a.attemptId}`}
-                        className="text-blue-700 hover:text-blue-900 font-bold text-xs bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded transition-colors"
-                        title="Evaluate student answers & assign verified marks"
-                      >
-                        Evaluate & Marks ↗
-                      </Link>
-                      <button
-                        onClick={() => handleExport(a.attemptId, "pdf")}
-                        disabled={exportingId === a.attemptId}
-                        className="text-rose-600 hover:text-rose-800 font-semibold text-xs bg-rose-50 px-1.5 py-1 rounded hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
-                        title="Export PDF"
-                      >
-                        PDF
-                      </button>
-                      <button
-                        onClick={() => handleExport(a.attemptId, "excel")}
-                        disabled={exportingId === a.attemptId}
-                        className="text-emerald-600 hover:text-emerald-800 font-semibold text-xs bg-emerald-50 px-1.5 py-1 rounded hover:bg-emerald-100 transition-colors cursor-pointer disabled:opacity-50"
-                        title="Export Excel"
-                      >
-                        XLS
-                      </button>
-                    </div>
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => loadTimeline(a)}
+                          className="text-blue-700 hover:text-blue-900 font-medium text-xs bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded-md transition-colors cursor-pointer"
+                          title="Inline quick timeline"
+                        >
+                          Quick View
+                        </button>
+                        <Link
+                          to={`/admin/exams/${examId}/attempts/${a.attemptId}`}
+                          className="text-white hover:bg-blue-700 font-semibold text-xs bg-blue-600 px-2.5 py-1 rounded-md transition-colors inline-flex items-center gap-1 shadow-2xs"
+                          title="Evaluate student answers & assign verified marks"
+                        >
+                          <span>Evaluate & Marks</span>
+                          <span>↗</span>
+                        </Link>
+                        <button
+                          onClick={() => handleExport(a.attemptId, "pdf")}
+                          disabled={exportingId === a.attemptId}
+                          className="text-rose-700 hover:text-rose-900 font-bold text-xs bg-rose-50 hover:bg-rose-100 border border-rose-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
+                          title="Export candidate report as PDF"
+                        >
+                          <span>📄</span>
+                          <span>{exportingId === a.attemptId ? "..." : "PDF"}</span>
+                        </button>
+                        <button
+                          onClick={() => handleExport(a.attemptId, "excel")}
+                          disabled={exportingId === a.attemptId}
+                          className="text-emerald-700 hover:text-emerald-900 font-bold text-xs bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
+                          title="Export candidate report as Excel"
+                        >
+                          <span>📊</span>
+                          <span>{exportingId === a.attemptId ? "..." : "XLS"}</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {attempts.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
+                    No attempts recorded for this exam yet.
                   </td>
                 </tr>
-              );
-            })}
-            {attempts.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
-                  No attempts recorded for this exam yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Drill-down Integrity & Proctoring Timeline */}
@@ -1236,30 +1241,35 @@ function ResultsTab({ examId }: { examId: number }) {
                 <strong className="text-slate-800">{Number(riskTimeline?.currentRiskScore ?? 0).toFixed(1)}</strong>
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Link
                 to={`/admin/exams/${examId}/attempts/${selectedAttempt.attemptId}`}
-                className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded shadow-xs"
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow-2xs inline-flex items-center gap-1"
               >
-                Full Page Report ↗
+                <span>Full Page Report</span>
+                <span>↗</span>
               </Link>
               <button
                 onClick={() => handleExport(selectedAttempt.attemptId, "pdf")}
                 disabled={exportingId === selectedAttempt.attemptId}
-                className="text-xs bg-rose-600 hover:bg-rose-700 text-white font-medium px-2.5 py-1.5 rounded shadow-xs cursor-pointer disabled:opacity-50"
+                className="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                title="Export Attempt PDF"
               >
-                PDF
+                <span>📄</span>
+                <span>{exportingId === selectedAttempt.attemptId ? "Exporting…" : "PDF"}</span>
               </button>
               <button
                 onClick={() => handleExport(selectedAttempt.attemptId, "excel")}
                 disabled={exportingId === selectedAttempt.attemptId}
-                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-2.5 py-1.5 rounded shadow-xs cursor-pointer disabled:opacity-50"
+                className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                title="Export Attempt Excel"
               >
-                Excel
+                <span>📊</span>
+                <span>{exportingId === selectedAttempt.attemptId ? "Exporting…" : "Excel"}</span>
               </button>
               <button
                 onClick={() => setSelectedAttempt(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-medium ml-2 cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 text-sm font-semibold ml-2 cursor-pointer px-2 py-1"
               >
                 ✕ Close
               </button>

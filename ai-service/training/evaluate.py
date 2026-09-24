@@ -3,12 +3,15 @@ Evaluation Script for Proctoring Behavioral Anomaly Detection Model.
 Computes per-class Precision, Recall, F1 score, and confusion matrix on the held-out test split.
 """
 
+
 import os
 import argparse
 import numpy as np
 
 try:
+    # pyrefly: ignore [missing-import]
     import torch
+    # pyrefly: ignore [missing-import]
     from torch.utils.data import DataLoader
     from dataset import load_datasets, TAXONOMY
     from model import ProctoringClassifier
