@@ -21,5 +21,6 @@ public record CreateExamRequest(
         Boolean webcamRequired,
         Boolean microphoneRequired,
         Boolean screenRequired,
-        Boolean locationRequired
+        Boolean locationRequired,
+        Integer audioInputLevel
 ) {}

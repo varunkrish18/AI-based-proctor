@@ -60,7 +60,7 @@ public class ExamAdminService {
                 .microphoneRequired(req.microphoneRequired() == null || req.microphoneRequired())
                 .screenRequired(req.screenRequired() == null || req.screenRequired())
                 .locationRequired(Boolean.TRUE.equals(req.locationRequired()))
-                .proctoringConfig(Exam.DEFAULT_PROCTORING_CONFIG)
+                .proctoringConfig(buildProctoringConfigWithAudio(req.audioInputLevel()))
                 .status("DRAFT")
                 .createdBy(admin.getId())
                 .build();
@@ -225,5 +225,18 @@ public class ExamAdminService {
 
         questionRepository.delete(q);
         auditLogService.logAdmin("admin", "QUESTION_DELETED", "Deleted question ID " + questionId + " from exam ID " + examId);
+    }
+
+    private String buildProctoringConfigWithAudio(Integer audioInputLevel) {
+        int audioLevel = audioInputLevel != null ? Math.max(1, Math.min(100, audioInputLevel)) : 20;
+        String pConfig = Exam.DEFAULT_PROCTORING_CONFIG;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.node.ObjectNode node = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(pConfig);
+            node.put("audioInputLevel", audioLevel);
+            return mapper.writeValueAsString(node);
+        } catch (Exception ignored) {
+            return pConfig;
+        }
     }
 }

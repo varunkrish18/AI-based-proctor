@@ -77,12 +77,24 @@ public class Exam {
     @Builder.Default
     private Boolean locationRequired = false;
 
-    public static final String DEFAULT_PROCTORING_CONFIG = "{\"faceMissingSeconds\":5,\"multiFaceMinConsecutive\":2,\"lookAwayLowSeconds\":2,\"lookAwayMediumSeconds\":5,\"lookAwayRepeatWindowSeconds\":120,\"lookAwayRepeatThreshold\":3,\"tabSwitchLowSeconds\":2,\"tabSwitchMediumSeconds\":5,\"maxWarnings\":10,\"autoActionOnMaxWarnings\":\"FLAG_FOR_REVIEW\",\"weights\":{\"TAB_SWITCH\":10,\"FULLSCREEN_EXIT\":10,\"FACE_NOT_VISIBLE\":15,\"MULTIPLE_FACES\":30,\"LOOKING_LEFT\":10,\"LOOKING_RIGHT\":10,\"LOOKING_UP\":10,\"LOOKING_DOWN\":10,\"HEAD_TURNED\":15,\"SCREEN_CAPTURE_STOPPED\":30,\"WEBCAM_LOST\":20,\"MICROPHONE_LOST\":15}}";
+    public static final String DEFAULT_PROCTORING_CONFIG = "{\"faceMissingSeconds\":5,\"multiFaceMinConsecutive\":2,\"lookAwayLowSeconds\":2,\"lookAwayMediumSeconds\":5,\"lookAwayRepeatWindowSeconds\":120,\"lookAwayRepeatThreshold\":3,\"tabSwitchLowSeconds\":2,\"tabSwitchMediumSeconds\":5,\"maxWarnings\":10,\"autoActionOnMaxWarnings\":\"FLAG_FOR_REVIEW\",\"audioInputLevel\":20,\"weights\":{\"TAB_SWITCH\":10,\"FULLSCREEN_EXIT\":10,\"FACE_NOT_VISIBLE\":15,\"MULTIPLE_FACES\":30,\"LOOKING_LEFT\":10,\"LOOKING_RIGHT\":10,\"LOOKING_UP\":10,\"LOOKING_DOWN\":10,\"HEAD_TURNED\":15,\"SCREEN_CAPTURE_STOPPED\":30,\"WEBCAM_LOST\":20,\"MICROPHONE_LOST\":15}}";
 
     @Column(name = "proctoring_config", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     @Builder.Default
     private String proctoringConfig = DEFAULT_PROCTORING_CONFIG;
+
+    public Integer getAudioInputLevel() {
+        if (proctoringConfig != null && !proctoringConfig.isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(proctoringConfig);
+                if (node.has("audioInputLevel")) {
+                    return node.get("audioInputLevel").asInt(20);
+                }
+            } catch (Exception ignored) {}
+        }
+        return 20;
+    }
 
     /** DRAFT, PUBLISHED, CLOSED */
     @Column(nullable = false)

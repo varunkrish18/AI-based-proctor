@@ -20,6 +20,12 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def startup_event():
+    # Warm up models on server start so initial requests don't hit model loading latency
+    get_capabilities()
+
+
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
     caps = get_capabilities()

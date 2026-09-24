@@ -42,6 +42,9 @@ export default function ExamTake() {
   const [fullscreenFrozen, setFullscreenFrozen] = useState<boolean>(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiFrameAnalysisResponse | null>(null);
   const [cameraMinimized, setCameraMinimized] = useState<boolean>(false);
+  const [entireScreenMissing, setEntireScreenMissing] = useState<boolean>(false);
+  const [reacquiringScreen, setReacquiringScreen] = useState<boolean>(false);
+  const [screenError, setScreenError] = useState<string | null>(null);
 
   // Tracks how many times the student has exited fullscreen
   const fullscreenViolationCount = useRef(0);
@@ -223,36 +226,56 @@ export default function ExamTake() {
     const micRequired = session.microphoneRequired ?? true;
 
     try {
-      // 1. Acquire screen capture if required
+      // 1. Acquire screen capture if required — STRICTLY ENTIRE SCREEN ONLY
       if (screenRequired) {
         if (!navigator.mediaDevices?.getDisplayMedia) {
           throw new Error("Your browser does not support screen sharing. Please use Chrome, Edge, or Firefox.");
         }
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
+          video: {
+            displaySurface: "monitor",
+          },
           audio: false,
-        });
-        screenStreamRef.current = screenStream;
-        setScreenStatus("ACTIVE");
+          selfBrowserSurface: "exclude",
+          surfaceSwitching: "deny",
+          systemAudio: "exclude",
+          monitorTypeSurfaces: "include",
+        } as any);
 
-        // Log screen share type: "screen"/"monitor" = full display; "window" = suspicious
         const videoTrack = screenStream.getVideoTracks()[0];
         const trackLabel = videoTrack?.label ?? "unknown";
-        const shareKind = /screen|monitor|display/i.test(trackLabel) ? "fullscreen" : "window";
-        logEvent("SCREEN_SHARE_STARTED", undefined, { label: trackLabel, kind: shareKind });
-        if (shareKind === "window") {
-          setWarning(
-            "⚠️ Compliance Warning: Please stop and re-share your ENTIRE screen (not just a window). Window-only sharing violates exam policy."
+        const settings = videoTrack?.getSettings?.() ?? {};
+        const isMonitor =
+          settings.displaySurface === "monitor" ||
+          (!settings.displaySurface && !/window|tab|chrome|edge/i.test(trackLabel) && /screen|monitor|display/i.test(trackLabel));
+
+        if (!isMonitor) {
+          screenStream.getTracks().forEach((t) => t.stop());
+          screenStreamRef.current = null;
+          setScreenStatus("LOST");
+          logEvent("SCREEN_SHARE_WINDOW_REJECTED", undefined, {
+            label: trackLabel,
+            displaySurface: settings.displaySurface,
+          });
+          throw new Error(
+            "You selected an individual application window or tab! Exam security strictly requires sharing your ENTIRE SCREEN so background applications can be monitored. Please click below, select the 'Entire Screen' tab, and share your monitor."
           );
         }
 
-        screenStream.getVideoTracks().forEach((track) => {
-          track.onended = () => {
-            setScreenStatus("LOST");
-            logEvent("SCREEN_CAPTURE_STOPPED", undefined, { reason: "User stopped screen share" });
-            setWarning("Screen sharing stopped! Please re-share your screen to remain compliant.");
-          };
-        });
+        screenStreamRef.current = screenStream;
+        setScreenStatus("ACTIVE");
+        setEntireScreenMissing(false);
+        logEvent("SCREEN_SHARE_STARTED", undefined, { label: trackLabel, kind: "fullscreen" });
+
+        videoTrack.onended = () => {
+          setScreenStatus("LOST");
+          setEntireScreenMissing(true);
+          logEvent("SCREEN_CAPTURE_STOPPED", undefined, { reason: "User stopped screen share" });
+          issueWarningStrike(
+            "Screen Sharing Stopped",
+            "Screen capture was stopped. You must share your Entire Screen to continue."
+          );
+        };
       }
 
       // 2. Acquire webcam and microphone if required
@@ -342,6 +365,64 @@ export default function ExamTake() {
       setSetupError(`Proctoring setup could not start: ${msg}`);
     } finally {
       setGateLoading(false);
+    }
+  }
+
+  async function reacquireEntireScreen() {
+    setReacquiringScreen(true);
+    setScreenError(null);
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        throw new Error("Browser does not support screen sharing.");
+      }
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: "monitor",
+        },
+        audio: false,
+        selfBrowserSurface: "exclude",
+        surfaceSwitching: "deny",
+        systemAudio: "exclude",
+        monitorTypeSurfaces: "include",
+      } as any);
+
+      const videoTrack = screenStream.getVideoTracks()[0];
+      const trackLabel = videoTrack?.label ?? "unknown";
+      const settings = videoTrack?.getSettings?.() ?? {};
+      const isMonitor =
+        settings.displaySurface === "monitor" ||
+        (!settings.displaySurface && !/window|tab|chrome|edge/i.test(trackLabel) && /screen|monitor|display/i.test(trackLabel));
+
+      if (!isMonitor) {
+        screenStream.getTracks().forEach((t) => t.stop());
+        setScreenError("Window or tab sharing is not allowed. You must choose 'Entire Screen' tab and share your desktop display.");
+        return;
+      }
+
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      screenStreamRef.current = screenStream;
+      setScreenStatus("ACTIVE");
+      setEntireScreenMissing(false);
+      setScreenError(null);
+
+      logEvent("SCREEN_SHARE_STARTED", undefined, { label: trackLabel, kind: "fullscreen" });
+
+      videoTrack.onended = () => {
+        setScreenStatus("LOST");
+        setEntireScreenMissing(true);
+        logEvent("SCREEN_CAPTURE_STOPPED", undefined, { reason: "User stopped screen share" });
+        issueWarningStrike(
+          "Screen Sharing Stopped",
+          "Screen capture was stopped. You must share your Entire Screen to continue."
+        );
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Screen sharing prompt cancelled.";
+      setScreenError(`Could not access screen: ${msg}. Entire Screen sharing is mandatory.`);
+    } finally {
+      setReacquiringScreen(false);
     }
   }
 
@@ -685,9 +766,17 @@ export default function ExamTake() {
         biquadFilter.type = "highpass";
         biquadFilter.frequency.setValueAtTime(100, audioContext.currentTime);
 
+        // Calibrate input volume gain according to Admin exam setting (e.g. 20%)
+        const gainNode = audioContext.createGain();
+        const configuredAudioLevel = session?.audioInputLevel ?? 20;
+        const targetGain = Math.max(0.01, Math.min(2.0, configuredAudioLevel / 100));
+        gainNode.gain.setValueAtTime(targetGain, audioContext.currentTime);
+
         microphone = audioContext.createMediaStreamSource(streamToUse);
-        microphone.connect(biquadFilter);
+        microphone.connect(gainNode);
+        gainNode.connect(biquadFilter);
         biquadFilter.connect(analyser);
+        console.log(`[VoiceDetection] Audio gain set by admin configuration: ${configuredAudioLevel}% (multiplier: ${targetGain})`);
 
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
@@ -994,7 +1083,7 @@ export default function ExamTake() {
           <div className="bg-slate-50 rounded-lg p-4 mb-6 space-y-2 text-sm text-slate-700">
             <div className="flex items-center gap-2">
               <span className="text-blue-600 font-bold">✓</span>
-              <span>Screen sharing: Full display capture</span>
+              <span>Screen sharing: Full display capture (Entire Screen only)</span>
             </div>
             {session.webcamRequired && (
               <div className="flex items-center gap-2">
@@ -1005,7 +1094,7 @@ export default function ExamTake() {
             {session.microphoneRequired && (
               <div className="flex items-center gap-2">
                 <span className="text-blue-600 font-bold">✓</span>
-                <span>Microphone: Audio monitoring</span>
+                <span>Microphone: Audio monitoring (Admin Gain: {session.audioInputLevel ?? 20}%)</span>
               </div>
             )}
             <div className="flex items-center gap-2">
@@ -1030,7 +1119,7 @@ export default function ExamTake() {
             disabled={gateLoading}
             className="w-full bg-blue-600 text-white font-medium py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
           >
-            {gateLoading ? "Requesting Permissions…" : "Share Screen & Begin Examination"}
+            {gateLoading ? "Requesting Permissions…" : "Share Entire Screen & Begin Examination"}
           </button>
         </div>
       </div>
@@ -1038,6 +1127,49 @@ export default function ExamTake() {
   }
 
   if (!q) return null;
+
+  // Entire Screen Required Block Overlay — renders OVER the exam, blocking all access
+  if (entireScreenMissing) {
+    return (
+      <div
+        className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-4 select-none backdrop-blur-md"
+        style={{ background: "rgba(15, 23, 42, 0.98)" }}
+      >
+        <div className="bg-slate-900 border-2 border-amber-500 rounded-2xl max-w-lg w-full p-8 text-center shadow-2xl text-white space-y-5 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto text-3xl border border-amber-500/40 animate-pulse">
+            🖥️
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-white mb-2">Entire Screen Sharing Required</h2>
+            <p className="text-slate-300 text-sm leading-relaxed">
+              Exam security strictly prohibits sharing an individual application window or browser tab.
+              You must share your <strong>Entire Screen</strong> so all activity across all applications can be proctored.
+            </p>
+          </div>
+          <div className="bg-amber-950/40 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200 text-left space-y-1">
+            <p className="font-semibold text-amber-300">How to resume your examination:</p>
+            <ol className="list-decimal list-inside space-y-1 text-slate-300">
+              <li>Click <strong>Share Entire Screen Now</strong> below.</li>
+              <li>In the browser dialog, select the <strong>"Entire Screen"</strong> tab (do NOT choose "Window" or "Chrome Tab").</li>
+              <li>Click your screen preview thumbnail and click <strong>Share</strong>.</li>
+            </ol>
+          </div>
+          {screenError && (
+            <div className="bg-rose-950/60 border border-rose-500/40 text-rose-300 p-2.5 rounded text-xs font-medium">
+              {screenError}
+            </div>
+          )}
+          <button
+            onClick={reacquireEntireScreen}
+            disabled={reacquiringScreen}
+            className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold py-3.5 px-6 rounded-xl transition-all shadow-lg text-base cursor-pointer"
+          >
+            {reacquiringScreen ? "Requesting Screen…" : "Share Entire Screen to Resume Exam"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Fullscreen freeze overlay — renders OVER the exam, blocking all interaction
   if (fullscreenFrozen) {
@@ -1499,7 +1631,7 @@ export default function ExamTake() {
                       }`}
                       title={`Webcam: ${webcamStatus}`}
                     />
-                    <div className="flex items-center gap-0.5" title={`Mic: ${micStatus} (Level: ${micAudioLevel}%)`}>
+                    <div className="flex items-center gap-0.5" title={`Mic: ${micStatus} (Level: ${micAudioLevel}%, Admin Gain: ${session?.audioInputLevel ?? 20}%)`}>
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${
                           micStatus === "ACTIVE"

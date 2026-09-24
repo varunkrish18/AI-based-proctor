@@ -25,8 +25,8 @@ public class AiProxyService {
 
     public AiProxyService(
             @Value("${app.ai-service.base-url:http://localhost:8000}") String baseUrl,
-            @Value("${app.ai-service.connect-timeout-ms:1500}") int connectTimeout,
-            @Value("${app.ai-service.read-timeout-ms:2500}") int readTimeout) {
+            @Value("${app.ai-service.connect-timeout-ms:3000}") int connectTimeout,
+            @Value("${app.ai-service.read-timeout-ms:6000}") int readTimeout) {
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeout);

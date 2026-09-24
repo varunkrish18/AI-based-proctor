@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, ApiError, clearToken, getAdminRefreshToken, getToken } from "../../api/client";
 import type { AdminAttemptSummary, DashboardCharts, DashboardSummary, Exam } from "../../types";
@@ -33,7 +33,6 @@ export default function AdminDashboard() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const liveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function confirmDeleteExam() {
     if (!examToDelete) return;
@@ -51,6 +50,23 @@ export default function AdminDashboard() {
       setDeleting(false);
     }
   }
+
+  const checkAiHealth = useCallback(() => {
+    api.get<{ status?: string; degraded_mode?: boolean; degraded_reason?: string }>("/api/admin/system/ai-health", "admin")
+      .then((data) => {
+        if (data?.degraded_mode) {
+          setAiDegraded({ degraded: true, reason: data.degraded_reason || "Gaze detection unavailable." });
+        } else {
+          setAiDegraded({ degraded: false, reason: null });
+        }
+      })
+      .catch((err: unknown) => {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          return;
+        }
+        setAiDegraded({ degraded: true, reason: "AI service is offline — all computer-vision monitoring is disabled." });
+      });
+  }, []);
 
   useEffect(() => {
     if (!getToken("admin")) {
@@ -77,22 +93,8 @@ export default function AdminDashboard() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
 
-    // Check AI service health through backend proxy
-    api.get<{ status?: string; degraded_mode?: boolean; degraded_reason?: string }>("/api/admin/system/ai-health", "admin")
-      .then((data) => {
-        if (data?.degraded_mode) {
-          setAiDegraded({ degraded: true, reason: data.degraded_reason || "Gaze detection unavailable." });
-        } else {
-          setAiDegraded({ degraded: false, reason: null });
-        }
-      })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-          return;
-        }
-        setAiDegraded({ degraded: true, reason: "AI service is offline — all computer-vision monitoring is disabled." });
-      });
-  }, [navigate]);
+    checkAiHealth();
+  }, [navigate, checkAiHealth]);
 
   // Poll live active sessions every 10 seconds
   useEffect(() => {
@@ -133,11 +135,13 @@ export default function AdminDashboard() {
     }
 
     fetchLiveSessions();
-    liveIntervalRef.current = setInterval(fetchLiveSessions, 5000);
+    const liveTimer = setInterval(fetchLiveSessions, 5000);
+    const aiTimer = setInterval(checkAiHealth, 15000);
     return () => {
-      if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
+      clearInterval(liveTimer);
+      clearInterval(aiTimer);
     };
-  }, [navigate]);
+  }, [navigate, checkAiHealth]);
 
   async function logout() {
     const rt = getAdminRefreshToken();
@@ -195,18 +199,24 @@ export default function AdminDashboard() {
         <>
           {/* AI Degraded Mode Warning Banner */}
           {aiDegraded?.degraded && (
-            <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl px-5 py-4 text-sm">
-              <span className="text-amber-500 text-xl shrink-0">⚠️</span>
-              <div>
-                <p className="font-bold text-amber-900">AI Monitoring Degraded</p>
-                <p className="text-amber-800 text-xs mt-0.5">{aiDegraded.reason}</p>
-                <p className="text-amber-700 text-xs mt-1">
-                  Events such as <strong>LOOKING_LEFT</strong>, <strong>LOOKING_RIGHT</strong>, <strong>HEAD_TURNED</strong> will not fire.
-                  Only basic face presence/count detection is active.
-                  To fix: provide MediaPipe <code className="bg-amber-100 px-1 rounded">face_detector.task</code> and{" "}
-                  <code className="bg-amber-100 px-1 rounded">face_landmarker.task</code> files to the ai-service.
-                </p>
+            <div className="flex items-start justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-5 py-4 text-sm">
+              <div className="flex items-start gap-3">
+                <span className="text-amber-500 text-xl shrink-0">⚠️</span>
+                <div>
+                  <p className="font-bold text-amber-900">AI Monitoring Degraded</p>
+                  <p className="text-amber-800 text-xs mt-0.5">{aiDegraded.reason}</p>
+                  <p className="text-amber-700 text-xs mt-1">
+                    Events such as <strong>LOOKING_LEFT</strong>, <strong>LOOKING_RIGHT</strong>, <strong>HEAD_TURNED</strong> will not fire.
+                    Only basic face presence/count detection is active.
+                  </p>
+                </div>
               </div>
+              <button
+                onClick={checkAiHealth}
+                className="shrink-0 text-xs bg-amber-200 hover:bg-amber-300 text-amber-900 px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer"
+              >
+                Recheck Status
+              </button>
             </div>
           )}
 

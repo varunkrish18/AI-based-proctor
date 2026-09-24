@@ -21,6 +21,7 @@ export interface Exam extends ExamSummary {
   screenRequired?: boolean;
   locationRequired?: boolean;
   proctoringConfig?: string;
+  audioInputLevel?: number;
 }
 
 export interface ExamQuestion {
@@ -58,6 +59,7 @@ export interface StartExamResponse {
   microphoneRequired?: boolean;
   screenRequired?: boolean;
   locationRequired?: boolean;
+  audioInputLevel?: number;
 }
 
 export interface AttemptResult {

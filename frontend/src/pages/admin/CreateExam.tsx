@@ -31,6 +31,7 @@ export default function CreateExam() {
     microphoneRequired: true,
     screenRequired: true,
     locationRequired: false,
+    audioInputLevel: 20,
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -135,6 +136,39 @@ export default function CreateExam() {
               <input type="checkbox" checked={form.locationRequired} onChange={(e) => set("locationRequired", e.target.checked)} />
               Require Location Verification
             </label>
+
+            {form.microphoneRequired && (
+              <div className="col-span-2 mt-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-semibold text-slate-700">Microphone Input Level / Gain</span>
+                  <span className="text-xs font-mono font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                    {form.audioInputLevel}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={5}
+                    max={100}
+                    step={1}
+                    value={form.audioInputLevel}
+                    onChange={(e) => set("audioInputLevel", Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <input
+                    type="number"
+                    min={5}
+                    max={100}
+                    value={form.audioInputLevel}
+                    onChange={(e) => set("audioInputLevel", Math.max(1, Math.min(100, Number(e.target.value))))}
+                    className="w-16 px-2 py-1 text-xs border border-slate-300 rounded text-center"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Sets the proctoring audio input sensitivity / gain applied to candidate microphones during the exam (e.g. set to 20 for 20% volume).
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

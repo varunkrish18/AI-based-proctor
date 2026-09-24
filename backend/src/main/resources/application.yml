@@ -36,8 +36,8 @@ app:
     admin-lockout-minutes: 15
   ai-service:
     base-url: ${AI_SERVICE_URL:http://localhost:8000}
-    connect-timeout-ms: 1500
-    read-timeout-ms: 2500
+    connect-timeout-ms: 3000
+    read-timeout-ms: 6000
 
 logging:
   level:

@@ -144,7 +144,8 @@ public class StudentExamService {
                 exam.getWebcamRequired() == null || exam.getWebcamRequired(),
                 exam.getMicrophoneRequired() == null || exam.getMicrophoneRequired(),
                 exam.getScreenRequired() == null || exam.getScreenRequired(),
-                Boolean.TRUE.equals(exam.getLocationRequired())
+                Boolean.TRUE.equals(exam.getLocationRequired()),
+                exam.getAudioInputLevel()
         );
     }
 
