@@ -231,16 +231,28 @@ export default function ExamTake() {
         if (!navigator.mediaDevices?.getDisplayMedia) {
           throw new Error("Your browser does not support screen sharing. Please use Chrome, Edge, or Firefox.");
         }
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            displaySurface: "monitor",
-          },
-          audio: false,
-          selfBrowserSurface: "exclude",
-          surfaceSwitching: "deny",
-          systemAudio: "exclude",
-          monitorTypeSurfaces: "include",
-        } as any);
+        let screenStream: MediaStream;
+        try {
+          screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              displaySurface: "monitor",
+            },
+            audio: false,
+            selfBrowserSurface: "exclude",
+            surfaceSwitching: "exclude",
+            systemAudio: "exclude",
+            monitorTypeSurfaces: "include",
+          } as any);
+        } catch (optionsErr: any) {
+          if (optionsErr instanceof DOMException && optionsErr.name === "NotAllowedError") {
+            throw optionsErr;
+          }
+          // Fallback if browser does not support specific hints
+          screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { displaySurface: "monitor" },
+            audio: false,
+          } as any);
+        }
 
         const videoTrack = screenStream.getVideoTracks()[0];
         const trackLabel = videoTrack?.label ?? "unknown";
@@ -375,16 +387,27 @@ export default function ExamTake() {
       if (!navigator.mediaDevices?.getDisplayMedia) {
         throw new Error("Browser does not support screen sharing.");
       }
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          displaySurface: "monitor",
-        },
-        audio: false,
-        selfBrowserSurface: "exclude",
-        surfaceSwitching: "deny",
-        systemAudio: "exclude",
-        monitorTypeSurfaces: "include",
-      } as any);
+      let screenStream: MediaStream;
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            displaySurface: "monitor",
+          },
+          audio: false,
+          selfBrowserSurface: "exclude",
+          surfaceSwitching: "exclude",
+          systemAudio: "exclude",
+          monitorTypeSurfaces: "include",
+        } as any);
+      } catch (optionsErr: any) {
+        if (optionsErr instanceof DOMException && optionsErr.name === "NotAllowedError") {
+          throw optionsErr;
+        }
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { displaySurface: "monitor" },
+          audio: false,
+        } as any);
+      }
 
       const videoTrack = screenStream.getVideoTracks()[0];
       const trackLabel = videoTrack?.label ?? "unknown";
