@@ -646,6 +646,9 @@ export default function ExamTake() {
     let vocalAccumulator = 0;
     let lastUiUpdate = 0;
 
+    // Flag indicating Web Speech API is active in browser
+    let isWebSpeechRunning = false;
+
     // Helper: Issue voice strike with debounce and proctor event logging
     const triggerVoiceStrike = (reasonTitle: string, details: string, rmsLevel?: number) => {
       if (!isMounted || submittedRef.current) return;
@@ -679,7 +682,7 @@ export default function ExamTake() {
     window.addEventListener("keydown", resumeContext);
 
     // =========================================================================
-    // LAYER 1: Web Speech Recognition (Zero false-alarms from fans; captures real words)
+    // LAYER 1: Web Speech Recognition (Zero false-alarms from coughs/fans; captures real words)
     // =========================================================================
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRec) {
@@ -700,7 +703,11 @@ export default function ExamTake() {
             }
           }
           transcriptText = transcriptText.trim();
-          if (transcriptText.length > 0) {
+          // Filter out transient non-verbal noise artifacts or empty punctuation
+          const words = transcriptText.replace(/[^a-zA-Z0-9\s]/g, "").trim().split(/\s+/).filter(Boolean);
+          // Only trigger if at least 1 real word with 3+ chars or 2+ words are recognized
+          const hasRealSpokenWords = words.length >= 2 || (words.length === 1 && words[0].length >= 3);
+          if (hasRealSpokenWords) {
             console.log(`[WebSpeech] Detected spoken words: "${transcriptText}"`);
             triggerVoiceStrike(
               "Speech / Speaking Detected",
@@ -709,13 +716,12 @@ export default function ExamTake() {
           }
         };
 
+        // NOTE: onspeechstart intentionally does NOT trigger strikes.
+        // Browsers fire onspeechstart on any acoustic impulse (coughs, sneezes, heavy breathing, throat clearing).
+        // Only actual words in onresult or sustained vocal acoustic phonation should trigger strikes.
         recognition.onspeechstart = () => {
           if (!isMounted || submittedRef.current) return;
-          console.log("[WebSpeech] Vocal speech started detected by engine");
-          triggerVoiceStrike(
-            "Voice / Speaking Detected",
-            "Human speaking activity detected in front of camera"
-          );
+          console.log("[WebSpeech] Acoustic sound onset detected; listening for spoken words...");
         };
 
         recognition.onerror = (e: any) => {
@@ -738,6 +744,7 @@ export default function ExamTake() {
         try {
           recognition.start();
           speechRecognitionRef.current = recognition;
+          isWebSpeechRunning = true;
           console.log("[WebSpeech] Engine active and listening for vocal infractions");
         } catch (startErr) {
           console.warn("[WebSpeech] Start error:", startErr);
@@ -748,7 +755,7 @@ export default function ExamTake() {
     }
 
     // =========================================================================
-    // LAYER 2: Web Audio Acoustic Formant & Energy Accumulator (Fallback + Acoustic Formants)
+    // LAYER 2: Web Audio Acoustic Formant & Energy Analyzer (Sustained Speech vs Transient Coughs)
     // =========================================================================
     async function initAudioDetection() {
       try {
@@ -808,11 +815,19 @@ export default function ExamTake() {
         const sampleRate = audioContext.sampleRate || 48000;
         const binResolution = sampleRate / analyser.fftSize;
 
-        // Human vocal formant band: 200 Hz to 3400 Hz
-        const speechMinBin = Math.max(1, Math.floor(200 / binResolution));
-        const speechMaxBin = Math.min(bufferLength - 1, Math.ceil(3400 / binResolution));
+        // Human vocal formant band: 250 Hz to 2800 Hz
+        const speechMinBin = Math.max(1, Math.floor(250 / binResolution));
+        const speechMaxBin = Math.min(bufferLength - 1, Math.ceil(2800 / binResolution));
 
-        console.log(`[VoiceDetection] Acoustic analyzer active: bins ${speechMinBin}-${speechMaxBin}`);
+        // High-frequency friction/blast band (coughs, sneezes, breath blasts, clicks): 3600 Hz to 8000 Hz
+        const highNoiseMinBin = Math.min(bufferLength - 1, Math.floor(3600 / binResolution));
+        const highNoiseMaxBin = Math.min(bufferLength - 1, Math.ceil(8000 / binResolution));
+
+        console.log(`[VoiceDetection] Acoustic analyzer active: speech bins ${speechMinBin}-${speechMaxBin}, noise bins ${highNoiseMinBin}-${highNoiseMaxBin}`);
+
+        // Sustained phonation frame tracking (rejects <600ms transient coughs, sneezes, and taps)
+        let sustainedSpeechFrames = 0;
+        let quietFrames = 0;
 
         const checkAudio = () => {
           if (!isMounted || submittedRef.current) return;
@@ -845,7 +860,16 @@ export default function ExamTake() {
           }
           const vocalAvg = vocalCount > 0 ? vocalSum / vocalCount : 0;
 
-          // 3. Dynamic ambient baseline noise learning
+          // 3. Frequency-domain analysis within high-frequency friction / turbulent band
+          let highSum = 0;
+          let highCount = 0;
+          for (let i = highNoiseMinBin; i <= highNoiseMaxBin; i++) {
+            highSum += dataArray[i];
+            highCount++;
+          }
+          const highAvg = highCount > 0 ? highSum / highCount : 0;
+
+          // 4. Dynamic ambient baseline noise learning
           if (calibrationFrames < 35) {
             calibrationFrames++;
             ambientBaselineRms = ambientBaselineRms * 0.9 + rms * 0.1;
@@ -859,7 +883,7 @@ export default function ExamTake() {
 
           const now = Date.now();
 
-          // 4. Live UI volume meter update (every 100ms)
+          // 5. Live UI volume meter update (every 100ms)
           if (now - lastUiUpdate > 100) {
             lastUiUpdate = now;
             // Responsive meter: scale rms up to 100%
@@ -867,29 +891,47 @@ export default function ExamTake() {
             setMicAudioLevel(normalizedVol);
           }
 
-          // 5. Intelligent Vocal Energy Classification:
-          // Notice: Normal conversational speech at 50cm produces RMS between 2.8 and 7.5.
-          // maxVocal jumps to 20-80 inside the 200-3400Hz speech band.
-          const isAboveNoise = rms > Math.max(2.6, ambientBaselineRms + 1.4);
-          const hasVocalEnergy = maxVocal >= 18 || vocalAvg >= (ambientBaselineVocal + 3.0);
-          const isLoudSound = rms >= 5.5;
+          // 6. Intelligent Vocal Energy vs Cough/Noise Classification:
+          // - Normal conversational speech at 50cm produces RMS between 2.8 and 7.5.
+          // - Coughs, throat-clearing, and sneezes are turbulent explosive blasts with high high-frequency energy.
+          const isAboveNoise = rms > Math.max(2.8, ambientBaselineRms + 1.8);
+          const hasVocalEnergy = vocalAvg >= (ambientBaselineVocal + 4.0) && maxVocal >= 24;
+          const isTurbulentBlast = highAvg >= (vocalAvg * 0.92);
 
-          const isVocalActivity = (isAboveNoise && hasVocalEnergy) || isLoudSound;
+          // Vocal phonation is strictly speech formants and NOT a high-frequency turbulent cough blast
+          const isVocalPhonation = isAboveNoise && hasVocalEnergy && !isTurbulentBlast;
 
-          // 6. Leaky-bucket accumulator:
-          // Robust against brief consonant pauses while instantly reacting to spoken phrases
-          if (isVocalActivity) {
-            vocalAccumulator += 3;
+          // 7. Sustained Phonation Tracking:
+          // A cough or throat clearing is a transient burst lasting only 150-350ms (~10-25 frames).
+          // Continuous human conversation is sustained across multiple words/syllables.
+          if (isVocalPhonation) {
+            sustainedSpeechFrames++;
+            quietFrames = 0;
           } else {
-            vocalAccumulator = Math.max(0, vocalAccumulator - 1);
+            quietFrames++;
+            if (quietFrames > 10) {
+              // If candidate pauses for more than ~160ms and sound was not sustained,
+              // it was an isolated transient noise (cough, throat clear, sigh, click). Reset immediately!
+              if (sustainedSpeechFrames < 45) {
+                sustainedSpeechFrames = 0;
+              } else {
+                // Natural brief inter-syllable pause during continuous talking
+                sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 2);
+              }
+            }
           }
 
-          if (vocalAccumulator >= 9) {
-            // ~200-300ms of sustained vocal speaking confirmed!
-            vocalAccumulator = 0;
+          // At 60fps:
+          // If Web Speech is running, it natively transcribes words with 0 false-alarms on coughs.
+          // In that case, acoustic fallback only flags continuous whispering/humming (> 2.5s = ~150 frames).
+          // If Web Speech is not running, require at least 1.4s of sustained speech (~85 frames).
+          const requiredFrames = isWebSpeechRunning ? 150 : 85;
+
+          if (sustainedSpeechFrames >= requiredFrames) {
+            sustainedSpeechFrames = 0;
             triggerVoiceStrike(
               "Voice / Speaking Detected",
-              `Speaking detected in front of camera (RMS: ${rms.toFixed(1)})`,
+              `Continuous speaking detected in front of camera (RMS: ${rms.toFixed(1)})`,
               rms
             );
           }
