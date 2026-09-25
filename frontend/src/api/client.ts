@@ -1,4 +1,7 @@
-export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://caecally-shiftable-cammy.ngrok-free.dev";
+export const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL !== undefined
+    ? import.meta.env.VITE_API_BASE_URL
+    : (import.meta.env.PROD ? "" : "https://caecally-shiftable-cammy.ngrok-free.dev");
 
 type TokenKind = "admin" | "student";
 
