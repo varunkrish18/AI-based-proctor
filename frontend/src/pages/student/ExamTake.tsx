@@ -106,6 +106,7 @@ export default function ExamTake() {
   const [entireScreenMissing, setEntireScreenMissing] = useState<boolean>(false);
   const [reacquiringScreen, setReacquiringScreen] = useState<boolean>(false);
   const [screenError, setScreenError] = useState<string | null>(null);
+  const [cameraClosedWarning, setCameraClosedWarning] = useState<{ remaining: string; reason: string } | null>(null);
 
   // Tracks how many times the student has exited fullscreen
   const fullscreenViolationCount = useRef(0);
@@ -113,10 +114,13 @@ export default function ExamTake() {
   const webcamStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const submittedRef = useRef(false);
   const hasRequestedStartRef = useRef(false);
+  const cameraClosedStartRef = useRef<number | null>(null);
+  const examStartTimeRef = useRef<number>(Date.now());
 
   // Strike & snapshot tracking refs
   const strikesRef = useRef<number>(0);
@@ -171,6 +175,10 @@ export default function ExamTake() {
         videoRef.current.srcObject = webcamStreamRef.current;
         videoRef.current.play().catch(() => {});
       }
+      if (pipVideoRef.current && pipVideoRef.current.srcObject !== webcamStreamRef.current) {
+        pipVideoRef.current.srcObject = webcamStreamRef.current;
+        pipVideoRef.current.play().catch(() => {});
+      }
       if (bgVideoRef.current && bgVideoRef.current.srcObject !== webcamStreamRef.current) {
         bgVideoRef.current.srcObject = webcamStreamRef.current;
         bgVideoRef.current.play().catch(() => {});
@@ -191,6 +199,9 @@ export default function ExamTake() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    if (pipVideoRef.current) {
+      pipVideoRef.current.srcObject = null;
+    }
     if (bgVideoRef.current) {
       bgVideoRef.current.srcObject = null;
     }
@@ -207,11 +218,15 @@ export default function ExamTake() {
     }
   }, []);
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(async (autoSubmitReason?: string | React.MouseEvent | unknown) => {
     if (!session || submittedRef.current) return;
     submittedRef.current = true;
     setSubmitting(true);
+    const reasonStr = typeof autoSubmitReason === "string" ? autoSubmitReason : undefined;
     try {
+      if (reasonStr) {
+        await logEvent("EXAM_AUTO_SUBMITTED", undefined, { reason: reasonStr });
+      }
       // Flush any queued proctoring events before submission
       await flushNow();
       stopAllMediaStreams();
@@ -220,7 +235,10 @@ export default function ExamTake() {
         await document.exitFullscreen().catch(() => {});
       }
 
-      const result = await api.post(`/api/student/attempts/${session.attemptId}/submit`, undefined, "student");
+      const result: any = await api.post(`/api/student/attempts/${session.attemptId}/submit`, undefined, "student");
+      if (reasonStr && result) {
+        result.submitReason = reasonStr;
+      }
       // Store result so the correction page can read it without re-auth
       sessionStorage.setItem(`exam_result_${examId}`, JSON.stringify(result));
       navigate(`/exam/${examId}/submitted`);
@@ -229,7 +247,7 @@ export default function ExamTake() {
       setError(e instanceof Error ? e.message : "Submission failed.");
       setSubmitting(false);
     }
-  }, [session, examId, navigate, flushNow, stopAllMediaStreams]);
+  }, [session, examId, navigate, flushNow, stopAllMediaStreams, logEvent]);
 
   // Explicit 3-Strike Proctoring Enforcement System
   const issueWarningStrike = useCallback(
@@ -402,6 +420,21 @@ export default function ExamTake() {
 
         if (webcamRequired) {
           setWebcamStatus("ACTIVE");
+          userMedia.getVideoTracks().forEach((track) => {
+            track.onended = () => {
+              setWebcamStatus("LOST");
+              logEvent("WEBCAM_LOST", undefined, { reason: "Webcam track ended" });
+              setWarning("Webcam access lost! Please check camera permissions.");
+            };
+            track.onmute = () => {
+              setWebcamStatus("LOST");
+              logEvent("WEBCAM_MUTED", undefined, { reason: "Webcam track muted / privacy button toggled" });
+              setWarning("Camera muted or privacy shutter closed!");
+            };
+            track.onunmute = () => {
+              setWebcamStatus("ACTIVE");
+            };
+          });
         }
 
         if (micRequired) {
@@ -418,6 +451,7 @@ export default function ExamTake() {
         }
       }
 
+      examStartTimeRef.current = Date.now();
       setScreenGatePassed(true);
     } catch (err: unknown) {
       console.warn("Proctoring gate initialized with fallbacks:", err);
@@ -698,6 +732,108 @@ export default function ExamTake() {
     };
   }, [session, screenGatePassed, issueWarningStrike]);
 
+  // 2-Second Camera Closed / Covered Watchdog
+  // If camera module is closed (ended, muted, feed stopped)
+  // or covered by hand / physical shutter (brightness < 15) for >= 2 seconds continuously,
+  // immediately auto-submit the exam!
+  useEffect(() => {
+    if (!session || !screenGatePassed || submittedRef.current || session.webcamRequired === false) return;
+
+    const intervalId = setInterval(() => {
+      if (submittedRef.current) return;
+
+      // Grace period: allow 3.5 seconds after exam start for camera to stabilize
+      if (Date.now() - examStartTimeRef.current < 3500) {
+        return;
+      }
+
+      const stream = webcamStreamRef.current;
+      const videoTrack = stream?.getVideoTracks()[0];
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      let isClosed = false;
+      let reason = "";
+
+      // 1. Camera module hardware / track ended or disconnected
+      if (!stream || !videoTrack || videoTrack.readyState === "ended") {
+        isClosed = true;
+        reason = "Camera module closed or disconnected";
+      }
+      // 2. Camera hardware privacy shutter / default camera close button muted
+      else if (videoTrack.muted) {
+        isClosed = true;
+        reason = "Camera module closed / hardware privacy button active";
+      }
+      // 3. Camera track disabled
+      else if (!videoTrack.enabled) {
+        isClosed = true;
+        reason = "Camera video track disabled";
+      }
+      // 4. Video feed frozen, stopped, or zero dimensions
+      else if (!video || video.paused || video.ended || video.videoWidth === 0 || video.readyState < 2) {
+        isClosed = true;
+        reason = "Camera feed stopped / no video frames";
+      }
+      // 5. Camera covered by hand or mechanical privacy shutter (black/near-black pixels)
+      else if (canvas) {
+        try {
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, 160, 120);
+            const imgData = ctx.getImageData(0, 0, 160, 120).data;
+            let totalBrightness = 0;
+            let sampleCount = 0;
+            for (let i = 0; i < imgData.length; i += 16) {
+              totalBrightness += 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
+              sampleCount++;
+            }
+            const avgLuma = sampleCount > 0 ? totalBrightness / sampleCount : 0;
+            if (avgLuma < 15) {
+              isClosed = true;
+              reason = "Camera covered with hand or lens obstructed";
+            }
+          }
+        } catch {
+          // ignore canvas read errors
+        }
+      }
+
+      if (isClosed) {
+        if (cameraClosedStartRef.current === null) {
+          cameraClosedStartRef.current = Date.now();
+        }
+        const elapsed = Date.now() - cameraClosedStartRef.current;
+        const remainingSec = Math.max(0, (2000 - elapsed) / 1000);
+        setCameraClosedWarning({
+          remaining: remainingSec.toFixed(1),
+          reason,
+        });
+
+        if (elapsed >= 2000) {
+          console.warn(`[CameraWatchdog] 🚨 Camera closed for >= 2 seconds: ${reason}. Auto-submitting exam!`);
+          cameraClosedStartRef.current = null;
+          setCameraClosedWarning(null);
+          logEvent("CAMERA_CLOSED_AUTO_SUBMIT", undefined, {
+            reason,
+            durationSeconds: 2,
+          });
+          flushNow();
+          handleSubmit(`Camera module was closed or covered for 2 seconds (${reason}).`);
+        }
+      } else {
+        if (cameraClosedStartRef.current !== null) {
+          cameraClosedStartRef.current = null;
+          setCameraClosedWarning(null);
+        }
+      }
+    }, 200);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [session, screenGatePassed, handleSubmit, logEvent, flushNow]);
+
   // Dual-Layer Voice Detection: Web Speech Recognition (Google Engine) + Web Audio Acoustic Formants
   useEffect(() => {
     const micRequired = session?.microphoneRequired ?? true;
@@ -717,9 +853,6 @@ export default function ExamTake() {
     let ambientBaselineRms = 1.0;
     let ambientBaselineVocal = 1.0;
     let lastUiUpdate = 0;
-
-    // Flag indicating Web Speech API is active in browser
-    let isWebSpeechRunning = false;
 
     // Helper: Issue voice strike with debounce and proctor event logging
     const triggerVoiceStrike = (reasonTitle: string, details: string, rmsLevel?: number) => {
@@ -802,8 +935,8 @@ export default function ExamTake() {
             return stripped.length >= 2 && !NON_SPEECH_WORDS.has(stripped);
           });
 
-          // Must be an actual spoken verbal sentence/phrase (at least 2 real meaningful words and 6+ letters)
-          const isRealSpokenPhrase = meaningfulWords.length >= 2 && meaningfulWords.join(" ").length >= 6;
+          // Any spoken word with at least 2 letters detected
+          const isRealSpokenPhrase = meaningfulWords.length >= 1;
 
           if (isRealSpokenPhrase) {
             console.log(`[WebSpeech] Detected spoken words: "${transcriptText}"`);
@@ -816,16 +949,12 @@ export default function ExamTake() {
           }
         };
 
-        // NOTE: onspeechstart intentionally does NOT trigger strikes.
-        // Browsers fire onspeechstart on any acoustic impulse (coughs, sneezes, heavy breathing, throat clearing).
-        // Only actual words in onresult or sustained vocal acoustic phonation should trigger strikes.
         recognition.onspeechstart = () => {
           if (!isMounted || submittedRef.current) return;
           console.log("[WebSpeech] Acoustic sound onset detected; listening for spoken words...");
         };
 
         recognition.onerror = (e: any) => {
-          // "no-speech" or "aborted" are normal pauses during candidate quiet periods
           if (e.error !== "no-speech" && e.error !== "aborted") {
             console.warn("[WebSpeech] Recognition status:", e.error);
           }
@@ -844,7 +973,6 @@ export default function ExamTake() {
         try {
           recognition.start();
           speechRecognitionRef.current = recognition;
-          isWebSpeechRunning = true;
           console.log("[WebSpeech] Engine active and listening for vocal infractions");
         } catch (startErr) {
           console.warn("[WebSpeech] Start error:", startErr);
@@ -855,7 +983,7 @@ export default function ExamTake() {
     }
 
     // =========================================================================
-    // LAYER 2: Web Audio Acoustic Formant & Energy Analyzer (Meter + Fallback)
+    // LAYER 2: Web Audio Acoustic Formant & Energy Analyzer (Meter + Parallel VAD)
     // =========================================================================
     async function initAudioDetection() {
       try {
@@ -900,17 +1028,17 @@ export default function ExamTake() {
         biquadFilter.type = "highpass";
         biquadFilter.frequency.setValueAtTime(100, audioContext.currentTime);
 
-        // Calibrate input volume gain according to Admin exam setting (e.g. 20%)
+        // Calibrate input volume gain according to Admin exam setting (default 20 corresponds to 1.0x standard sensitivity)
         const gainNode = audioContext.createGain();
         const configuredAudioLevel = session?.audioInputLevel ?? 20;
-        const targetGain = Math.max(0.01, Math.min(2.0, configuredAudioLevel / 100));
+        const targetGain = Math.max(0.5, Math.min(3.0, configuredAudioLevel / 20.0));
         gainNode.gain.setValueAtTime(targetGain, audioContext.currentTime);
 
         microphone = audioContext.createMediaStreamSource(streamToUse);
         microphone.connect(gainNode);
         gainNode.connect(biquadFilter);
         biquadFilter.connect(analyser);
-        console.log(`[VoiceDetection] Audio gain set by admin configuration: ${configuredAudioLevel}% (multiplier: ${targetGain})`);
+        console.log(`[VoiceDetection] Audio gain configured: ${configuredAudioLevel} (multiplier: ${targetGain})`);
 
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
@@ -929,7 +1057,7 @@ export default function ExamTake() {
 
         console.log(`[VoiceDetection] Acoustic analyzer active: speech bins ${speechMinBin}-${speechMaxBin}, noise bins ${highNoiseMinBin}-${highNoiseMaxBin}`);
 
-        // Sustained phonation frame tracking (only for browsers where Web Speech is unavailable)
+        // Sustained phonation frame tracking for parallel acoustic voice activity detection
         let sustainedSpeechFrames = 0;
 
         const checkAudio = () => {
@@ -986,41 +1114,35 @@ export default function ExamTake() {
 
           const now = Date.now();
 
-          // 5. Live UI volume meter update (every 100ms)
-          if (now - lastUiUpdate > 100) {
+          // 5. Live UI volume meter update (every 80ms)
+          if (now - lastUiUpdate > 80) {
             lastUiUpdate = now;
             // Responsive meter: scale rms up to 100%
-            const normalizedVol = Math.min(100, Math.round((rms / 10) * 100));
+            const normalizedVol = Math.min(100, Math.round((rms / 8) * 100));
             setMicAudioLevel(normalizedVol);
           }
 
           // 6. Vocal activity classification:
-          const isAboveNoise = rms > Math.max(2.8, ambientBaselineRms + 1.8);
-          const hasVocalEnergy = vocalAvg >= (ambientBaselineVocal + 4.0) && maxVocal >= 24;
-          const isTurbulentBlast = highAvg >= (vocalAvg * 0.92);
+          const isAboveNoise = rms > Math.max(2.2, ambientBaselineRms + 1.2);
+          const hasVocalEnergy = vocalAvg >= (ambientBaselineVocal + 2.5) && maxVocal >= 18;
+          const isTurbulentBlast = highAvg >= (vocalAvg * 0.95);
           const isVocalPhonation = isAboveNoise && hasVocalEnergy && !isTurbulentBlast;
 
-          // 7. When Web Speech API is supported & active in the browser (Chrome, Edge, Safari),
-          // Web Speech handles semantic speech recognition and filters out coughs, sneezes, and noise.
-          // Raw acoustic volume is NEVER used to issue strikes when Web Speech is running,
-          // completely preventing false strikes on coughs, throat-clearing, or room sounds.
-          if (!isWebSpeechRunning) {
-            // Fallback for browsers without Web Speech (e.g. Firefox):
-            // Strictly require continuous uninterrupted vocal formant sound for >= 4.0 seconds (240 frames)
-            if (isVocalPhonation) {
-              sustainedSpeechFrames++;
-            } else {
-              sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 5);
-            }
+          // 7. Parallel Acoustic Voice Activity Detection:
+          // Runs continuously alongside Web Speech to ensure zero missed voice events
+          if (isVocalPhonation) {
+            sustainedSpeechFrames++;
+          } else {
+            sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
+          }
 
-            if (sustainedSpeechFrames >= 240) {
-              sustainedSpeechFrames = 0;
-              triggerVoiceStrike(
-                "Voice / Speaking Detected",
-                `Prolonged continuous speaking detected (RMS: ${rms.toFixed(1)})`,
-                rms
-              );
-            }
+          if (sustainedSpeechFrames >= 25) { // ~0.4s of sustained vocal phonation
+            sustainedSpeechFrames = 0;
+            triggerVoiceStrike(
+              "Voice / Speaking Detected",
+              `Speaking detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 8) * 100))}%)`,
+              rms
+            );
           }
 
           animationFrameId = requestAnimationFrame(checkAudio);
@@ -1492,6 +1614,37 @@ export default function ExamTake() {
         </div>
       )}
 
+      {/* Critical Camera Closed / Covered Countdown Modal */}
+      {cameraClosedWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 border-4 border-red-600 text-center animate-pulse">
+            <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 border-2 border-red-300 flex items-center justify-center text-3xl mx-auto mb-3 shadow-inner">
+              📷❌
+            </div>
+            <span className="inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-red-600 text-white mb-2">
+              Security Violation
+            </span>
+            <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">
+              Camera Module Closed or Covered!
+            </h3>
+            <p className="text-sm text-slate-700 mb-4 font-medium">
+              {cameraClosedWarning.reason}
+            </p>
+            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-4">
+              <div className="text-xs font-bold text-red-700 uppercase tracking-wide">
+                Exam Will Automatically Submit In:
+              </div>
+              <div className="text-4xl font-black text-red-600 font-mono mt-1">
+                {cameraClosedWarning.remaining}s
+              </div>
+              <div className="text-xs text-red-600 mt-2 font-semibold">
+                Uncover your camera lens or open the camera shutter immediately!
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hidden elements for computer-vision capture */}
       <video ref={videoRef} autoPlay playsInline muted className="hidden" />
       <canvas ref={canvasRef} width={320} height={240} className="hidden" />
@@ -1745,7 +1898,7 @@ export default function ExamTake() {
                     />
                     {/* Foreground layer: candidate portrait with soft oval vignette */}
                     <video
-                      ref={videoRef}
+                      ref={pipVideoRef}
                       autoPlay
                       playsInline
                       muted
@@ -1858,8 +2011,6 @@ export default function ExamTake() {
               </div>
             </div>
           )}
-          {/* Hidden canvas for capturing video frames for AI analysis */}
-          <canvas ref={canvasRef} width={320} height={240} className="hidden" />
         </div>
       )}
     </div>

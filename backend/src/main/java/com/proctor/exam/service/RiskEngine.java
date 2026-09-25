@@ -64,7 +64,9 @@ public class RiskEngine {
             Map.entry("PERSON_BEHIND_DETECTED", 30),
             Map.entry("CAMERA_COVERED", 30),
             Map.entry("LOOKING_AWAY_SNAPSHOT", 15),
-            Map.entry("VOICE_DETECTED", 20)
+            Map.entry("VOICE_DETECTED", 20),
+            Map.entry("WEBCAM_MUTED", 25),
+            Map.entry("CAMERA_CLOSED_AUTO_SUBMIT", 50)
     );
 
     // Decay constant lambda: half-life/e-fold decay over 600 seconds (10 minutes)

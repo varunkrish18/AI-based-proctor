@@ -8,6 +8,7 @@ interface AttemptResult {
   endTime: string;
   totalQuestions: number;
   answeredQuestions: number;
+  submitReason?: string;
 }
 
 export default function ExamSubmitted() {
@@ -33,17 +34,32 @@ export default function ExamSubmitted() {
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-4 py-6 text-center shadow-xs">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 text-3xl mb-3 shadow-inner">
-          ✓
+        <div className={`inline-flex items-center justify-center w-14 h-14 rounded-full text-3xl mb-3 shadow-inner ${
+          result?.submitReason ? "bg-amber-100 text-amber-600" : "bg-emerald-100 text-emerald-600"
+        }`}>
+          {result?.submitReason ? "⚠️" : "✓"}
         </div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-          Exam Submitted Successfully
+          {result?.submitReason ? "Exam Session Concluded" : "Exam Submitted Successfully"}
         </h1>
         <p className="text-sm text-slate-500 mt-1">Submitted at {submittedAt}</p>
       </div>
 
       {/* Main Content */}
       <div className="max-w-2xl w-full mx-auto px-4 py-10">
+        {/* Automatic Submission Notice if triggered */}
+        {result?.submitReason && (
+          <div className="bg-red-50 border-2 border-red-300 text-red-950 rounded-2xl p-5 mb-6 shadow-sm flex items-start gap-3.5">
+            <span className="text-2xl mt-0.5">🚨</span>
+            <div>
+              <h4 className="font-extrabold text-base text-red-900">Automatic Session Submission Triggered</h4>
+              <p className="text-sm text-red-800 mt-1 font-medium leading-relaxed">
+                {result.submitReason}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Result Evaluation Notice Banner */}
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl p-6 sm:p-8 text-center shadow-sm mb-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold uppercase tracking-wider mb-4">
