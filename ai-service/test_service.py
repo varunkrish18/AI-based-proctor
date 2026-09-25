@@ -30,8 +30,10 @@ def test_blank_frame():
     assert res.status_code == 200
     assert data["faceDetected"] is False
     assert data["faceCount"] == 0
+    assert data.get("cameraCovered") is True
+    assert any(e.get("type") == "CAMERA_COVERED" for e in data.get("events", []))
     assert "gazeDirection" in data
-    print("  PASSED: Blank frame (no face detected)")
+    print("  PASSED: Blank frame (covered camera detected)")
 
 
 def test_response_shape():

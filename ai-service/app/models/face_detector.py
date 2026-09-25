@@ -356,6 +356,46 @@ def analyze_frame(base64_frame: str) -> FrameAnalysisResponse:
     phone_detected = False
 
     face_detected = face_count > 0
+
+    # Camera occlusion / covered lens detection
+    camera_covered = False
+    gray_for_check = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    mean_brightness = float(np.mean(gray_for_check))
+    std_brightness = float(np.std(gray_for_check))
+    laplacian_var = float(cv2.Laplacian(gray_for_check, cv2.CV_64F).var())
+
+    if not face_detected:
+        # 1. Very dark / pitch black / hand or object covering lens (mean brightness < 25.0)
+        # 2. Hand/finger pressed firmly against lens in ambient light (mean < 45.0, low contrast, no edges)
+        # 3. Solid uniform color / paper / tape blocking lens (extremely low std dev & laplacian)
+        is_dark_occluded = mean_brightness < 25.0
+        is_hand_occluded = (mean_brightness < 45.0 and std_brightness < 12.0 and laplacian_var < 15.0)
+        is_uniform_occluded = (std_brightness < 6.0 and laplacian_var < 10.0)
+
+        if is_dark_occluded or is_hand_occluded or is_uniform_occluded:
+            camera_covered = True
+            events.append(EventItem(
+                type="CAMERA_COVERED",
+                confidence=0.95,
+                metadata={
+                    "mean_brightness": round(mean_brightness, 1),
+                    "std_brightness": round(std_brightness, 1),
+                    "laplacian_var": round(laplacian_var, 1),
+                    "description": "Camera lens is covered or occluded"
+                }
+            ))
+            events.append(EventItem(
+                type="FACE_NOT_VISIBLE",
+                confidence=0.95,
+                metadata={"reason": "Face not visible due to camera occlusion"}
+            ))
+        else:
+            events.append(EventItem(
+                type="FACE_NOT_VISIBLE",
+                confidence=0.90,
+                metadata={"reason": "Candidate face not detected in webcam view"}
+            ))
+
     if face_count > 1:
         person_behind_detected = True
         events.append(EventItem(
@@ -491,6 +531,7 @@ def analyze_frame(base64_frame: str) -> FrameAnalysisResponse:
         objectDetected=object_detected,
         detectedObjects=detected_objects,
         personBehindDetected=person_behind_detected,
+        cameraCovered=camera_covered,
         gazeDirection=gaze_dir,
         headPose=head_pose_obj,
         events=events,
@@ -507,9 +548,13 @@ def _empty_response() -> FrameAnalysisResponse:
         objectDetected=False,
         detectedObjects=[],
         personBehindDetected=False,
+        cameraCovered=True,
         gazeDirection="CENTER",
         headPose=None,
-        events=[],
+        events=[
+            EventItem(type="CAMERA_COVERED", confidence=1.0, metadata={"reason": "Empty or unreadable video frame"}),
+            EventItem(type="FACE_NOT_VISIBLE", confidence=1.0, metadata={"reason": "No video frame data"})
+        ],
         modelVersion="heuristic-v1"
     )
 
@@ -533,6 +578,7 @@ def get_capabilities() -> dict:
         "iris_gaze_enabled": gaze_enabled,
         "head_pose_enabled": gaze_enabled,
         "phone_detection_enabled": _mp_object_detector is not None,
+        "camera_occlusion_enabled": True,
         "multi_face_enabled": True,
         "face_backend": face_backend,
         "model_version": model_version,

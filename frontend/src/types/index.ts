@@ -166,6 +166,7 @@ export interface AiFrameAnalysisResponse {
   objectDetected?: boolean;
   detectedObjects?: string[];
   personBehindDetected?: boolean;
+  cameraCovered?: boolean;
   gazeDirection: "CENTER" | "LEFT" | "RIGHT" | "UP" | "DOWN" | string;
   headPose: {
     yaw: number;

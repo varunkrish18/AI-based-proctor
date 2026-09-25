@@ -239,9 +239,12 @@ export default function AdminDashboard() {
 
     const biometricFace =
       (map["NO_FACE"] || 0) +
+      (map["FACE_NOT_VISIBLE"] || 0) +
+      (map["CAMERA_COVERED"] || 0) +
       (map["MULTIPLE_FACES"] || 0) +
       (map["FACE_UNVERIFIED"] || 0) +
-      (map["PERSON_BEHIND"] || 0);
+      (map["PERSON_BEHIND"] || 0) +
+      (map["PERSON_BEHIND_DETECTED"] || 0);
 
     const deviceAudio =
       (map["PHONE_DETECTED"] || 0) +

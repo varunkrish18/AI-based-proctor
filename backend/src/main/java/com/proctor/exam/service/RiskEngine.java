@@ -62,6 +62,7 @@ public class RiskEngine {
             Map.entry("PROHIBITED_OBJECT_DETECTED", 25),
             Map.entry("OBJECT_DETECTED", 25),
             Map.entry("PERSON_BEHIND_DETECTED", 30),
+            Map.entry("CAMERA_COVERED", 30),
             Map.entry("LOOKING_AWAY_SNAPSHOT", 15),
             Map.entry("VOICE_DETECTED", 20)
     );
@@ -153,6 +154,12 @@ public class RiskEngine {
     }
 
     private String generateProgressiveMessage(int level, ProctoringEvent ev) {
+        if (ev != null && "CAMERA_COVERED".equals(ev.getEventType())) {
+            return "Warning: Your webcam lens appears to be covered or blocked. Keep your camera clear and your face visible.";
+        }
+        if (ev != null && "FACE_NOT_VISIBLE".equals(ev.getEventType())) {
+            return "Warning: Your face is not visible to the camera. Please return to your seat and look directly at the screen.";
+        }
         String eventLabel = ev != null ? ev.getEventType().replace("_", " ").toLowerCase() : "unusual activity";
         if (level == 1) {
             return "Notice: Please maintain focus on your test screen and ensure your camera and environment stay clear.";

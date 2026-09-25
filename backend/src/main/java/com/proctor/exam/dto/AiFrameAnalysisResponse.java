@@ -13,6 +13,7 @@ public record AiFrameAnalysisResponse(
         Boolean objectDetected,
         List<String> detectedObjects,
         Boolean personBehindDetected,
+        Boolean cameraCovered,
         String gazeDirection,
         HeadPoseDto headPose,
         List<Map<String, Object>> events,

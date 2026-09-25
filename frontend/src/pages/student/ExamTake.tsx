@@ -122,6 +122,10 @@ export default function ExamTake() {
   const strikesRef = useRef<number>(0);
   const lookAwayStartRef = useRef<number | null>(null);
   const lookAwaySnappedRef = useRef<boolean>(false);
+  const cameraCoveredStartRef = useRef<number | null>(null);
+  const cameraCoveredSnappedRef = useRef<boolean>(false);
+  const faceMissingStartRef = useRef<number | null>(null);
+  const faceMissingSnappedRef = useRef<boolean>(false);
   const lastStrikeTimeRef = useRef<number>(0);
   const lastPersonBehindPhotoTime = useRef<number>(0);
   const lastObjectPhotoTime = useRef<number>(0);
@@ -546,8 +550,65 @@ export default function ExamTake() {
               consecutiveFrameErrors.current = 0;
               nextCaptureDelayRef.current = 1000; // 1 second interval for snappy real-time proctoring
 
-              // 1. Gaze tracking: Continuous look-away for >= 5 seconds takes a photo snapshot for proctor review
-              const isLookingAway = !res.faceDetected || (res.faceCount === 1 && res.gazeDirection !== "CENTER");
+              // 0. Camera Covered / Occluded Detection (Deliberate obstruction)
+              const isCameraCovered =
+                res.cameraCovered === true ||
+                Boolean(res.events?.some((e) => e.type === "CAMERA_COVERED"));
+
+              if (isCameraCovered) {
+                if (!cameraCoveredStartRef.current) {
+                  cameraCoveredStartRef.current = Date.now();
+                } else {
+                  const elapsedMs = Date.now() - cameraCoveredStartRef.current;
+                  if (elapsedMs >= 2500 && !cameraCoveredSnappedRef.current) {
+                    cameraCoveredSnappedRef.current = true;
+                    const photo = canvas.toDataURL("image/jpeg", 0.7);
+                    logEvent("CAMERA_COVERED", Math.round(elapsedMs / 1000), {
+                      photo,
+                      reason: "Webcam lens is covered or occluded",
+                    });
+                    flushNow();
+                    issueWarningStrike(
+                      "Camera Covered / Occluded",
+                      "Your webcam appears to be covered or blocked. Keep your camera clear and your face fully visible."
+                    );
+                  }
+                }
+              } else {
+                cameraCoveredStartRef.current = null;
+                cameraCoveredSnappedRef.current = false;
+              }
+
+              // 1. Face Missing Detection (Candidate left camera view)
+              const isFaceMissing = !res.faceDetected && !isCameraCovered;
+              if (isFaceMissing) {
+                if (!faceMissingStartRef.current) {
+                  faceMissingStartRef.current = Date.now();
+                } else {
+                  const elapsedMs = Date.now() - faceMissingStartRef.current;
+                  if (elapsedMs >= 5000 && !faceMissingSnappedRef.current) {
+                    faceMissingSnappedRef.current = true;
+                    const photo = canvas.toDataURL("image/jpeg", 0.7);
+                    logEvent("FACE_NOT_VISIBLE", Math.round(elapsedMs / 1000), {
+                      photo,
+                      durationSeconds: Math.round(elapsedMs / 1000),
+                      reason: "Candidate face not detected in webcam view for >= 5s",
+                    });
+                    flushNow();
+                    issueWarningStrike(
+                      "Face Not Detected",
+                      "Your face has left the camera view for more than 5 seconds. Please remain seated facing your screen."
+                    );
+                  }
+                }
+              } else {
+                faceMissingStartRef.current = null;
+                faceMissingSnappedRef.current = false;
+              }
+
+              // 2. Gaze tracking: Continuous look-away for >= 5 seconds takes a photo snapshot for proctor review
+              // Only triggers when face IS detected and face count is exactly 1
+              const isLookingAway = res.faceDetected && res.faceCount === 1 && res.gazeDirection !== "CENTER";
               if (isLookingAway) {
                 if (!lookAwayStartRef.current) {
                   lookAwayStartRef.current = Date.now();
@@ -1502,12 +1563,16 @@ export default function ExamTake() {
             <div className="hidden md:flex items-center gap-2.5 text-xs bg-slate-800 px-3 py-1 rounded-full border border-slate-700">
               <span
                 className={`flex items-center gap-1 font-medium ${
-                  aiAnalysis.faceDetected && aiAnalysis.faceCount === 1
+                  aiAnalysis.cameraCovered
+                    ? "text-rose-400 font-bold animate-pulse"
+                    : aiAnalysis.faceDetected && aiAnalysis.faceCount === 1
                     ? "text-emerald-400"
                     : "text-amber-400"
                 }`}
               >
-                {aiAnalysis.faceDetected
+                {aiAnalysis.cameraCovered
+                  ? "🚨 Camera Covered"
+                  : aiAnalysis.faceDetected
                   ? aiAnalysis.faceCount > 1
                     ? `👥 ${aiAnalysis.faceCount} Faces`
                     : `👤 Face OK`
@@ -1516,12 +1581,14 @@ export default function ExamTake() {
               <span className="text-slate-600">|</span>
               <span
                 className={`flex items-center gap-1 ${
-                  aiAnalysis.gazeDirection === "CENTER"
+                  aiAnalysis.cameraCovered
+                    ? "text-rose-400 font-semibold"
+                    : aiAnalysis.gazeDirection === "CENTER"
                     ? "text-slate-300"
                     : "text-amber-400 font-semibold"
                 }`}
               >
-                👁️ {aiAnalysis.gazeDirection}
+                👁️ {aiAnalysis.cameraCovered ? "BLOCKED" : aiAnalysis.gazeDirection}
               </span>
             </div>
           )}
@@ -1689,6 +1756,15 @@ export default function ExamTake() {
                         maskImage: "radial-gradient(ellipse 48% 60% at 50% 50%, black 50%, transparent 95%)",
                       }}
                     />
+
+                    {/* Camera covered warning overlay */}
+                    {aiAnalysis?.cameraCovered && (
+                      <div className="absolute inset-0 bg-red-950/85 backdrop-blur-xs flex flex-col items-center justify-center p-3 text-center pointer-events-none z-10 animate-pulse">
+                        <span className="text-2xl mb-1">🚫</span>
+                        <span className="text-xs font-bold text-red-200 tracking-wider">CAMERA COVERED</span>
+                        <span className="text-[10px] text-red-300">Uncover your camera lens immediately</span>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="text-xs text-slate-500 p-4 text-center">
@@ -1697,11 +1773,13 @@ export default function ExamTake() {
                 )}
 
                 {/* Real-time AI Face, Gaze & Object Detection Overlay */}
-                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between pointer-events-none">
+                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between pointer-events-none z-20">
                   {aiAnalysis ? (
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-md border ${
-                        aiAnalysis.personBehindDetected
+                        aiAnalysis.cameraCovered
+                          ? "bg-rose-600 text-white border-rose-400 font-extrabold animate-pulse"
+                          : aiAnalysis.personBehindDetected
                           ? "bg-red-600 text-white border-red-400 font-extrabold animate-pulse"
                           : aiAnalysis.phoneDetected || aiAnalysis.objectDetected
                           ? "bg-red-600 text-white border-red-400 animate-pulse font-extrabold"
@@ -1714,7 +1792,9 @@ export default function ExamTake() {
                           : "bg-emerald-500/80 text-white border-emerald-400"
                       }`}
                     >
-                      {aiAnalysis.personBehindDetected
+                      {aiAnalysis.cameraCovered
+                        ? "🚨 Camera Covered!"
+                        : aiAnalysis.personBehindDetected
                         ? "👥 Person Behind!"
                         : aiAnalysis.phoneDetected
                         ? "🚨 Mobile Phone!"

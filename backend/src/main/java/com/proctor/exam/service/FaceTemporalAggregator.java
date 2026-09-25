@@ -26,7 +26,9 @@ public class FaceTemporalAggregator {
             "CELL_PHONE_DETECTED",
             "PROHIBITED_OBJECT_DETECTED",
             "OBJECT_DETECTED",
-            "PERSON_BEHIND_DETECTED"
+            "PERSON_BEHIND_DETECTED",
+            "CAMERA_COVERED",
+            "FACE_NOT_VISIBLE"
     );
 
     private final ProctoringEventService eventService;
@@ -39,6 +41,10 @@ public class FaceTemporalAggregator {
     public static class AttemptCvState {
         public Instant lastFaceSeenAt = Instant.now();
         public boolean faceMissingActive = false;
+        public Instant lastFaceMissingEmittedAt = null;
+        public boolean cameraCoveredActive = false;
+        public Instant cameraCoveredStartedAt = null;
+        public Instant lastCameraCoveredEmittedAt = null;
         public int consecutiveMultiFaceCount = 0;
         public boolean multiFaceEventActive = false;
         public String currentGazeDirection = "CENTER";
@@ -67,11 +73,33 @@ public class FaceTemporalAggregator {
         // Persist only a distinct allow-listed category, rate-limited per attempt.
         processModelEvents(attemptId, studentEmail, res, state, now);
 
-        // 2. Face Visibility (Phase 4)
+        // 2. Camera Covered / Occlusion Handling
+        boolean isCovered = Boolean.TRUE.equals(res.cameraCovered());
+        if (isCovered) {
+            if (state.cameraCoveredStartedAt == null) {
+                state.cameraCoveredStartedAt = now;
+            }
+            long coveredSec = Duration.between(state.cameraCoveredStartedAt, now).toSeconds();
+            // Emit if covered for >= 2 seconds, and re-emit every 10 seconds if continuously covered
+            if (coveredSec >= 2 && (state.lastCameraCoveredEmittedAt == null || Duration.between(state.lastCameraCoveredEmittedAt, now).toSeconds() >= 10)) {
+                state.cameraCoveredActive = true;
+                state.lastCameraCoveredEmittedAt = now;
+                log.warn("Attempt {}: Camera covered / occluded for {}s, emitting CAMERA_COVERED", attemptId, coveredSec);
+                emitEvent(attemptId, studentEmail, "CAMERA_COVERED", BigDecimal.valueOf(coveredSec), "{\"reason\": \"Camera lens is covered or occluded\"}");
+            }
+        } else {
+            state.cameraCoveredStartedAt = null;
+            state.cameraCoveredActive = false;
+            state.lastCameraCoveredEmittedAt = null;
+        }
+
+        // 3. Face Visibility (Phase 4)
         if (!res.faceDetected() || res.faceCount() == 0) {
             long absentSeconds = Duration.between(state.lastFaceSeenAt, now).toSeconds();
-            if (absentSeconds >= 5 && !state.faceMissingActive) {
+            // Emit after 5s, and re-emit every 15s if student remains missing from camera
+            if (absentSeconds >= 5 && (state.lastFaceMissingEmittedAt == null || Duration.between(state.lastFaceMissingEmittedAt, now).toSeconds() >= 15)) {
                 state.faceMissingActive = true;
+                state.lastFaceMissingEmittedAt = now;
                 log.info("Attempt {}: Face not visible for {}s, emitting FACE_NOT_VISIBLE", attemptId, absentSeconds);
                 emitEvent(attemptId, studentEmail, "FACE_NOT_VISIBLE", BigDecimal.valueOf(absentSeconds), null);
             }
@@ -79,6 +107,7 @@ public class FaceTemporalAggregator {
             if (state.faceMissingActive) {
                 // Face has reappeared
                 state.faceMissingActive = false;
+                state.lastFaceMissingEmittedAt = null;
             }
             state.lastFaceSeenAt = now;
 

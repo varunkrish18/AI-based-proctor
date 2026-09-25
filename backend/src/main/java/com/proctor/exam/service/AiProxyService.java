@@ -99,6 +99,7 @@ public class AiProxyService {
                 false, // objectDetected
                 List.of(), // detectedObjects
                 false, // personBehindDetected
+                false, // cameraCovered
                 "CENTER",
                 null,
                 List.of(),

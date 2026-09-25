@@ -29,6 +29,7 @@ class FrameAnalysisResponse(BaseModel):
     objectDetected: bool = False
     detectedObjects: List[str] = Field(default_factory=list)
     personBehindDetected: bool = False
+    cameraCovered: bool = False
     gazeDirection: str = Field(
         default="CENTER",
         description="CENTER, LEFT, RIGHT, UP, or DOWN"
