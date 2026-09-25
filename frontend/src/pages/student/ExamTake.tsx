@@ -681,6 +681,21 @@ export default function ExamTake() {
     window.addEventListener("click", resumeContext);
     window.addEventListener("keydown", resumeContext);
 
+    // Non-speech vocal sound blacklist (coughs, sneezes, throat clears, breathing, interjections)
+    const NON_SPEECH_WORDS = new Set([
+      "cough", "coughing", "coughs", "coughed",
+      "throat", "clearing", "ahem",
+      "sneeze", "sneezing", "sneezes", "sneezed",
+      "sniff", "sniffing", "snort",
+      "sigh", "sighing", "sighs",
+      "yawn", "yawning", "yawns",
+      "gasp", "gasping",
+      "groan", "grunt",
+      "laughter", "laughing", "applause",
+      "noise", "sound", "hum", "humming",
+      "uh", "um", "ah", "oh", "eh", "er", "hm", "hmm", "ha", "huh", "shh", "sh", "mm", "mmm"
+    ]);
+
     // =========================================================================
     // LAYER 1: Web Speech Recognition (Zero false-alarms from coughs/fans; captures real words)
     // =========================================================================
@@ -703,16 +718,29 @@ export default function ExamTake() {
             }
           }
           transcriptText = transcriptText.trim();
-          // Filter out transient non-verbal noise artifacts or empty punctuation
-          const words = transcriptText.replace(/[^a-zA-Z0-9\s]/g, "").trim().split(/\s+/).filter(Boolean);
-          // Only trigger if at least 1 real word with 3+ chars or 2+ words are recognized
-          const hasRealSpokenWords = words.length >= 2 || (words.length === 1 && words[0].length >= 3);
-          if (hasRealSpokenWords) {
+          if (!transcriptText) return;
+
+          // Strip brackets / annotations used by speech engines (e.g. [cough], (laughter))
+          const cleanedText = transcriptText.toLowerCase().replace(/[[\]()]/g, "").trim();
+          const tokens = cleanedText.split(/\s+/).filter(Boolean);
+
+          // Filter out known non-speech / noise / cough / hesitation tokens
+          const meaningfulWords = tokens.filter((w) => {
+            const stripped = w.replace(/[^a-z0-9]/g, "");
+            return stripped.length >= 2 && !NON_SPEECH_WORDS.has(stripped);
+          });
+
+          // Must be an actual spoken verbal sentence/phrase (at least 2 real meaningful words and 6+ letters)
+          const isRealSpokenPhrase = meaningfulWords.length >= 2 && meaningfulWords.join(" ").length >= 6;
+
+          if (isRealSpokenPhrase) {
             console.log(`[WebSpeech] Detected spoken words: "${transcriptText}"`);
             triggerVoiceStrike(
               "Speech / Speaking Detected",
               `Spoken words detected: "${transcriptText}"`
             );
+          } else {
+            console.log(`[WebSpeech] Filtered non-speech sound: "${transcriptText}"`);
           }
         };
 
@@ -755,7 +783,7 @@ export default function ExamTake() {
     }
 
     // =========================================================================
-    // LAYER 2: Web Audio Acoustic Formant & Energy Analyzer (Sustained Speech vs Transient Coughs)
+    // LAYER 2: Web Audio Acoustic Formant & Energy Analyzer (Meter + Fallback)
     // =========================================================================
     async function initAudioDetection() {
       try {
@@ -825,9 +853,8 @@ export default function ExamTake() {
 
         console.log(`[VoiceDetection] Acoustic analyzer active: speech bins ${speechMinBin}-${speechMaxBin}, noise bins ${highNoiseMinBin}-${highNoiseMaxBin}`);
 
-        // Sustained phonation frame tracking (rejects <600ms transient coughs, sneezes, and taps)
+        // Sustained phonation frame tracking (only for browsers where Web Speech is unavailable)
         let sustainedSpeechFrames = 0;
-        let quietFrames = 0;
 
         const checkAudio = () => {
           if (!isMounted || submittedRef.current) return;
@@ -891,49 +918,33 @@ export default function ExamTake() {
             setMicAudioLevel(normalizedVol);
           }
 
-          // 6. Intelligent Vocal Energy vs Cough/Noise Classification:
-          // - Normal conversational speech at 50cm produces RMS between 2.8 and 7.5.
-          // - Coughs, throat-clearing, and sneezes are turbulent explosive blasts with high high-frequency energy.
+          // 6. Vocal activity classification:
           const isAboveNoise = rms > Math.max(2.8, ambientBaselineRms + 1.8);
           const hasVocalEnergy = vocalAvg >= (ambientBaselineVocal + 4.0) && maxVocal >= 24;
           const isTurbulentBlast = highAvg >= (vocalAvg * 0.92);
-
-          // Vocal phonation is strictly speech formants and NOT a high-frequency turbulent cough blast
           const isVocalPhonation = isAboveNoise && hasVocalEnergy && !isTurbulentBlast;
 
-          // 7. Sustained Phonation Tracking:
-          // A cough or throat clearing is a transient burst lasting only 150-350ms (~10-25 frames).
-          // Continuous human conversation is sustained across multiple words/syllables.
-          if (isVocalPhonation) {
-            sustainedSpeechFrames++;
-            quietFrames = 0;
-          } else {
-            quietFrames++;
-            if (quietFrames > 10) {
-              // If candidate pauses for more than ~160ms and sound was not sustained,
-              // it was an isolated transient noise (cough, throat clear, sigh, click). Reset immediately!
-              if (sustainedSpeechFrames < 45) {
-                sustainedSpeechFrames = 0;
-              } else {
-                // Natural brief inter-syllable pause during continuous talking
-                sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 2);
-              }
+          // 7. When Web Speech API is supported & active in the browser (Chrome, Edge, Safari),
+          // Web Speech handles semantic speech recognition and filters out coughs, sneezes, and noise.
+          // Raw acoustic volume is NEVER used to issue strikes when Web Speech is running,
+          // completely preventing false strikes on coughs, throat-clearing, or room sounds.
+          if (!isWebSpeechRunning) {
+            // Fallback for browsers without Web Speech (e.g. Firefox):
+            // Strictly require continuous uninterrupted vocal formant sound for >= 4.0 seconds (240 frames)
+            if (isVocalPhonation) {
+              sustainedSpeechFrames++;
+            } else {
+              sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 5);
             }
-          }
 
-          // At 60fps:
-          // If Web Speech is running, it natively transcribes words with 0 false-alarms on coughs.
-          // In that case, acoustic fallback only flags continuous whispering/humming (> 2.5s = ~150 frames).
-          // If Web Speech is not running, require at least 1.4s of sustained speech (~85 frames).
-          const requiredFrames = isWebSpeechRunning ? 150 : 85;
-
-          if (sustainedSpeechFrames >= requiredFrames) {
-            sustainedSpeechFrames = 0;
-            triggerVoiceStrike(
-              "Voice / Speaking Detected",
-              `Continuous speaking detected in front of camera (RMS: ${rms.toFixed(1)})`,
-              rms
-            );
+            if (sustainedSpeechFrames >= 240) {
+              sustainedSpeechFrames = 0;
+              triggerVoiceStrike(
+                "Voice / Speaking Detected",
+                `Prolonged continuous speaking detected (RMS: ${rms.toFixed(1)})`,
+                rms
+              );
+            }
           }
 
           animationFrameId = requestAnimationFrame(checkAudio);
