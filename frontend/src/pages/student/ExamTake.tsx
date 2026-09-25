@@ -643,7 +643,6 @@ export default function ExamTake() {
     let calibrationFrames = 0;
     let ambientBaselineRms = 1.0;
     let ambientBaselineVocal = 1.0;
-    let vocalAccumulator = 0;
     let lastUiUpdate = 0;
 
     // Flag indicating Web Speech API is active in browser
