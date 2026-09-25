@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -66,6 +67,79 @@ public class ExamAdminService {
                 .build();
         Exam saved = examRepository.save(exam);
         auditLogService.logAdmin(adminEmail, "EXAM_CREATED", "Created exam '" + saved.getName() + "' (ID: " + saved.getId() + ")");
+        return saved;
+    }
+
+    @Transactional
+    public Exam updateExam(Long examId, UpdateExamRequest req, String adminEmail) {
+        Exam exam = getById(examId);
+
+        Instant newStartAt = req.startAt() != null ? req.startAt() : exam.getStartAt();
+        Instant newEndAt = req.endAt() != null ? req.endAt() : exam.getEndAt();
+        if (newEndAt != null && newStartAt != null && !newEndAt.isAfter(newStartAt)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "endAt must be after startAt.");
+        }
+
+        if (req.name() != null && !req.name().isBlank()) {
+            exam.setName(req.name().trim());
+        }
+        if (req.description() != null) {
+            exam.setDescription(req.description().trim());
+        }
+        if (req.subject() != null) {
+            exam.setSubject(req.subject().trim());
+        }
+        if (req.durationMinutes() != null) {
+            exam.setDurationMinutes(req.durationMinutes());
+        }
+        if (req.startAt() != null) {
+            exam.setStartAt(req.startAt());
+        }
+        if (req.endAt() != null) {
+            exam.setEndAt(req.endAt());
+        }
+        if (req.numQuestions() != null) {
+            exam.setNumQuestions(req.numQuestions());
+        }
+        if (req.passingMarks() != null) {
+            exam.setPassingMarks(req.passingMarks());
+        }
+        if (req.negativeMarking() != null) {
+            exam.setNegativeMarking(req.negativeMarking());
+        }
+        if (req.randomizeQuestions() != null) {
+            exam.setRandomizeQuestions(req.randomizeQuestions());
+        }
+        if (req.randomizeOptions() != null) {
+            exam.setRandomizeOptions(req.randomizeOptions());
+        }
+        if (req.maxAttempts() != null) {
+            exam.setMaxAttempts(req.maxAttempts());
+        }
+        if (req.webcamRequired() != null) {
+            exam.setWebcamRequired(req.webcamRequired());
+        }
+        if (req.microphoneRequired() != null) {
+            exam.setMicrophoneRequired(req.microphoneRequired());
+        }
+        if (req.screenRequired() != null) {
+            exam.setScreenRequired(req.screenRequired());
+        }
+        if (req.locationRequired() != null) {
+            exam.setLocationRequired(req.locationRequired());
+        }
+        if (req.audioInputLevel() != null) {
+            exam.setProctoringConfig(buildProctoringConfigWithAudio(req.audioInputLevel()));
+        }
+        if (req.status() != null && !req.status().isBlank()) {
+            String st = req.status().trim().toUpperCase();
+            if (List.of("DRAFT", "PUBLISHED", "CLOSED").contains(st)) {
+                exam.setStatus(st);
+            }
+        }
+        exam.setUpdatedAt(Instant.now());
+        Exam saved = examRepository.save(exam);
+        auditLogService.logAdmin(adminEmail, "EXAM_UPDATED", "Updated exam '" + saved.getName() + "' (ID: " + saved.getId() + ")");
         return saved;
     }
 

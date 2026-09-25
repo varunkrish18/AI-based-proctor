@@ -61,7 +61,12 @@ export default function CreateExam() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
-      <h1 className="text-xl font-bold text-slate-900 mb-6">Create Exam</h1>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-slate-900">Create Exam</h1>
+        <p className="text-xs text-slate-500 mt-1">
+          Configure your examination settings. If you make any mistakes in time, question limits, attempts, or questions, you can fully edit every parameter at any time.
+        </p>
+      </div>
       <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-4">
         <Field label="Exam Name">
           <input required value={form.name} onChange={(e) => set("name", e.target.value)} className="input" />

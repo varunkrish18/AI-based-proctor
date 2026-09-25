@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, downloadFile } from "../../api/client";
+import ExamSettingsTab from "./ExamSettingsTab";
 import type {
   AdminAttemptSummary,
   Exam,
@@ -12,17 +13,26 @@ import type {
   WarningResponse,
 } from "../../types";
 
-type Tab = "questions" | "assign" | "results";
+type Tab = "questions" | "settings" | "assign" | "results";
 
 export default function ExamDetail() {
   const { examId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryTab = searchParams.get("tab") as Tab | null;
   const [exam, setExam] = useState<Exam | null>(null);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
-  const [tab, setTab] = useState<Tab>("questions");
+  const [tab, setTab] = useState<Tab>(
+    queryTab && ["questions", "settings", "assign", "results"].includes(queryTab) ? queryTab : "questions"
+  );
   const [error, setError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  function handleTabChange(nextTab: Tab) {
+    setTab(nextTab);
+    setSearchParams({ tab: nextTab });
+  }
 
   function reload() {
     Promise.all([
@@ -125,6 +135,17 @@ export default function ExamDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleTabChange("settings")}
+            className={`px-3.5 py-2 rounded-md text-sm font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+              tab === "settings"
+                ? "bg-blue-600 text-white shadow-xs"
+                : "border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100"
+            }`}
+          >
+            <span>⚙️</span> Edit Exam Settings
+          </button>
           {exam.status === "DRAFT" && (
             <button onClick={publish} className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 cursor-pointer">
               Publish Exam
@@ -141,15 +162,21 @@ export default function ExamDetail() {
       </div>
 
       <div className="flex gap-1 mb-6 border-b border-slate-200">
-        {(["questions", "assign", "results"] as Tab[]).map((t) => (
+        {[
+          { id: "questions", label: "Questions" },
+          { id: "settings", label: "Exam Settings & Timing" },
+          { id: "assign", label: "Assign Students" },
+          { id: "results", label: "Results & Integrity" },
+        ].map((t) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px cursor-pointer ${
-              tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"
+            key={t.id}
+            onClick={() => handleTabChange(t.id as Tab)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px cursor-pointer flex items-center gap-1.5 ${
+              tab === t.id ? "border-blue-600 text-blue-600 font-bold" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
-            {t === "questions" ? "Questions" : t === "assign" ? "Assign Students" : "Results & Integrity"}
+            {t.id === "settings" && <span>⚙️</span>}
+            {t.label}
           </button>
         ))}
       </div>
@@ -160,6 +187,17 @@ export default function ExamDetail() {
           questions={questions}
           onAdded={reload}
           onUpdateLimit={handleUpdateLimit}
+          onSwitchToSettings={() => handleTabChange("settings")}
+        />
+      )}
+      {tab === "settings" && (
+        <ExamSettingsTab
+          exam={exam}
+          onUpdated={(updated) => {
+            setExam(updated);
+            reload();
+          }}
+          onSwitchToQuestions={() => handleTabChange("questions")}
         />
       )}
       {tab === "assign" && <AssignTab examId={exam.id} />}
@@ -225,11 +263,13 @@ function QuestionsTab({
   questions,
   onAdded,
   onUpdateLimit,
+  onSwitchToSettings,
 }: {
   exam: Exam;
   questions: ExamQuestion[];
   onAdded: () => void;
   onUpdateLimit: (newLimit: number) => Promise<void>;
+  onSwitchToSettings?: () => void;
 }) {
   const [form, setForm] = useState({ questionText: "", optionA: "", optionB: "", optionC: "", optionD: "", correctAnswer: 0, marks: 1 });
   const [error, setError] = useState<string | null>(null);
@@ -384,6 +424,15 @@ function QuestionsTab({
                 className="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
               >
                 {increasingLimit ? "Updating…" : `+ Increase Limit to ${questions.length + 1} Questions`}
+              </button>
+            )}
+            {onSwitchToSettings && (
+              <button
+                type="button"
+                onClick={onSwitchToSettings}
+                className="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg transition-colors cursor-pointer"
+              >
+                ⚙️ Exam Settings (Timing, Attempts, etc.)
               </button>
             )}
           </div>

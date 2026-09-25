@@ -1019,6 +1019,13 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-5 py-3.5 text-right space-x-2">
                         <Link
+                          to={`/admin/exams/${e.id}?tab=settings`}
+                          className="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1"
+                          title="Edit exam timing, questions limit, attempts, and proctoring parameters"
+                        >
+                          <span>⚙️</span> Edit
+                        </Link>
+                        <Link
                           to={`/admin/exams/${e.id}`}
                           className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
                         >

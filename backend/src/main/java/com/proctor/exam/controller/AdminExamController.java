@@ -39,6 +39,13 @@ public class AdminExamController {
         return examAdminService.getById(examId);
     }
 
+    @PutMapping("/{examId}")
+    public Exam updateExam(@PathVariable Long examId,
+                           @Valid @RequestBody UpdateExamRequest request,
+                           Authentication auth) {
+        return examAdminService.updateExam(examId, request, auth.getName());
+    }
+
     @PostMapping("/{examId}/publish")
     public Exam publish(@PathVariable Long examId) {
         return examAdminService.publish(examId);
