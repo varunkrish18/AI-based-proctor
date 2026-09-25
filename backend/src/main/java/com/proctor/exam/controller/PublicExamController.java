@@ -6,28 +6,44 @@ import com.proctor.exam.dto.VerifyStudentResponse;
 import com.proctor.exam.entity.Exam;
 import com.proctor.exam.repository.ExamRepository;
 import com.proctor.exam.service.StudentExamService;
+import com.proctor.exam.service.TrustedTimeService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
-/** Unauthenticated endpoints: the public exams list (landing page) and email verification. */
+/** Unauthenticated endpoints: the public exams list (landing page), network time, and email verification. */
 @RestController
 @RequestMapping("/api/exams")
 public class PublicExamController {
 
     private final ExamRepository examRepository;
     private final StudentExamService studentExamService;
+    private final TrustedTimeService trustedTimeService;
 
-    public PublicExamController(ExamRepository examRepository, StudentExamService studentExamService) {
+    public PublicExamController(ExamRepository examRepository,
+                                StudentExamService studentExamService,
+                                TrustedTimeService trustedTimeService) {
         this.examRepository = examRepository;
         this.studentExamService = studentExamService;
+        this.trustedTimeService = trustedTimeService;
+    }
+
+    @GetMapping("/time")
+    public Map<String, Object> getNetworkTime() {
+        Instant now = trustedTimeService.now();
+        return Map.of(
+                "iso", now.toString(),
+                "epochMillis", now.toEpochMilli(),
+                "source", trustedTimeService.getTimeSource()
+        );
     }
 
     @GetMapping("/public")
     public List<ExamSummaryResponse> listPublicExams() {
-        Instant now = Instant.now();
+        Instant now = trustedTimeService.now();
         return examRepository.findByStatus("PUBLISHED").stream()
                 .map(e -> new ExamSummaryResponse(e.getId(), e.getName(), e.getSubject(), e.getNumQuestions(),
                         e.getDurationMinutes(), e.getStartAt(), e.getEndAt(), computeDisplayStatus(e, now)))

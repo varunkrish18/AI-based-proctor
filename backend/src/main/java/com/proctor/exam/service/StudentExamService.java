@@ -25,6 +25,7 @@ public class StudentExamService {
     private final StudentRepository studentRepository;
     private final JwtService jwtService;
     private final ProctoringSessionService proctoringSessionService;
+    private final TrustedTimeService trustedTimeService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public StudentExamService(ExamRepository examRepository,
@@ -34,7 +35,8 @@ public class StudentExamService {
                                ExamAnswerRepository answerRepository,
                                StudentRepository studentRepository,
                                JwtService jwtService,
-                               ProctoringSessionService proctoringSessionService) {
+                               ProctoringSessionService proctoringSessionService,
+                               TrustedTimeService trustedTimeService) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
@@ -43,6 +45,7 @@ public class StudentExamService {
         this.studentRepository = studentRepository;
         this.jwtService = jwtService;
         this.proctoringSessionService = proctoringSessionService;
+        this.trustedTimeService = trustedTimeService;
     }
 
     /**
@@ -62,6 +65,14 @@ public class StudentExamService {
             return new VerifyStudentResponse(false, null, "This exam is not assigned to this email address.");
         }
 
+        Instant now = trustedTimeService.now();
+        if (exam.getStartAt() != null && now.isBefore(exam.getStartAt())) {
+            return new VerifyStudentResponse(false, null, "Exam has not started yet. Starts at: " + exam.getStartAt());
+        }
+        if (exam.getEndAt() != null && now.isAfter(exam.getEndAt())) {
+            return new VerifyStudentResponse(false, null, "This exam has already ended.");
+        }
+
         studentRepository.findByEmail(email).orElseGet(() ->
                 studentRepository.save(Student.builder().email(email).build()));
 
@@ -74,9 +85,10 @@ public class StudentExamService {
         Exam exam = examRepository.findById(examId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found."));
 
-        Instant now = Instant.now();
-        if (now.isBefore(exam.getStartAt()) || now.isAfter(exam.getEndAt())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "This exam is not currently available.");
+        Instant now = trustedTimeService.now();
+        if ((exam.getStartAt() != null && now.isBefore(exam.getStartAt())) ||
+            (exam.getEndAt() != null && now.isAfter(exam.getEndAt()))) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "This exam is not currently available. Starts at: " + exam.getStartAt() + ", Ends at: " + exam.getEndAt());
         }
 
         List<ExamAttempt> existingAttempts = attemptRepository
@@ -169,7 +181,7 @@ public class StudentExamService {
         ExamAnswer answer = answerRepository.findByAttemptIdAndQuestionId(attemptId, req.questionId())
                 .orElse(ExamAnswer.builder().attempt(attempt).question(question).build());
         answer.setSelectedOption(req.selectedOption());
-        answer.setAnsweredAt(Instant.now());
+        answer.setAnsweredAt(trustedTimeService.now());
         answerRepository.save(answer);
     }
 
@@ -206,7 +218,7 @@ public class StudentExamService {
         }
 
         attempt.setStatus("SUBMITTED");
-        attempt.setEndTime(Instant.now());
+        attempt.setEndTime(trustedTimeService.now());
         attempt.setScore(score);
         attemptRepository.save(attempt);
 

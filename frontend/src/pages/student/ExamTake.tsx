@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { useEventLogger } from "../../hooks/useEventLogger";
+import { getTrustedEpochMs, syncTrustedTime } from "../../utils/networkTime";
 import type {
   StartExamResponse,
   StudentQuestion,
@@ -150,22 +151,25 @@ export default function ExamTake() {
     if (hasRequestedStartRef.current) return;
     hasRequestedStartRef.current = true;
 
-    api
-      .post<StartExamResponse>(`/api/student/exams/${examId}/start`, undefined, "student")
-      .then((res) => {
-        setSession(res);
-        const elapsedSeconds = Math.floor(
-          (Date.now() - new Date(res.serverStartTime).getTime()) / 1000
-        );
-        setRemainingSeconds(Math.max(res.durationMinutes * 60 - elapsedSeconds, 0));
+    syncTrustedTime().then(() => {
+      api
+        .post<StartExamResponse>(`/api/student/exams/${examId}/start`, undefined, "student")
+        .then((res) => {
+          setSession(res);
+          const elapsedSeconds = Math.max(
+            0,
+            Math.floor((getTrustedEpochMs() - new Date(res.serverStartTime).getTime()) / 1000)
+          );
+          setRemainingSeconds(Math.max(res.durationMinutes * 60 - elapsedSeconds, 0));
 
-        // If screen is not required, gate passes immediately
-        if (res.screenRequired === false) {
-          setScreenGatePassed(true);
-        }
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+          // If screen is not required, gate passes immediately
+          if (res.screenRequired === false) {
+            setScreenGatePassed(true);
+          }
+        })
+        .catch((e) => setError(e.message))
+        .finally(() => setLoading(false));
+    });
   }, [examId]);
 
   // Keep video elements synchronized with active webcam stream
@@ -290,13 +294,21 @@ export default function ExamTake() {
   // Countdown timer; only runs once screenGatePassed is true
   useEffect(() => {
     if (!session || !screenGatePassed) return;
-    if (remainingSeconds <= 0) {
-      handleSubmit();
-      return;
-    }
-    const t = setTimeout(() => setRemainingSeconds((s) => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [remainingSeconds, session, screenGatePassed, handleSubmit]);
+
+    const updateRemaining = () => {
+      const serverStartMs = new Date(session.serverStartTime).getTime();
+      const elapsedSeconds = Math.max(0, Math.floor((getTrustedEpochMs() - serverStartMs) / 1000));
+      const left = Math.max(session.durationMinutes * 60 - elapsedSeconds, 0);
+      setRemainingSeconds(left);
+      if (left <= 0) {
+        handleSubmit("Time limit reached");
+      }
+    };
+
+    updateRemaining();
+    const timer = setInterval(updateRemaining, 1000);
+    return () => clearInterval(timer);
+  }, [session, screenGatePassed, handleSubmit]);
 
   // Screen share & media acquisition gate
   async function startProctoringAndExam() {
