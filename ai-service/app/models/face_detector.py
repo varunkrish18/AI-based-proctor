@@ -10,6 +10,7 @@ Phase 5: Head pose via solvePnP + iris-based gaze classification
 
 import base64
 import os
+from pathlib import Path
 import cv2
 import numpy as np
 from typing import Tuple, Optional, List
@@ -32,6 +33,14 @@ from app.schemas import FrameAnalysisResponse, HeadPose, EventItem
 from app.models.onnx_classifier import classifier
 
 # ---------------------------------------------------------------------------
+# Model file paths (Absolute resolution relative to this file)
+# ---------------------------------------------------------------------------
+MODELS_DIR = Path(__file__).resolve().parent
+FACE_DETECTOR_MODEL = MODELS_DIR / "face_detector.task"
+FACE_LANDMARKER_MODEL = MODELS_DIR / "face_landmarker.task"
+OBJECT_DETECTOR_MODEL = MODELS_DIR / "efficientdet_lite0.tflite"
+
+# ---------------------------------------------------------------------------
 # Lazy singletons
 # ---------------------------------------------------------------------------
 
@@ -51,10 +60,9 @@ def _get_haar_cascade() -> cv2.CascadeClassifier:
     global _haar_cascade
     if _haar_cascade is None:
         # Primary: bundled alongside this package (works with headless opencv)
-        bundled = os.path.join(os.path.dirname(__file__), "..", "data", "haarcascade_frontalface_default.xml")
-        bundled = os.path.normpath(bundled)
-        if os.path.exists(bundled):
-            cascade_path = bundled
+        bundled = MODELS_DIR.parent / "data" / "haarcascade_frontalface_default.xml"
+        if bundled.exists():
+            cascade_path = str(bundled)
         else:
             # Fallback: full opencv-python install path
             cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -68,21 +76,22 @@ def _get_haar_cascade() -> cv2.CascadeClassifier:
 def _try_init_mediapipe():
     """
     Attempt to initialise MediaPipe Tasks FaceDetector and FaceLandmarker.
-    Requires model .task files:
-      - MEDIAPIPE_FACE_DETECTOR_MODEL  (default: models/face_detector.task)
-      - MEDIAPIPE_FACE_LANDMARKER_MODEL (default: models/face_landmarker.task)
-    If the files are absent, silently falls back to Haar.
+    Uses absolute Path(__file__) resolution so models load reliably in any Docker/Proxmox working directory.
     """
     global _mp_face_detector, _mp_face_landmarker, _mp_object_detector, _mp_init_attempted
     _mp_init_attempted = True
 
     detector_model_path = os.environ.get(
         "MEDIAPIPE_FACE_DETECTOR_MODEL",
-        os.path.join(os.path.dirname(__file__), "..", "models", "face_detector.task")
+        str(FACE_DETECTOR_MODEL)
     )
     landmarker_model_path = os.environ.get(
         "MEDIAPIPE_FACE_LANDMARKER_MODEL",
-        os.path.join(os.path.dirname(__file__), "..", "models", "face_landmarker.task")
+        str(FACE_LANDMARKER_MODEL)
+    )
+    obj_model_path = os.environ.get(
+        "MEDIAPIPE_OBJECT_DETECTOR_MODEL",
+        str(OBJECT_DETECTOR_MODEL)
     )
 
     if not os.path.exists(detector_model_path):
@@ -94,7 +103,7 @@ def _try_init_mediapipe():
         from mediapipe.tasks.python import vision as mp_vision
 
         det_opts = mp_vision.FaceDetectorOptions(
-            base_options=mp_python.BaseOptions(model_asset_path=detector_model_path),
+            base_options=mp_python.BaseOptions(model_asset_path=str(detector_model_path)),
             min_detection_confidence=FACE_DETECTION_CONFIDENCE
         )
         _mp_face_detector = mp_vision.FaceDetector.create_from_options(det_opts)
@@ -102,7 +111,7 @@ def _try_init_mediapipe():
 
         if os.path.exists(landmarker_model_path):
             lmk_opts = mp_vision.FaceLandmarkerOptions(
-                base_options=mp_python.BaseOptions(model_asset_path=landmarker_model_path),
+                base_options=mp_python.BaseOptions(model_asset_path=str(landmarker_model_path)),
                 # One landmark pass supplies both gaze data and multi-face count.
                 # This avoids a separate face-detector inference for normal frames.
                 num_faces=2,
@@ -114,13 +123,9 @@ def _try_init_mediapipe():
             _mp_face_landmarker = mp_vision.FaceLandmarker.create_from_options(lmk_opts)
             print("[INFO] MediaPipe Tasks FaceLandmarker initialised.")
 
-        obj_model_path = os.environ.get(
-            "MEDIAPIPE_OBJECT_DETECTOR_MODEL",
-            os.path.join(os.path.dirname(__file__), "..", "models", "efficientdet_lite0.tflite")
-        )
         if os.path.exists(obj_model_path):
             obj_opts = mp_vision.ObjectDetectorOptions(
-                base_options=mp_python.BaseOptions(model_asset_path=obj_model_path),
+                base_options=mp_python.BaseOptions(model_asset_path=str(obj_model_path)),
                 score_threshold=OBJECT_DETECTION_CONFIDENCE,
                 category_allowlist=None  # Scan for all objects including person, phone, book, laptop, etc.
             )
