@@ -8,6 +8,8 @@ application-local.properties
 secrets.yml
 *.pem
 *.key
+frontend/ssl/*.crt
+frontend/ssl/*.key
 
 # Java / Maven (Backend)
 backend/target/
