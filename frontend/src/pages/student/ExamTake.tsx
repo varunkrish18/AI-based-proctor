@@ -47,29 +47,39 @@ function createMockStream(): MediaStream {
   return stream;
 }
 
-function createMockScreenStream(): MediaStream {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1280;
-  canvas.height = 720;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.fillStyle = "#0f172a";
-    ctx.fillRect(0, 0, 1280, 720);
-    ctx.fillStyle = "#38bdf8";
-    ctx.font = "bold 28px sans-serif";
-    ctx.fillText("Simulated Monitor Screen Stream", 380, 340);
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = "16px sans-serif";
-    ctx.fillText("(Virtual Proctoring Active)", 470, 390);
+function checkIsEntireScreen(videoTrack: MediaStreamTrack): { isEntireScreen: boolean; reason?: string } {
+  if (!videoTrack) {
+    return { isEntireScreen: false, reason: "No video track detected from screen sharing." };
   }
-  const stream = (canvas as any).captureStream ? (canvas as any).captureStream(5) : new MediaStream();
-  const track = stream.getVideoTracks()[0];
-  if (track) {
-    try {
-      Object.defineProperty(track, "label", { value: "mock-screen" });
-    } catch {}
+
+  const settings = videoTrack.getSettings ? videoTrack.getSettings() : ({} as any);
+  const trackLabel = (videoTrack.label || "").trim();
+
+  // 1. Standard W3C displaySurface setting check
+  if (settings.displaySurface) {
+    if (settings.displaySurface === "monitor") {
+      return { isEntireScreen: true };
+    } else {
+      const surfaceType = settings.displaySurface === "browser" ? "Browser Tab" : "Application Window";
+      return {
+        isEntireScreen: false,
+        reason: `Access Denied: You selected a ${surfaceType} instead of 'Entire Screen'. You MUST choose 'Entire Screen' to take the examination.`,
+      };
+    }
   }
-  return stream;
+
+  // 2. Secondary heuristic check if displaySurface is omitted by browser
+  const isWindowOrTab = /window|tab|chrome|edge|firefox|opera|brave|application/i.test(trackLabel);
+  const isScreenOrDisplay = /screen|monitor|display|entire/i.test(trackLabel);
+
+  if (isWindowOrTab || !isScreenOrDisplay) {
+    return {
+      isEntireScreen: false,
+      reason: `Access Denied: Could not verify Entire Screen sharing (detected: "${trackLabel || "Unknown surface"}"). Please click the 'Entire Screen' tab in the browser dialog.`,
+    };
+  }
+
+  return { isEntireScreen: true };
 }
 
 export default function ExamTake() {
@@ -101,7 +111,6 @@ export default function ExamTake() {
   const [micAudioLevel, setMicAudioLevel] = useState<number>(0);
   const [screenStatus, setScreenStatus] = useState<string>("UNKNOWN");
   const [fullscreenExited, setFullscreenExited] = useState<boolean>(false);
-  const [fullscreenFrozen, setFullscreenFrozen] = useState<boolean>(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiFrameAnalysisResponse | null>(null);
   const [cameraMinimized, setCameraMinimized] = useState<boolean>(false);
   const [entireScreenMissing, setEntireScreenMissing] = useState<boolean>(false);
@@ -321,63 +330,55 @@ export default function ExamTake() {
     const micRequired = session.microphoneRequired ?? true;
 
     try {
-      // 1. Acquire screen capture if required — with automatic simulated fallback for all browsers
+      // 1. Acquire screen capture if required — STRICT ENTIRE SCREEN ENFORCEMENT
       if (screenRequired) {
-        let screenStream: MediaStream;
         if (!navigator.mediaDevices?.getDisplayMedia) {
-          screenStream = createMockScreenStream();
-        } else {
+          throw new Error("Screen sharing is not supported by your browser. Please use Google Chrome, Microsoft Edge, or Mozilla Firefox.");
+        }
+
+        let screenStream: MediaStream;
+        try {
+          screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              displaySurface: "monitor",
+            },
+            audio: false,
+            selfBrowserSurface: "exclude",
+            surfaceSwitching: "exclude",
+            systemAudio: "exclude",
+            monitorTypeSurfaces: "include",
+          } as any);
+        } catch (shareErr: any) {
+          if (shareErr.name === "NotAllowedError" || shareErr.name === "PermissionDeniedError" || shareErr.name === "AbortError") {
+            throw new Error("Screen sharing permission was cancelled or denied. You cannot access the exam without sharing your Entire Screen.");
+          }
           try {
             screenStream = await navigator.mediaDevices.getDisplayMedia({
-              video: {
-                displaySurface: "monitor",
-              },
+              video: { displaySurface: "monitor" },
               audio: false,
-              selfBrowserSurface: "exclude",
-              surfaceSwitching: "exclude",
-              systemAudio: "exclude",
-              monitorTypeSurfaces: "include",
             } as any);
           } catch {
-            try {
-              screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { displaySurface: "monitor" },
-                audio: false,
-              } as any);
-            } catch {
-              screenStream = createMockScreenStream();
-            }
+            throw new Error("Screen sharing is required to access the exam. Please select 'Entire Screen'.");
           }
         }
 
         const videoTrack = screenStream.getVideoTracks()[0];
-        const trackLabel = videoTrack?.label ?? "unknown";
-        const settings = videoTrack?.getSettings?.() ?? {};
-        const isMonitor =
-          trackLabel === "mock-screen" ||
-          settings.displaySurface === "monitor" ||
-          (!settings.displaySurface && !/window|tab|chrome|edge/i.test(trackLabel) && /screen|monitor|display/i.test(trackLabel));
-
-        if (!isMonitor) {
-          // If window selected instead of monitor, fallback gracefully to mock monitor
+        const screenCheck = checkIsEntireScreen(videoTrack);
+        if (!screenCheck.isEntireScreen) {
           screenStream.getTracks().forEach((t) => t.stop());
-          screenStream = createMockScreenStream();
+          throw new Error(screenCheck.reason || "You must select 'Entire Screen' to access this examination.");
         }
 
         screenStreamRef.current = screenStream;
         setScreenStatus("ACTIVE");
         setEntireScreenMissing(false);
-        logEvent("SCREEN_SHARE_STARTED", undefined, { label: trackLabel, kind: "fullscreen" });
+        logEvent("SCREEN_SHARE_STARTED", undefined, { label: videoTrack.label, kind: "fullscreen" });
 
-        const activeTrack = screenStream.getVideoTracks()[0];
-        if (activeTrack) {
-          activeTrack.onended = () => {
-            if (activeTrack.label === "mock-screen") return;
-            setScreenStatus("LOST");
-            setEntireScreenMissing(true);
-            logEvent("SCREEN_CAPTURE_STOPPED", undefined, { reason: "User stopped screen share" });
-          };
-        }
+        videoTrack.onended = () => {
+          setScreenStatus("LOST");
+          setEntireScreenMissing(true);
+          logEvent("SCREEN_CAPTURE_STOPPED", undefined, { reason: "User stopped screen share" });
+        };
       }
 
       // 2. Acquire webcam and microphone if required — with automatic simulated fallback for all browsers
@@ -454,20 +455,28 @@ export default function ExamTake() {
         }
       }
 
-      // 3. Request fullscreen (best-effort across browsers)
+      // 3. Request fullscreen (strictly mandatory to begin the examination)
       if (document.documentElement.requestFullscreen) {
         try {
           await document.documentElement.requestFullscreen();
         } catch (fsErr) {
-          console.warn("Fullscreen request bypassed:", fsErr);
+          console.error("Fullscreen request failed:", fsErr);
+          throw new Error("Fullscreen mode is mandatory to begin the examination. Please allow fullscreen when prompted.");
         }
+      } else {
+        throw new Error("Fullscreen mode is not supported by your browser. Please use Chrome, Edge, or Firefox.");
       }
 
       examStartTimeRef.current = Date.now();
       setScreenGatePassed(true);
-    } catch (err: unknown) {
-      console.warn("Proctoring gate initialized with fallbacks:", err);
-      setScreenGatePassed(true);
+    } catch (err: any) {
+      console.error("Proctoring gate failed:", err);
+      stopAllMediaStreams();
+      const message =
+        err?.message ||
+        "Could not verify entire screen sharing and required permissions. Entire screen sharing is mandatory to enter the exam.";
+      setSetupError(message);
+      setScreenGatePassed(false);
     } finally {
       setGateLoading(false);
     }
@@ -478,10 +487,7 @@ export default function ExamTake() {
     setScreenError(null);
     try {
       if (!navigator.mediaDevices?.getDisplayMedia) {
-        screenStreamRef.current = createMockScreenStream();
-        setEntireScreenMissing(false);
-        setScreenStatus("ACTIVE");
-        return;
+        throw new Error("Screen sharing is not supported by your browser.");
       }
       let screenStream: MediaStream;
       try {
@@ -490,9 +496,27 @@ export default function ExamTake() {
             displaySurface: "monitor",
           },
           audio: false,
+          selfBrowserSurface: "exclude",
+          surfaceSwitching: "exclude",
+          systemAudio: "exclude",
+          monitorTypeSurfaces: "include",
         } as any);
       } catch {
-        screenStream = createMockScreenStream();
+        try {
+          screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { displaySurface: "monitor" },
+            audio: false,
+          } as any);
+        } catch {
+          throw new Error("Screen sharing was cancelled or denied. Please select 'Entire Screen'.");
+        }
+      }
+
+      const videoTrack = screenStream.getVideoTracks()[0];
+      const screenCheck = checkIsEntireScreen(videoTrack);
+      if (!screenCheck.isEntireScreen) {
+        screenStream.getTracks().forEach((t) => t.stop());
+        throw new Error(screenCheck.reason || "You must select 'Entire Screen' to continue.");
       }
 
       if (screenStreamRef.current) {
@@ -502,10 +526,16 @@ export default function ExamTake() {
       setScreenStatus("ACTIVE");
       setEntireScreenMissing(false);
       setScreenError(null);
-    } catch {
-      screenStreamRef.current = createMockScreenStream();
-      setScreenStatus("ACTIVE");
-      setEntireScreenMissing(false);
+      logEvent("SCREEN_SHARE_STARTED", undefined, { label: videoTrack.label, kind: "fullscreen" });
+
+      videoTrack.onended = () => {
+        setScreenStatus("LOST");
+        setEntireScreenMissing(true);
+        logEvent("SCREEN_CAPTURE_STOPPED", undefined, { reason: "User stopped screen share" });
+      };
+    } catch (err: any) {
+      setScreenError(err?.message || "Failed to share entire screen. Please select 'Entire Screen'.");
+      setEntireScreenMissing(true);
     } finally {
       setReacquiringScreen(false);
     }
@@ -1273,6 +1303,11 @@ export default function ExamTake() {
         e.preventDefault();
         logEvent("DEVTOOLS_SHORTCUT_BLOCKED");
       }
+      // Block F11 fullscreen toggle
+      if (e.key === "F11") {
+        e.preventDefault();
+        logEvent("KEYBOARD_SHORTCUT_BLOCKED", undefined, { key: "F11" });
+      }
     }
 
     document.addEventListener("contextmenu", blockContextMenu);
@@ -1293,25 +1328,37 @@ export default function ExamTake() {
     if (!session || !screenGatePassed) return;
 
     function onFullscreenChange() {
-      if (!document.fullscreenElement) {
+      const isFullscreen = Boolean(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+
+      if (!isFullscreen) {
+        // If candidate exits fullscreen at any point during the exam, TERMINATE immediately!
+        // Allow a 1.5-second grace period from exam start time to avoid initial transition race condition
+        if (Date.now() - examStartTimeRef.current < 1500) {
+          return;
+        }
+
+        if (submittedRef.current) return;
+
         setFullscreenExited(true);
         fullscreenViolationCount.current += 1;
 
-        logEvent("FULLSCREEN_EXIT", undefined, { count: fullscreenViolationCount.current });
+        logEvent("FULLSCREEN_EXIT", undefined, {
+          count: fullscreenViolationCount.current,
+          action: "EXAM_TERMINATED",
+          reason: "Candidate exited fullscreen mode",
+        });
         flushNow();
 
-        if (fullscreenViolationCount.current >= 2) {
-          // Freeze the exam UI after 2 violations
-          setFullscreenFrozen(true);
-          setWarning(
-            `EXAM FROZEN: You have exited fullscreen ${fullscreenViolationCount.current} time(s). Return to fullscreen immediately to continue.`
-          );
-        } else {
-          setWarning("Warning: you exited fullscreen. Please return to fullscreen mode immediately.");
-        }
+        handleSubmit(
+          "Exam Terminated: You exited fullscreen mode during the examination. Fullscreen is strictly mandatory at all times."
+        );
       } else {
         setFullscreenExited(false);
-        setFullscreenFrozen(false);
       }
     }
 
@@ -1356,26 +1403,25 @@ export default function ExamTake() {
     }
 
     document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+    document.addEventListener("mozfullscreenchange", onFullscreenChange);
+    document.addEventListener("MSFullscreenChange", onFullscreenChange);
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onWindowBlur);
     window.addEventListener("focus", onWindowFocus);
 
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", onFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", onFullscreenChange);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("focus", onWindowFocus);
       stopAllMediaStreams();
     };
-  }, [session, screenGatePassed, logEvent, flushNow, stopAllMediaStreams, issueWarningStrike]);
+  }, [session, screenGatePassed, logEvent, flushNow, stopAllMediaStreams, issueWarningStrike, handleSubmit]);
 
-  const requestReenterFullscreen = async () => {
-    try {
-      await document.documentElement.requestFullscreen?.();
-    } catch {
-      setWarning("Could not enter fullscreen. Please press F11 or check browser settings.");
-    }
-  };
 
   const questions: StudentQuestion[] = useMemo(() => session?.questions ?? [], [session]);
   const q = questions[current];
@@ -1450,7 +1496,7 @@ export default function ExamTake() {
 
           {setupError && (
             <div className="bg-red-50 text-red-700 border border-red-200 rounded-md p-3 text-sm mb-4">
-              {setupError}
+              <p className="font-medium">{setupError}</p>
               <div className="mt-3 flex flex-wrap gap-2 items-center">
                 <Link to={`/exam/${examId}/system-check`} className="text-red-800 underline font-medium text-xs">
                   ← Return to System Check
@@ -1465,16 +1511,6 @@ export default function ExamTake() {
                     🔒 Switch to HTTPS
                   </button>
                 )}
-                <button
-                  onClick={() => {
-                    sessionStorage.setItem("proctor_demo_bypass", "true");
-                    setSetupError(null);
-                    startProctoringAndExam();
-                  }}
-                  className="text-xs bg-purple-700 text-white px-2.5 py-1 rounded hover:bg-purple-800 font-semibold cursor-pointer"
-                >
-                  🧪 Continue in Test Mode
-                </button>
               </div>
             </div>
           )}
@@ -1536,29 +1572,23 @@ export default function ExamTake() {
     );
   }
 
-  // Fullscreen freeze overlay — renders OVER the exam, blocking all interaction
-  if (fullscreenFrozen) {
+  // Submitting / Exam Terminating Overlay
+  if (submitting) {
     return (
       <div
-        className="fixed inset-0 z-50 flex flex-col items-center justify-center"
-        style={{ background: "rgba(15,15,15,0.97)" }}
+        className="fixed inset-0 z-[10000] flex flex-col items-center justify-center p-4 select-none backdrop-blur-md"
+        style={{ background: "rgba(15, 23, 42, 0.98)" }}
       >
-        <div className="bg-rose-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-8 text-center shadow-2xl">
-          <div className="text-5xl mb-4">🔒</div>
-          <h2 className="text-white text-2xl font-extrabold mb-2">Exam Frozen</h2>
-          <p className="text-rose-200 text-sm mb-1">
-            You have exited fullscreen{" "}
-            <strong className="text-white">{fullscreenViolationCount.current} time(s)</strong>.
+        <div className="bg-slate-900 border-2 border-red-500 rounded-2xl max-w-md w-full p-8 text-center shadow-2xl text-white space-y-4">
+          <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto text-3xl border border-red-500/40 animate-pulse">
+            🚨
+          </div>
+          <h2 className="text-2xl font-bold text-white">Submitting &amp; Terminating Exam</h2>
+          <p className="text-slate-300 text-sm leading-relaxed">
+            {fullscreenExited
+              ? "You exited fullscreen mode. Your examination session has been terminated and your recorded answers are being submitted."
+              : "Please wait while your answers and proctoring telemetry are safely uploaded to the server..."}
           </p>
-          <p className="text-rose-200 text-sm mb-6">
-            This session has been flagged. Return to fullscreen to continue. Each exit is logged and reviewed.
-          </p>
-          <button
-            onClick={requestReenterFullscreen}
-            className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 px-6 rounded-xl transition-colors cursor-pointer shadow-lg"
-          >
-            🔓 Return to Fullscreen &amp; Resume
-          </button>
         </div>
       </div>
     );
@@ -1822,18 +1852,10 @@ export default function ExamTake() {
         <span className="text-sm text-slate-300">{answeredCount} answered</span>
       </div>
 
-      {/* Persistent warning banner with level-based severity and re-prompt for fullscreen */}
+      {/* Persistent warning banner with level-based severity */}
       {warning && (
         <div className={`border-b px-4 py-2.5 text-sm flex items-center justify-center gap-3 shadow-xs transition-colors ${warningStyle}`}>
           <span className="font-medium">{warning}</span>
-          {fullscreenExited && (
-            <button
-              onClick={requestReenterFullscreen}
-              className="bg-amber-800 text-white text-xs px-3 py-1 rounded-md font-medium hover:bg-amber-900 transition-colors cursor-pointer"
-            >
-              Re-enter Fullscreen
-            </button>
-          )}
         </div>
       )}
 
