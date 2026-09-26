@@ -900,17 +900,28 @@ export default function ExamTake() {
 
     // Non-speech vocal sound blacklist (coughs, sneezes, throat clears, breathing, interjections)
     const NON_SPEECH_WORDS = new Set([
-      "cough", "coughing", "coughs", "coughed",
-      "throat", "clearing", "ahem",
+      "cough", "coughing", "coughs", "coughed", "coff", "cougher",
+      "throat", "clearing", "clear", "cleared", "ahem", "hack", "hacks", "hacking",
       "sneeze", "sneezing", "sneezes", "sneezed",
-      "sniff", "sniffing", "snort",
+      "sniff", "sniffing", "snort", "snore", "burp", "hiccup",
       "sigh", "sighing", "sighs",
       "yawn", "yawning", "yawns",
       "gasp", "gasping",
-      "groan", "grunt",
+      "groan", "grunt", "grunting",
       "laughter", "laughing", "applause",
-      "noise", "sound", "hum", "humming",
-      "uh", "um", "ah", "oh", "eh", "er", "hm", "hmm", "ha", "huh", "shh", "sh", "mm", "mmm"
+      "noise", "sound", "hum", "humming", "click", "thud", "tap",
+      // Common monosyllabic cough / noise mis-transcriptions
+      "uh", "um", "ah", "oh", "eh", "er", "hm", "hmm", "ha", "huh", "shh", "sh", "mm", "mmm",
+      "co", "dock", "off", "up", "hey", "tsk", "psst", "cut", "cup", "koff", "ach"
+    ]);
+
+    // Question indicator words for detecting questions asked aloud
+    const QUESTION_WORDS = new Set([
+      "what", "what's", "which", "how", "why", "where", "who", "whom", "whose", "when",
+      "can", "could", "would", "should", "is", "are", "am", "was", "were",
+      "do", "does", "did", "have", "has", "had",
+      "tell", "say", "explain", "repeat", "help", "answer", "option", "question",
+      "solve", "calculate", "meaning", "define", "google", "siri", "alexa"
     ]);
 
     // =========================================================================
@@ -947,17 +958,39 @@ export default function ExamTake() {
             return stripped.length >= 2 && !NON_SPEECH_WORDS.has(stripped);
           });
 
-          // Any spoken word with at least 2 letters detected
-          const isRealSpokenPhrase = meaningfulWords.length >= 1;
+          // If no meaningful words, or only blacklisted noise tokens, safely ignore
+          if (meaningfulWords.length === 0) {
+            console.log(`[WebSpeech] Filtered non-speech sound / cough: "${transcriptText}"`);
+            return;
+          }
 
-          if (isRealSpokenPhrase) {
-            console.log(`[WebSpeech] Detected spoken words: "${transcriptText}"`);
+          // Check if candidate is asking a question:
+          // 1) Contains an interrogative / question starter + at least 2 words (e.g. "what is", "can you", "option b", "answer 4")
+          // 2) Or ends with / contains a question mark '?' in transcript with at least 2 words
+          const hasQuestionWord = tokens.some((w) => {
+            const stripped = w.replace(/[^a-z0-9]/g, "");
+            return QUESTION_WORDS.has(stripped);
+          });
+          const hasQuestionMark = transcriptText.includes("?");
+          const isAskingQuestion = (hasQuestionWord || hasQuestionMark) && meaningfulWords.length >= 2;
+
+          // Continuous conversational speaking: 3 or more meaningful words (reading question aloud, consulting an assistant)
+          const isConversationalSpeech = meaningfulWords.length >= 3;
+
+          if (isAskingQuestion) {
+            console.log(`[WebSpeech] 🚨 Detected candidate asking question: "${transcriptText}"`);
+            triggerVoiceStrike(
+              "Question Asked Aloud",
+              `Question detected: "${transcriptText}"`
+            );
+          } else if (isConversationalSpeech) {
+            console.log(`[WebSpeech] 🚨 Detected spoken words: "${transcriptText}"`);
             triggerVoiceStrike(
               "Speech / Speaking Detected",
               `Spoken words detected: "${transcriptText}"`
             );
           } else {
-            console.log(`[WebSpeech] Filtered non-speech sound: "${transcriptText}"`);
+            console.log(`[WebSpeech] Filtered short noise / cough artifact (not a question): "${transcriptText}"`);
           }
         };
 
@@ -1071,6 +1104,8 @@ export default function ExamTake() {
 
         // Sustained phonation frame tracking for parallel acoustic voice activity detection
         let sustainedSpeechFrames = 0;
+        let coughCooldownFrames = 0;
+        let prevRms = 1.0;
 
         const checkAudio = () => {
           if (!isMounted || submittedRef.current) return;
@@ -1134,25 +1169,46 @@ export default function ExamTake() {
             setMicAudioLevel(normalizedVol);
           }
 
-          // 6. Vocal activity classification:
+          // 6. Cough & Impulsive Noise Rejection:
+          // A cough or throat clearing is an impulsive acoustic blast characterized by:
+          // - Rapid RMS rise (> 3.0 above previous frame) or high burst with broad turbulent noise
+          // - High friction/blast ratio (highAvg >= vocalAvg * 0.65)
+          const rmsRise = rms - prevRms;
+          const isImpulsiveCough = (rmsRise > 3.0 && rms > 4.5) || (rms > 7.0 && highAvg > vocalAvg * 0.65);
+
+          if (isImpulsiveCough) {
+            // Suppress speech accumulation for ~650ms during and after the cough burst
+            coughCooldownFrames = 40;
+            sustainedSpeechFrames = 0;
+          }
+
+          if (coughCooldownFrames > 0) {
+            coughCooldownFrames--;
+          }
+
+          prevRms = rms;
+
+          // Voiced speech characteristics:
+          // Resonant vocal formants (250Hz - 2800Hz), moderate steady amplitude above ambient noise floor, not in cough cooldown
           const isAboveNoise = rms > Math.max(2.2, ambientBaselineRms + 1.2);
           const hasVocalEnergy = vocalAvg >= (ambientBaselineVocal + 2.5) && maxVocal >= 18;
-          const isTurbulentBlast = highAvg >= (vocalAvg * 0.95);
-          const isVocalPhonation = isAboveNoise && hasVocalEnergy && !isTurbulentBlast;
+          const isTurbulentBlast = highAvg >= (vocalAvg * 0.85);
+          const isVocalPhonation = isAboveNoise && hasVocalEnergy && !isTurbulentBlast && coughCooldownFrames === 0;
 
           // 7. Parallel Acoustic Voice Activity Detection:
-          // Runs continuously alongside Web Speech to ensure zero missed voice events
+          // Coughs are short impulsive bursts lasting only 200-450ms (~15-25 frames).
+          // Real spoken sentences and questions take continuous speech lasting > 1.25s (75+ frames).
           if (isVocalPhonation) {
             sustainedSpeechFrames++;
           } else {
-            sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
+            sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 2);
           }
 
-          if (sustainedSpeechFrames >= 25) { // ~0.4s of sustained vocal phonation
+          if (sustainedSpeechFrames >= 75) { // ~1.25s of continuous vocal phonation (questions / conversational talking)
             sustainedSpeechFrames = 0;
             triggerVoiceStrike(
               "Voice / Speaking Detected",
-              `Speaking detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 8) * 100))}%)`,
+              `Continuous speaking detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 8) * 100))}%)`,
               rms
             );
           }
