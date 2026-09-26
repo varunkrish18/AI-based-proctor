@@ -15,7 +15,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from "recharts";
 
 const PIE_COLORS = ["#3b82f6", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6", "#ec4899", "#6366f1", "#14b8a6"];
@@ -44,6 +43,7 @@ export default function AdminDashboard() {
   const [examSearch, setExamSearch] = useState<string>("");
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
 
   // Exam deletion dialog state
   const [examToDelete, setExamToDelete] = useState<Exam | null>(null);
@@ -151,7 +151,14 @@ export default function AdminDashboard() {
     async function fetchLiveSessions() {
       try {
         const exs = await api.get<Exam[]>("/api/admin/exams", "admin");
-        if (exs) setExams(exs);
+        if (exs) {
+          setExams((prev) => {
+            if (prev.length === exs.length && prev.every((e, i) => e.id === exs[i]?.id && e.status === exs[i]?.status)) {
+              return prev;
+            }
+            return exs;
+          });
+        }
 
         const publishedIds = exs.filter((e) => e.status === "PUBLISHED" || e.status === "OPEN").map((e) => e.id);
         const allLive: AdminAttemptSummary[] = [];
@@ -292,14 +299,6 @@ export default function AdminDashboard() {
     ];
   }, [charts]);
 
-  // Overall Integrity Index: 100 - (HighSeverityToday * 2) or ratio
-  const integrityScore = useMemo(() => {
-    const totalAttempts = summary?.completedAttempts || exams.length || 1;
-    const highEvents = summary?.highSeverityEventsToday || 0;
-    const penalty = Math.min(45, (highEvents / Math.max(1, totalAttempts)) * 15);
-    return Math.max(72, Math.round((100 - penalty) * 10) / 10);
-  }, [summary, exams]);
-
   // Top threat identified
   const topThreat = useMemo(() => {
     if (!charts?.warningsByType || charts.warningsByType.length === 0) return null;
@@ -436,108 +435,64 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* SECTION 1: Executive Integrity Gauge & Core Health KPI */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-            {/* Integrity Score Hero Card */}
-            <div className="md:col-span-4 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-md relative overflow-hidden flex flex-col justify-between">
-              <div className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Exam Integrity Rating
-                  </span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                    Calculated Index
-                  </span>
-                </div>
-                <div className="mt-4 flex items-baseline gap-3">
-                  <span className="text-5xl font-black tracking-tight text-white">{integrityScore}%</span>
-                  <span className="text-xs text-emerald-400 font-semibold">High Confidence</span>
-                </div>
-                <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-                  Based on face continuity, absence of auxiliary devices, and zero screen escapes across submitted
-                  sessions.
-                </p>
-              </div>
-
-              {/* Visual Health Gauge Bar */}
-              <div className="mt-6 relative z-10">
-                <div className="flex justify-between text-[11px] text-slate-300 mb-1.5 font-medium">
-                  <span>Session Trust Level</span>
-                  <span>{integrityScore >= 90 ? "Excellent" : integrityScore >= 75 ? "Moderate" : "Flagged"}</span>
-                </div>
-                <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden border border-slate-700">
-                  <div
-                    className="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-emerald-500 via-teal-400 to-blue-500"
-                    style={{ width: `${integrityScore}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Background watermark icon */}
-              <div className="absolute -right-6 -bottom-6 text-slate-800/40 text-9xl font-black select-none pointer-events-none">
-                🛡️
-              </div>
-            </div>
-
-            {/* Core Stats Grid (8 Cards) */}
-            <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-              <StatTile
-                icon="📚"
-                label="Total Exams"
-                value={summary?.totalExams ?? exams.length}
-                subtext="Configured in system"
-              />
-              <StatTile
-                icon="🟢"
-                label="Published"
-                value={summary?.activeExams ?? exams.filter((e) => e.status === "PUBLISHED").length}
-                subtext="Currently open to test"
-                highlightColor="text-emerald-600"
-              />
-              <StatTile
-                icon="✍️"
-                label="Writing Now"
-                value={summary?.studentsCurrentlyWriting ?? liveSessions.length}
-                subtext="Active candidate streams"
-                highlightColor="text-indigo-600"
-                livePulse
-              />
-              <StatTile
-                icon="✅"
-                label="Completed"
-                value={summary?.completedAttempts ?? 0}
-                subtext="Submissions evaluated"
-                highlightColor="text-blue-600"
-              />
-              <StatTile
-                icon="⚠️"
-                label="Warnings Today"
-                value={summary?.warningsToday ?? 0}
-                subtext="Behavior strike alerts"
-                highlightColor="text-amber-600"
-              />
-              <StatTile
-                icon="🚨"
-                label="High Flags Today"
-                value={summary?.highSeverityEventsToday ?? 0}
-                subtext="Severe / Critical incidents"
-                highlightColor="text-rose-600"
-              />
-              <StatTile
-                icon="🚩"
-                label="Review Queue"
-                value={flaggedSessions.length}
-                subtext="Pending proctor audit"
-                highlightColor="text-orange-600"
-              />
-              <StatTile
-                icon="🤖"
-                label="AI Core"
-                value={aiDegraded?.degraded ? "DEGRADED" : "OPTIMAL"}
-                subtext="MediaPipe Biometrics"
-                highlightColor={aiDegraded?.degraded ? "text-amber-600" : "text-emerald-600"}
-              />
-            </div>
+          {/* SECTION 1: Executive KPI Metrics Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-4">
+            <StatTile
+              icon="📚"
+              label="Total Exams"
+              value={summary?.totalExams ?? exams.length}
+              subtext="Configured in system"
+            />
+            <StatTile
+              icon="🟢"
+              label="Published"
+              value={summary?.activeExams ?? exams.filter((e) => e.status === "PUBLISHED").length}
+              subtext="Currently open to test"
+              highlightColor="text-emerald-600"
+            />
+            <StatTile
+              icon="✍️"
+              label="Writing Now"
+              value={summary?.studentsCurrentlyWriting ?? liveSessions.length}
+              subtext="Active candidate streams"
+              highlightColor="text-indigo-600"
+              livePulse
+            />
+            <StatTile
+              icon="✅"
+              label="Completed"
+              value={summary?.completedAttempts ?? 0}
+              subtext="Submissions evaluated"
+              highlightColor="text-blue-600"
+            />
+            <StatTile
+              icon="⚠️"
+              label="Warnings Today"
+              value={summary?.warningsToday ?? 0}
+              subtext="Behavior strike alerts"
+              highlightColor="text-amber-600"
+            />
+            <StatTile
+              icon="🚨"
+              label="High Flags Today"
+              value={summary?.highSeverityEventsToday ?? 0}
+              subtext="Severe / Critical incidents"
+              highlightColor="text-rose-600"
+            />
+            <StatTile
+              icon="🚩"
+              label="Review Queue"
+              value={flaggedSessions.length}
+              subtext="Pending proctor audit"
+              highlightColor="text-orange-600"
+            />
+            <StatTile
+              icon="🤖"
+              label="AI Core"
+              value={aiDegraded?.degraded ? "DEGRADED" : "OPTIMAL"}
+              subtext="MediaPipe Biometrics"
+              highlightColor={aiDegraded?.degraded ? "text-amber-600" : "text-emerald-600"}
+            />
           </div>
 
           {/* SECTION 2: AI Proctor Intelligence Insights Banner */}
@@ -690,6 +645,7 @@ export default function AdminDashboard() {
                           strokeWidth={2.5}
                           fillOpacity={1}
                           fill="url(#anomalyGradient)"
+                          isAnimationActive={false}
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -716,41 +672,83 @@ export default function AdminDashboard() {
                   Proportion of browser events vs computer-vision gaze and face alerts.
                 </p>
 
-                <div className="h-68">
+                <div className="h-68 relative">
                   {charts.warningsByType.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={charts.warningsByType}
-                          dataKey="value"
-                          nameKey="label"
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={88}
-                          paddingAngle={3}
-                          label={({ name, percent }: any) =>
-                            `${(name || "").replace(/_/g, " ")}: ${(percent * 100).toFixed(0)}%`
-                          }
-                          labelLine={false}
-                        >
-                          {charts.warningsByType.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(val, name) => [val, (name as string).replace(/_/g, " ")]}
-                          contentStyle={{
-                            backgroundColor: "#0f172a",
-                            borderColor: "#334155",
-                            color: "#fff",
-                            borderRadius: "10px",
-                            fontSize: "12px",
-                          }}
-                        />
-                        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={charts.warningsByType}
+                            dataKey="value"
+                            nameKey="label"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={58}
+                            outerRadius={88}
+                            paddingAngle={3}
+                            isAnimationActive={false}
+                            label={({ name, percent }: any) =>
+                              `${(name || "").replace(/_/g, " ")}: ${(percent * 100).toFixed(0)}%`
+                            }
+                            labelLine={false}
+                            onClick={(_, index) => setActivePieIndex((prev) => (prev === index ? null : index))}
+                            onMouseEnter={(_, index) => setActivePieIndex(index)}
+                            onTouchStart={(_, index) => setActivePieIndex(index)}
+                            className="cursor-pointer outline-none"
+                          >
+                            {charts.warningsByType.map((_, index) => (
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={PIE_COLORS[index % PIE_COLORS.length]}
+                                stroke={activePieIndex === index ? "#0f172a" : "#fff"}
+                                strokeWidth={activePieIndex === index ? 3 : 1}
+                                opacity={activePieIndex === null || activePieIndex === index ? 1 : 0.6}
+                                className="transition-all duration-150 cursor-pointer"
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(val: any, name: any) => [
+                              `${val} flag${val === 1 ? "" : "s"} (${totalWarnings > 0 ? ((Number(val) / totalWarnings) * 100).toFixed(0) : 0}%)`,
+                              (name as string).replace(/_/g, " "),
+                            ]}
+                            contentStyle={{
+                              backgroundColor: "#0f172a",
+                              borderColor: "#334155",
+                              color: "#fff",
+                              borderRadius: "10px",
+                              fontSize: "12px",
+                              boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.3)",
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+
+                      {/* Donut Center Reading - updates on touch/click/hover */}
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none text-center flex flex-col items-center justify-center w-28 select-none">
+                        {activePieIndex !== null && charts.warningsByType[activePieIndex] ? (
+                          <>
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight line-clamp-1 max-w-[100px]">
+                              {charts.warningsByType[activePieIndex].label.replace(/_/g, " ")}
+                            </span>
+                            <span className="text-xl font-black text-slate-900">
+                              {totalWarnings > 0
+                                ? `${Math.round((charts.warningsByType[activePieIndex].value / totalWarnings) * 100)}%`
+                                : "0%"}
+                            </span>
+                            <span className="text-[11px] font-bold text-blue-600">
+                              {charts.warningsByType[activePieIndex].value} flag{charts.warningsByType[activePieIndex].value === 1 ? "" : "s"}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
+                            <span className="text-2xl font-black text-slate-800">{totalWarnings}</span>
+                            <span className="text-[10px] text-slate-400 font-medium">Flags</span>
+                          </>
+                        )}
+                      </div>
+                    </>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs">
                       <span className="text-3xl mb-1">🛡️</span>
@@ -790,7 +788,7 @@ export default function AdminDashboard() {
                             fontSize: "12px",
                           }}
                         />
-                        <Bar dataKey="value" name="Flagged Events" fill="#f43f5e" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="value" name="Flagged Events" fill="#f43f5e" radius={[6, 6, 0, 0]} isAnimationActive={false} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
@@ -832,7 +830,7 @@ export default function AdminDashboard() {
                             fontSize: "12px",
                           }}
                         />
-                        <Bar dataKey="value" name="Candidates" fill="#10b981" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="value" name="Candidates" fill="#10b981" radius={[6, 6, 0, 0]} isAnimationActive={false} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
