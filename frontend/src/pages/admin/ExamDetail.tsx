@@ -696,11 +696,29 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     setTogglingOpen(true);
     const target = !openToAll;
     try {
-      const updated = await api.post<Exam>(
-        `/api/admin/exams/${examId}/open-to-all`,
-        { openToAll: target },
-        "admin"
-      );
+      let updated: Exam;
+      try {
+        updated = await api.post<Exam>(
+          `/api/admin/exams/${examId}/open-to-all`,
+          { openToAll: target },
+          "admin"
+        );
+      } catch (err: any) {
+        if (err?.message?.includes("No static resource") || err?.status === 404) {
+          updated = await api.put<Exam>(
+            `/api/admin/exams/${examId}`,
+            {
+              name: exam.name,
+              durationMinutes: exam.durationMinutes,
+              numQuestions: exam.numQuestions,
+              openToAll: target,
+            },
+            "admin"
+          );
+        } else {
+          throw err;
+        }
+      }
       setOpenToAll(Boolean(updated.openToAll));
       if (onExamUpdated) onExamUpdated(updated);
       setStatus(
@@ -709,7 +727,12 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
           : "✓ Exam is now RESTRICTED. Only assigned candidates can write."
       );
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to toggle open access mode.");
+      const msg = err instanceof Error ? err.message : "Failed to toggle open access mode.";
+      if (msg.includes("No static resource") || msg.includes("404")) {
+        alert("The backend needs a restart to activate this new feature. In your backend terminal, press Ctrl+C and run: .\\mvnw.cmd spring-boot:run");
+      } else {
+        alert(msg);
+      }
     } finally {
       setTogglingOpen(false);
     }

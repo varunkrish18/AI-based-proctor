@@ -982,23 +982,17 @@ export default function ExamTake() {
           const hasQuestionMark = transcriptText.includes("?");
           const isAskingQuestion = hasQuestionWord || hasQuestionMark;
 
-          // Any 2+ meaningful spoken words is real human speech (a cough never produces 2 real words)
-          const isSpokenSpeech = meaningfulWords.length >= 2;
-
-          if (isAskingQuestion && (meaningfulWords.length >= 1 || tokens.length >= 1)) {
-            console.log(`[WebSpeech] 🚨 Detected candidate asking question: "${transcriptText}"`);
+          // Any meaningful spoken word (even 1 word like 'hello', 'bro', 'option', 'b') is spoken voice
+          if (meaningfulWords.length >= 1) {
+            console.log(`[WebSpeech] 🚨 Detected candidate speech/voice: "${transcriptText}"`);
             triggerVoiceStrike(
-              "Question Asked Aloud",
-              `Question detected: "${transcriptText}"`
-            );
-          } else if (isSpokenSpeech) {
-            console.log(`[WebSpeech] 🚨 Detected spoken words: "${transcriptText}"`);
-            triggerVoiceStrike(
-              "Speech / Speaking Detected",
-              `Spoken words detected: "${transcriptText}"`
+              isAskingQuestion ? "Question Asked Aloud" : "Voice / Speaking Detected",
+              isAskingQuestion
+                ? `Question detected: "${transcriptText}"`
+                : `Spoken words detected: "${transcriptText}"`
             );
           } else {
-            console.log(`[WebSpeech] Filtered isolated sound token: "${transcriptText}"`);
+            console.log(`[WebSpeech] Filtered non-speech sound token: "${transcriptText}"`);
           }
         };
 
@@ -1179,10 +1173,10 @@ export default function ExamTake() {
 
           // 6. Cough & Impulsive Noise Rejection:
           // A cough or throat clearing is an impulsive acoustic blast characterized by:
-          // - Rapid RMS rise (> 1.8 above previous frame) with high peak
-          // - High friction/blast ratio (highAvg >= vocalAvg * 0.62)
+          // - Violent sudden onset: Rapid RMS rise (> 2.0 above previous frame) from baseline with high peak
+          // - High friction/blast ratio (highAvg >= vocalAvg * 0.55)
           const rmsRise = rms - prevRms;
-          const isImpulsiveCough = (rmsRise > 1.8 && rms > 2.5) || (rms > 5.0 && highAvg > vocalAvg * 0.62);
+          const isImpulsiveCough = rmsRise > 2.0 && rms > 2.8 && highAvg > vocalAvg * 0.55;
 
           if (isImpulsiveCough) {
             // Suppress speech accumulation for ~750ms during and after the cough burst
@@ -1196,29 +1190,28 @@ export default function ExamTake() {
 
           prevRms = rms;
 
-          // Voiced speech characteristics (sensitive to quiet voices, murmurs, and faint whispers):
-          // - RMS slightly above local ambient baseline (threshold ~0.35)
-          // - Formant presence in 250Hz - 2800Hz with maxVocal >= 4 (whispers produce quiet peaks)
-          // - Not an abrasive air blast and not in cough cooldown
-          const isAboveNoise = rms > Math.max(0.35, ambientBaselineRms + 0.15);
-          const hasVocalEnergy = vocalAvg >= (ambientBaselineVocal + 0.25) && maxVocal >= 4;
-          const isTurbulentBlast = highAvg >= (vocalAvg * 1.25);
-          const isVocalPhonation = isAboveNoise && hasVocalEnergy && !isTurbulentBlast && coughCooldownFrames === 0;
+          // Sound activity detection (sensitive to voices, whispers, murmurs, and other sounds):
+          // - RMS slightly above local ambient baseline (threshold ~0.25)
+          // - Audible energy in human vocal formant band (250Hz - 2800Hz) or amplitude
+          // - Never triggers during an impulsive cough blast
+          const isAboveNoise = rms > Math.max(0.25, ambientBaselineRms + 0.10);
+          const hasSoundEnergy = vocalAvg >= (ambientBaselineVocal + 0.15) || maxVocal >= 3 || rms > 0.8;
+          const isSoundDetected = isAboveNoise && hasSoundEnergy && coughCooldownFrames === 0;
 
-          // 7. Parallel Acoustic Voice Activity Detection:
-          // A cough is locked out by isImpulsiveCough and only lasts 15-20 frames (~250ms).
-          // Speaking a quiet question ("what is it", "option b", "answer 4") sustains phonation for ~350ms.
-          if (isVocalPhonation) {
+          // 7. Acoustic Activity Detection:
+          // Coughs are locked out by isImpulsiveCough.
+          // Voices, whispers, talking, asking questions, murmuring, or other sustained sounds build energy:
+          if (isSoundDetected) {
             sustainedSpeechFrames += 2;
           } else {
             sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
           }
 
-          if (sustainedSpeechFrames >= 22) { // ~350ms of quiet vocal phonation
+          if (sustainedSpeechFrames >= 18) { // ~300ms of voice / sound
             sustainedSpeechFrames = 0;
             triggerVoiceStrike(
-              "Voice / Speaking Detected",
-              `Speaking detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 6) * 100))}%)`,
+              "Voice / Sound Detected",
+              `Sound/Speaking detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 6) * 100))}%)`,
               rms
             );
           }

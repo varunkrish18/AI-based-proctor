@@ -131,6 +131,9 @@ public class ExamAdminService {
         if (req.audioInputLevel() != null) {
             exam.setProctoringConfig(buildProctoringConfigWithAudio(req.audioInputLevel()));
         }
+        if (req.openToAll() != null) {
+            exam.setOpenToAll(req.openToAll());
+        }
         if (req.status() != null && !req.status().isBlank()) {
             String st = req.status().trim().toUpperCase();
             if (List.of("DRAFT", "PUBLISHED", "CLOSED").contains(st)) {

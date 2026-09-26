@@ -22,5 +22,6 @@ public record UpdateExamRequest(
         Boolean screenRequired,
         Boolean locationRequired,
         Integer audioInputLevel,
+        Boolean openToAll,
         String status
 ) {}
