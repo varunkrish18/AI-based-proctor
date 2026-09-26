@@ -683,14 +683,10 @@ export default function AdminDashboard() {
                             nameKey="label"
                             cx="50%"
                             cy="50%"
-                            innerRadius={58}
-                            outerRadius={88}
+                            innerRadius={64}
+                            outerRadius={95}
                             paddingAngle={3}
                             isAnimationActive={false}
-                            label={({ name, percent }: any) =>
-                              `${(name || "").replace(/_/g, " ")}: ${(percent * 100).toFixed(0)}%`
-                            }
-                            labelLine={false}
                             onClick={(_, index) => setActivePieIndex((prev) => (prev === index ? null : index))}
                             onMouseEnter={(_, index) => setActivePieIndex(index)}
                             onTouchStart={(_, index) => setActivePieIndex(index)}
@@ -725,13 +721,13 @@ export default function AdminDashboard() {
                       </ResponsiveContainer>
 
                       {/* Donut Center Reading - updates on touch/click/hover */}
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none text-center flex flex-col items-center justify-center w-28 select-none">
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none text-center flex flex-col items-center justify-center w-32 select-none px-2">
                         {activePieIndex !== null && charts.warningsByType[activePieIndex] ? (
                           <>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight line-clamp-1 max-w-[100px]">
+                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-tight line-clamp-2 leading-tight">
                               {charts.warningsByType[activePieIndex].label.replace(/_/g, " ")}
                             </span>
-                            <span className="text-xl font-black text-slate-900">
+                            <span className="text-2xl font-black text-slate-900 leading-none my-1">
                               {totalWarnings > 0
                                 ? `${Math.round((charts.warningsByType[activePieIndex].value / totalWarnings) * 100)}%`
                                 : "0%"}
@@ -743,8 +739,9 @@ export default function AdminDashboard() {
                         ) : (
                           <>
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
-                            <span className="text-2xl font-black text-slate-800">{totalWarnings}</span>
+                            <span className="text-2xl font-black text-slate-800 leading-none my-0.5">{totalWarnings}</span>
                             <span className="text-[10px] text-slate-400 font-medium">Flags</span>
+                            <span className="text-[9px] text-slate-400 mt-0.5 italic">Touch a slice</span>
                           </>
                         )}
                       </div>
