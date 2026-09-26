@@ -1070,10 +1070,10 @@ export default function ExamTake() {
         analyser.fftSize = 1024;
         analyser.smoothingTimeConstant = 0.25;
 
-        // 100Hz highpass filter to strip 50Hz/60Hz AC electrical hum and PC chassis fan rumble
+        // 180Hz highpass filter to strip AC electrical hum, ceiling fan hum, and PC chassis fan rumble
         biquadFilter = audioContext.createBiquadFilter();
         biquadFilter.type = "highpass";
-        biquadFilter.frequency.setValueAtTime(100, audioContext.currentTime);
+        biquadFilter.frequency.setValueAtTime(180, audioContext.currentTime);
 
         // Calibrate input volume gain with sensitivity boost for quiet/whispered speech
         const gainNode = audioContext.createGain();
@@ -1149,15 +1149,16 @@ export default function ExamTake() {
           }
           const highAvg = highCount > 0 ? highSum / highCount : 0;
 
-          // 4. Dynamic ambient baseline noise learning
-          if (calibrationFrames < 35) {
+          // 4. Dynamic ambient baseline noise learning (adapts to room background noise like fans/AC)
+          if (calibrationFrames < 50) {
             calibrationFrames++;
             ambientBaselineRms = ambientBaselineRms * 0.9 + rms * 0.1;
             ambientBaselineVocal = ambientBaselineVocal * 0.9 + vocalAvg * 0.1;
           } else {
-            // Running EMA floor adjustment for gradual background shifts
-            if (rms < ambientBaselineRms * 1.3) {
-              ambientBaselineRms = ambientBaselineRms * 0.995 + rms * 0.005;
+            // Continuously adapt to background fan or steady room noise floor
+            if (rms < ambientBaselineRms * 1.5) {
+              ambientBaselineRms = ambientBaselineRms * 0.99 + rms * 0.01;
+              ambientBaselineVocal = ambientBaselineVocal * 0.99 + vocalAvg * 0.01;
             }
           }
 
@@ -1190,28 +1191,27 @@ export default function ExamTake() {
 
           prevRms = rms;
 
-          // Sound activity detection (sensitive to voices, whispers, murmurs, and other sounds):
-          // - RMS slightly above local ambient baseline (threshold ~0.25)
-          // - Audible energy in human vocal formant band (250Hz - 2800Hz) or amplitude
-          // - Never triggers during an impulsive cough blast
-          const isAboveNoise = rms > Math.max(0.25, ambientBaselineRms + 0.10);
-          const hasSoundEnergy = vocalAvg >= (ambientBaselineVocal + 0.15) || maxVocal >= 3 || rms > 0.8;
-          const isSoundDetected = isAboveNoise && hasSoundEnergy && coughCooldownFrames === 0;
+          // Sound activity detection (filters out steady fan/AC hum, catches real voices & whispers):
+          // - Must rise clearly above the ambient fan baseline floor
+          const isAboveFanNoise = rms > Math.max(0.65, ambientBaselineRms + 0.35);
+          // - Must have vocal formant peak (fans are flat across bins, voices have distinct peaks)
+          const hasVocalPeak = maxVocal >= 6 && (maxVocal > vocalAvg * 1.6);
+          const isSpeechDetected = isAboveFanNoise && hasVocalPeak && coughCooldownFrames === 0;
 
-          // 7. Acoustic Activity Detection:
-          // Coughs are locked out by isImpulsiveCough.
-          // Voices, whispers, talking, asking questions, murmuring, or other sustained sounds build energy:
-          if (isSoundDetected) {
+          // 7. Acoustic Activity Accumulator:
+          // Coughs and continuous fan hum are locked out.
+          // Voices, whispers, talking, asking questions, murmuring build energy:
+          if (isSpeechDetected) {
             sustainedSpeechFrames += 2;
           } else {
             sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
           }
 
-          if (sustainedSpeechFrames >= 18) { // ~300ms of voice / sound
+          if (sustainedSpeechFrames >= 20) { // ~350ms of real voice phonation
             sustainedSpeechFrames = 0;
             triggerVoiceStrike(
-              "Voice / Sound Detected",
-              `Sound/Speaking detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 6) * 100))}%)`,
+              "Voice / Speaking Detected",
+              `Voice detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 6) * 100))}%)`,
               rms
             );
           }
