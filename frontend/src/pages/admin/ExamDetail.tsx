@@ -200,7 +200,7 @@ export default function ExamDetail() {
           onSwitchToQuestions={() => handleTabChange("questions")}
         />
       )}
-      {tab === "assign" && <AssignTab examId={exam.id} />}
+      {tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
       {tab === "results" && <ResultsTab examId={exam.id} />}
 
       {/* Delete Exam Confirmation Modal */}
@@ -660,7 +660,11 @@ function QuestionsTab({
   );
 }
 
-function AssignTab({ examId }: { examId: number }) {
+function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam: Exam) => void }) {
+  const examId = exam.id;
+  const [openToAll, setOpenToAll] = useState(Boolean(exam.openToAll));
+  const [togglingOpen, setTogglingOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [emails, setEmails] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -668,6 +672,12 @@ function AssignTab({ examId }: { examId: number }) {
   const [loading, setLoading] = useState(true);
   const [searchFilter, setSearchFilter] = useState("");
   const [unassigningId, setUnassigningId] = useState<number | null>(null);
+
+  const studentLink = `${window.location.origin}/exam/${exam.id}`;
+
+  useEffect(() => {
+    setOpenToAll(Boolean(exam.openToAll));
+  }, [exam.openToAll]);
 
   function loadAssignments() {
     setLoading(true);
@@ -681,6 +691,35 @@ function AssignTab({ examId }: { examId: number }) {
   useEffect(() => {
     loadAssignments();
   }, [examId]);
+
+  async function toggleOpenToAll() {
+    setTogglingOpen(true);
+    const target = !openToAll;
+    try {
+      const updated = await api.post<Exam>(
+        `/api/admin/exams/${examId}/open-to-all`,
+        { openToAll: target },
+        "admin"
+      );
+      setOpenToAll(Boolean(updated.openToAll));
+      if (onExamUpdated) onExamUpdated(updated);
+      setStatus(
+        target
+          ? "✓ Exam is now OPEN TO ALL. Any candidate can write this exam!"
+          : "✓ Exam is now RESTRICTED. Only assigned candidates can write."
+      );
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to toggle open access mode.");
+    } finally {
+      setTogglingOpen(false);
+    }
+  }
+
+  function copyExamLink() {
+    navigator.clipboard.writeText(studentLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -719,7 +758,127 @@ function AssignTab({ examId }: { examId: number }) {
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="space-y-6">
+      {/* Open to All Feature Card */}
+      <div
+        className={`border rounded-2xl p-6 transition-all duration-200 shadow-xs ${
+          openToAll
+            ? "bg-gradient-to-br from-emerald-50/90 via-teal-50/60 to-emerald-50/90 border-emerald-300"
+            : "bg-slate-50/90 border-slate-200"
+        }`}
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div
+              className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+                openToAll
+                  ? "bg-emerald-600 text-white shadow-emerald-200"
+                  : "bg-slate-200 text-slate-600"
+              }`}
+            >
+              {openToAll ? (
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h3 className="font-bold text-slate-900 text-base">
+                  {openToAll ? "Open to All Candidates (Public Exam)" : "Restricted Access (Invite-Only)"}
+                </h3>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase ${
+                    openToAll
+                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                      : "bg-slate-200 text-slate-700 border border-slate-300"
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      openToAll ? "bg-emerald-500 animate-pulse" : "bg-slate-500"
+                    }`}
+                  />
+                  {openToAll ? "Open Access Active" : "Invite-Only"}
+                </span>
+              </div>
+              <p className="text-slate-600 text-xs mt-1 max-w-2xl leading-relaxed">
+                {openToAll
+                  ? "Anyone with an email address can access and write this examination without prior assignment. When students verify on the exam portal, they are automatically enrolled and will show up in the student list below."
+                  : "Only students whose email addresses are explicitly assigned below can take this exam. Enable 'Open to All' if you want any candidate to be able to sit for this exam."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              disabled={togglingOpen}
+              onClick={toggleOpenToAll}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-2 ${
+                openToAll
+                  ? "bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-50"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200"
+              }`}
+            >
+              {togglingOpen ? (
+                "Updating..."
+              ) : openToAll ? (
+                <>
+                  <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Disable Open to All
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Enable Open to All
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Shareable Link Box */}
+        <div className="mt-4 pt-4 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-slate-600 truncate">
+            <span className="font-semibold text-slate-700 shrink-0">Student Exam Link:</span>
+            <code className="bg-white/80 px-2.5 py-1 rounded-md border border-slate-200 font-mono text-[11px] text-slate-800 truncate select-all">
+              {studentLink}
+            </code>
+          </div>
+          <button
+            type="button"
+            onClick={copyExamLink}
+            className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors shrink-0 shadow-2xs cursor-pointer flex items-center gap-1.5"
+          >
+            {copiedLink ? (
+              <>
+                <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-emerald-700 font-bold">Link Copied!</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span>Copy Exam Link</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Assign Form */}
       <form onSubmit={submit} className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 h-fit shadow-xs">
         <div>
@@ -821,6 +980,7 @@ function AssignTab({ examId }: { examId: number }) {
         )}
       </div>
     </div>
+  </div>
   );
 }
 

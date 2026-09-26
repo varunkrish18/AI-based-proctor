@@ -862,8 +862,8 @@ export default function ExamTake() {
 
     // Acoustic analysis variables
     let calibrationFrames = 0;
-    let ambientBaselineRms = 1.0;
-    let ambientBaselineVocal = 1.0;
+    let ambientBaselineRms = 0.2;
+    let ambientBaselineVocal = 0.2;
     let lastUiUpdate = 0;
 
     // Helper: Issue voice strike with debounce and proctor event logging
@@ -915,15 +915,18 @@ export default function ExamTake() {
       "co", "dock", "off", "up", "hey", "tsk", "psst", "cut", "cup", "koff", "ach"
     ]);
 
+    // Allowed exam choice tokens (whispering 'a', 'b', 'c', 'd', '1', '2' etc.)
+    const EXAM_CHOICE_TOKENS = new Set(["a", "b", "c", "d", "e", "1", "2", "3", "4", "5"]);
+
     // Question indicator words for detecting questions asked aloud (including quiet murmurs/exam references)
     const QUESTION_WORDS = new Set([
-      "what", "what's", "which", "how", "why", "where", "who", "whom", "whose", "when",
+      "what", "what's", "whats", "which", "how", "why", "where", "who", "whom", "whose", "when",
       "can", "could", "would", "should", "is", "are", "am", "was", "were",
       "do", "does", "did", "have", "has", "had",
-      "tell", "say", "explain", "repeat", "help", "answer", "option", "question",
-      "number", "choice", "first", "second", "third", "fourth", "one", "two", "three", "four", "five",
-      "correct", "wrong", "true", "false",
-      "solve", "calculate", "meaning", "define", "google", "siri", "alexa"
+      "tell", "say", "explain", "repeat", "help", "answer", "option", "question", "ans",
+      "number", "choice", "first", "second", "third", "fourth", "fifth", "one", "two", "three", "four", "five",
+      "correct", "wrong", "right", "true", "false", "check", "know", "mean", "meaning",
+      "solve", "calculate", "define", "google", "siri", "alexa", "chatgpt"
     ]);
 
     // =========================================================================
@@ -957,7 +960,9 @@ export default function ExamTake() {
           // Filter out known non-speech / noise / cough / hesitation tokens
           const meaningfulWords = tokens.filter((w) => {
             const stripped = w.replace(/[^a-z0-9]/g, "");
-            return stripped.length >= 2 && !NON_SPEECH_WORDS.has(stripped);
+            if (NON_SPEECH_WORDS.has(stripped)) return false;
+            if (stripped.length >= 2) return true;
+            return EXAM_CHOICE_TOKENS.has(stripped);
           });
 
           // If no meaningful words, or only blacklisted noise tokens, safely ignore
@@ -1079,7 +1084,7 @@ export default function ExamTake() {
         // Calibrate input volume gain with sensitivity boost for quiet/whispered speech
         const gainNode = audioContext.createGain();
         const configuredAudioLevel = session?.audioInputLevel ?? 20;
-        const targetGain = Math.max(1.2, Math.min(4.0, (configuredAudioLevel / 20.0) * 1.5));
+        const targetGain = Math.max(2.2, Math.min(5.5, (configuredAudioLevel / 20.0) * 2.5));
         gainNode.gain.setValueAtTime(targetGain, audioContext.currentTime);
 
         microphone = audioContext.createMediaStreamSource(streamToUse);
@@ -1168,20 +1173,20 @@ export default function ExamTake() {
           if (now - lastUiUpdate > 80) {
             lastUiUpdate = now;
             // Responsive meter: scale rms up to 100%
-            const normalizedVol = Math.min(100, Math.round((rms / 8) * 100));
+            const normalizedVol = Math.min(100, Math.round((rms / 6) * 100));
             setMicAudioLevel(normalizedVol);
           }
 
           // 6. Cough & Impulsive Noise Rejection:
           // A cough or throat clearing is an impulsive acoustic blast characterized by:
-          // - Rapid RMS rise (> 2.5 above previous frame) with high peak
-          // - High friction/blast ratio (highAvg >= vocalAvg * 0.65)
+          // - Rapid RMS rise (> 1.8 above previous frame) with high peak
+          // - High friction/blast ratio (highAvg >= vocalAvg * 0.62)
           const rmsRise = rms - prevRms;
-          const isImpulsiveCough = (rmsRise > 2.5 && rms > 3.5) || (rms > 6.0 && highAvg > vocalAvg * 0.65);
+          const isImpulsiveCough = (rmsRise > 1.8 && rms > 2.5) || (rms > 5.0 && highAvg > vocalAvg * 0.62);
 
           if (isImpulsiveCough) {
-            // Suppress speech accumulation for ~650ms during and after the cough burst
-            coughCooldownFrames = 40;
+            // Suppress speech accumulation for ~750ms during and after the cough burst
+            coughCooldownFrames = 45;
             sustainedSpeechFrames = 0;
           }
 
@@ -1191,29 +1196,29 @@ export default function ExamTake() {
 
           prevRms = rms;
 
-          // Voiced speech characteristics (sensitive to quiet voices, murmurs, and whispers):
-          // - RMS slightly above local ambient baseline (threshold ~0.8 - 1.0)
-          // - Formant presence in 250Hz - 2800Hz with maxVocal >= 7 (whispers produce quiet peaks)
+          // Voiced speech characteristics (sensitive to quiet voices, murmurs, and faint whispers):
+          // - RMS slightly above local ambient baseline (threshold ~0.35)
+          // - Formant presence in 250Hz - 2800Hz with maxVocal >= 4 (whispers produce quiet peaks)
           // - Not an abrasive air blast and not in cough cooldown
-          const isAboveNoise = rms > Math.max(0.8, ambientBaselineRms + 0.4);
-          const hasVocalEnergy = vocalAvg >= (ambientBaselineVocal + 0.8) && maxVocal >= 7;
-          const isTurbulentBlast = highAvg >= (vocalAvg * 1.15);
+          const isAboveNoise = rms > Math.max(0.35, ambientBaselineRms + 0.15);
+          const hasVocalEnergy = vocalAvg >= (ambientBaselineVocal + 0.25) && maxVocal >= 4;
+          const isTurbulentBlast = highAvg >= (vocalAvg * 1.25);
           const isVocalPhonation = isAboveNoise && hasVocalEnergy && !isTurbulentBlast && coughCooldownFrames === 0;
 
           // 7. Parallel Acoustic Voice Activity Detection:
           // A cough is locked out by isImpulsiveCough and only lasts 15-20 frames (~250ms).
-          // Speaking a quiet question ("what is it", "option b", "answer 4") sustains phonation for ~35-40 frames (~0.6s).
+          // Speaking a quiet question ("what is it", "option b", "answer 4") sustains phonation for ~350ms.
           if (isVocalPhonation) {
-            sustainedSpeechFrames++;
+            sustainedSpeechFrames += 2;
           } else {
             sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
           }
 
-          if (sustainedSpeechFrames >= 36) { // ~0.6s of sustained quiet vocal phonation
+          if (sustainedSpeechFrames >= 22) { // ~350ms of quiet vocal phonation
             sustainedSpeechFrames = 0;
             triggerVoiceStrike(
               "Voice / Speaking Detected",
-              `Speaking detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 8) * 100))}%)`,
+              `Speaking detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 6) * 100))}%)`,
               rms
             );
           }

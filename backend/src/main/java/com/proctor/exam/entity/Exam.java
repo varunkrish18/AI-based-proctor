@@ -96,6 +96,37 @@ public class Exam {
         return 20;
     }
 
+    public boolean isOpenToAll() {
+        if (proctoringConfig != null && !proctoringConfig.isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(proctoringConfig);
+                if (node.has("openToAll")) {
+                    return node.get("openToAll").asBoolean(false);
+                }
+            } catch (Exception ignored) {}
+        }
+        return false;
+    }
+
+    public void setOpenToAll(boolean openToAll) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.node.ObjectNode node;
+            if (proctoringConfig != null && !proctoringConfig.isBlank()) {
+                com.fasterxml.jackson.databind.JsonNode parsed = mapper.readTree(proctoringConfig);
+                if (parsed instanceof com.fasterxml.jackson.databind.node.ObjectNode) {
+                    node = (com.fasterxml.jackson.databind.node.ObjectNode) parsed;
+                } else {
+                    node = mapper.createObjectNode();
+                }
+            } else {
+                node = mapper.createObjectNode();
+            }
+            node.put("openToAll", openToAll);
+            this.proctoringConfig = mapper.writeValueAsString(node);
+        } catch (Exception ignored) {}
+    }
+
     /** DRAFT, PUBLISHED, CLOSED */
     @Column(nullable = false)
     @Builder.Default

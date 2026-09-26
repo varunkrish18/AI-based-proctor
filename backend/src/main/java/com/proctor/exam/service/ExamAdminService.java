@@ -229,6 +229,16 @@ public class ExamAdminService {
     }
 
     @Transactional
+    public Exam setOpenToAll(Long examId, boolean openToAll) {
+        Exam exam = getById(examId);
+        exam.setOpenToAll(openToAll);
+        Exam saved = examRepository.save(exam);
+        auditLogService.logAdmin("admin", "EXAM_OPEN_TO_ALL_UPDATED",
+                "Updated open-to-all status to " + openToAll + " for exam ID " + examId);
+        return saved;
+    }
+
+    @Transactional
     public void deleteExam(Long examId, String adminEmail) {
         Exam exam = getById(examId);
 

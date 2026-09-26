@@ -22,6 +22,7 @@ export interface Exam extends ExamSummary {
   locationRequired?: boolean;
   proctoringConfig?: string;
   audioInputLevel?: number;
+  openToAll?: boolean;
 }
 
 export interface ExamQuestion {

@@ -67,6 +67,12 @@ public class AdminExamController {
         return examAdminService.assignStudents(examId, request);
     }
 
+    @PostMapping("/{examId}/open-to-all")
+    public Exam setOpenToAll(@PathVariable Long examId, @RequestBody Map<String, Boolean> body) {
+        Boolean openToAll = body.getOrDefault("openToAll", false);
+        return examAdminService.setOpenToAll(examId, openToAll);
+    }
+
     @PatchMapping("/{examId}/limit")
     public Exam updateLimit(@PathVariable Long examId, @RequestBody Map<String, Integer> body) {
         Integer limit = body.get("numQuestions");

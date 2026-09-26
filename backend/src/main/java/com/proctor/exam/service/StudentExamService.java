@@ -57,12 +57,23 @@ public class StudentExamService {
     public VerifyStudentResponse verifyStudent(Long examId, String rawEmail) {
         String email = rawEmail.trim().toLowerCase();
         Exam exam = examRepository.findById(examId).orElse(null);
+        boolean isAssigned = exam != null && assignmentRepository.existsByExamIdAndStudentEmailIgnoreCase(examId, email);
+        boolean isOpen = exam != null && exam.isOpenToAll();
         boolean authorized = exam != null
                 && "PUBLISHED".equals(exam.getStatus())
-                && assignmentRepository.existsByExamIdAndStudentEmailIgnoreCase(examId, email);
+                && (isAssigned || isOpen);
 
         if (!authorized) {
             return new VerifyStudentResponse(false, null, "This exam is not assigned to this email address.");
+        }
+
+        if (isOpen && !isAssigned) {
+            try {
+                assignmentRepository.save(com.proctor.exam.entity.ExamAssignment.builder()
+                        .exam(exam)
+                        .studentEmail(email)
+                        .build());
+            } catch (Exception ignored) {}
         }
 
         Instant now = trustedTimeService.now();
