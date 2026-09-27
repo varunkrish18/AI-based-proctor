@@ -74,6 +74,7 @@ export default function ExamTake() {
     message: string;
     speechType?: string;
     confidence?: number;
+    stage?: number;
     timestamp: number;
   } | null>(null);
 
@@ -132,6 +133,9 @@ export default function ExamTake() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const speechRecognitionRef = useRef<any>(null);
   const audioClassifierRef = useRef<AudioSpeechClassifier | null>(null);
+  const lastMouthMovementTimeRef = useRef<number>(0);
+  const prevMouthDataRef = useRef<Uint8Array | null>(null);
+  const voiceEscalationRef = useRef<{ stage: number; lastTime: number }>({ stage: 0, lastTime: 0 });
 
   const consecutiveFrameErrors = useRef(0);
   const nextCaptureDelayRef = useRef(1000);
@@ -718,6 +722,57 @@ export default function ExamTake() {
     }
   }
 
+  // PROCESS 1: Real-time Lip Movement (Mouth Motion) Tracker
+  // Samples lower-face mouth ROI to determine if candidate is actively moving lips/speaking
+  useEffect(() => {
+    if (!session || !screenGatePassed || submittedRef.current) return;
+    const mouthCanvas = document.createElement("canvas");
+    mouthCanvas.width = 32;
+    mouthCanvas.height = 24;
+    const ctx = mouthCanvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    const interval = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2) return;
+
+      try {
+        const vw = video.videoWidth || 320;
+        const vh = video.videoHeight || 240;
+        // Lower center portion of video portrait: mouth zone (x: 35%-65%, y: 58%-82%)
+        const mx = Math.floor(vw * 0.35);
+        const my = Math.floor(vh * 0.58);
+        const mw = Math.floor(vw * 0.30);
+        const mh = Math.floor(vh * 0.24);
+
+        ctx.drawImage(video, mx, my, mw, mh, 0, 0, 32, 24);
+        const img = ctx.getImageData(0, 0, 32, 24).data;
+        const currentMouthData = new Uint8Array(32 * 24);
+
+        for (let i = 0; i < currentMouthData.length; i++) {
+          currentMouthData[i] = (img[i * 4] * 299 + img[i * 4 + 1] * 587 + img[i * 4 + 2] * 114) / 1000;
+        }
+
+        if (prevMouthDataRef.current) {
+          let diffSum = 0;
+          for (let i = 0; i < currentMouthData.length; i++) {
+            diffSum += Math.abs(currentMouthData[i] - prevMouthDataRef.current[i]);
+          }
+          const avgDiff = diffSum / currentMouthData.length;
+          // Lip movement threshold (talking produces avgDiff >= 3.8)
+          if (avgDiff >= 3.8) {
+            lastMouthMovementTimeRef.current = Date.now();
+          }
+        }
+        prevMouthDataRef.current = currentMouthData;
+      } catch {
+        // ignore sampling errors
+      }
+    }, 120);
+
+    return () => clearInterval(interval);
+  }, [session, screenGatePassed]);
+
   // Periodic proctoring heartbeat every 10 seconds
   useEffect(() => {
     if (!session || !screenGatePassed || submittedRef.current) return;
@@ -1216,7 +1271,7 @@ export default function ExamTake() {
     let recognition: any = null;
     let classifier: AudioSpeechClassifier | null = null;
 
-    // Helper: Issue speech warning with debounce, corner popup, and proctor event logging (NEVER terminates exam)
+      // Helper: Issue speech warning combining Process 1 (Lip-Sync Fusion) and Process 4 (Progressive Escalation Ladder)
     const triggerSpeechEvent = (
       reasonTitle: string,
       details: string,
@@ -1244,25 +1299,87 @@ export default function ExamTake() {
         timestamp: new Date().toISOString(),
       };
 
-      // Dispatches SPEECH_DETECTED and VOICE_DETECTED events to backend proctoring log
+      // Dispatches baseline audit events to backend
       logEvent("SPEECH_DETECTED", undefined, eventPayload);
       logEvent("VOICE_DETECTED", undefined, eventPayload);
       flushNow();
 
-      // Show top-right corner warning popup ONLY — NEVER issue fatal 3-strike terminations on audio!
-      setVoiceWarningPopup({
-        message: transcribedText ? `Spoken words: "${transcribedText}"` : details,
-        speechType,
-        confidence,
-        timestamp: now,
-      });
+      // =========================================================================
+      // PROCESS 1: Multi-Modal Audio-Visual Fusion (Lip-Movement Sync)
+      // =========================================================================
+      // Speech is validated if:
+      // (a) Lips/mouth actively moved within the last 1500ms, OR
+      // (b) Web Speech Recognition transcribed genuine linguistic human words
+      const mouthActive = (now - lastMouthMovementTimeRef.current) < 1500;
+      const isConfirmedLinguistic = Boolean(transcribedText && transcribedText.trim().length >= 2);
+      const isLipSyncConfirmed = mouthActive || isConfirmedLinguistic;
 
-      // Auto-dismiss popup after 5 seconds
+      if (!isLipSyncConfirmed) {
+        console.log(`[SpeechDetector] Acoustic sound detected but mouth was still (lip sync rejected). Discarding strikes.`);
+        return;
+      }
+
+      // =========================================================================
+      // PROCESS 4: Progressive Escalation Ladder (No Direct Fatal Strikes)
+      // =========================================================================
+      // Reset escalation ladder if candidate stayed quiet for > 90 seconds
+      if (now - voiceEscalationRef.current.lastTime > 90000) {
+        voiceEscalationRef.current = { stage: 0, lastTime: 0 };
+      }
+
+      const currentStage = voiceEscalationRef.current.stage;
+
+      if (currentStage === 0) {
+        // Stage 1: Soft Warning Popup in top-right corner (0 Strikes)
+        voiceEscalationRef.current = { stage: 1, lastTime: now };
+        logEvent("SPEECH_WARNING_STAGE_1", undefined, eventPayload);
+        flushNow();
+
+        setVoiceWarningPopup({
+          message: transcribedText
+            ? `Spoken words detected: "${transcribedText}"`
+            : "Human speech detected. Please remain completely silent.",
+          speechType,
+          confidence,
+          stage: 1,
+          timestamp: now,
+        });
+      } else if (currentStage === 1) {
+        // Stage 2: Firm Yellow Warning Banner in top-right corner (0 Strikes)
+        voiceEscalationRef.current = { stage: 2, lastTime: now };
+        logEvent("SPEECH_WARNING_STAGE_2", undefined, eventPayload);
+        flushNow();
+
+        setVoiceWarningPopup({
+          message: transcribedText
+            ? `Second Warning: "${transcribedText}". Continued speaking will result in an official Warning Strike.`
+            : "SECOND WARNING: Speech detected again. One more infraction will result in an official Warning Strike.",
+          speechType,
+          confidence,
+          stage: 2,
+          timestamp: now,
+        });
+      } else {
+        // Stage 3: Official Warning Strike (Strike 1, 2, or 3)
+        // Candidate persistently ignored Stage 1 and Stage 2 warnings within 90 seconds!
+        voiceEscalationRef.current = { stage: 2, lastTime: now };
+        logEvent("SPEECH_STRIKE_ISSUED", undefined, eventPayload);
+        flushNow();
+
+        issueWarningStrike(
+          "Repeated Speech Infraction",
+          transcribedText
+            ? `Candidate spoke aloud after multiple prior warnings: "${transcribedText}".`
+            : "Candidate continued speaking after two prior warnings. Strict exam silence is mandatory."
+        );
+      }
+
+      // Auto-dismiss popup after 6 seconds
       setTimeout(() => {
         if (isMounted) {
           setVoiceWarningPopup((cur) => (cur?.timestamp === now ? null : cur));
         }
-      }, 5000);
+      }, 6000);
     };
 
     // User gesture handler to ensure AudioContext stays running
@@ -2057,19 +2174,37 @@ export default function ExamTake() {
           </div>
         )}
 
-        {/* Voice Activity Warning Popup - Top Right Corner */}
+        {/* Voice Activity Warning Popup - Top Right Corner (Process 4 Escalation) */}
         {voiceWarningPopup && (
           <div className="pointer-events-auto w-full animate-in slide-in-from-top-4 slide-in-from-right-4 fade-in duration-200 shadow-2xl">
-            <div className="bg-slate-900/95 backdrop-blur-md border-2 border-red-500 rounded-2xl shadow-[0_10px_35px_rgba(239,68,68,0.25)] p-4 sm:p-5 text-white">
+            <div
+              className={`bg-slate-900/95 backdrop-blur-md border-2 rounded-2xl p-4 sm:p-5 text-white ${
+                voiceWarningPopup.stage === 2
+                  ? "border-amber-400 shadow-[0_10px_35px_rgba(245,158,11,0.25)]"
+                  : "border-sky-400 shadow-[0_10px_35px_rgba(56,189,248,0.25)]"
+              }`}
+            >
               <div className="flex items-start gap-3.5">
-                <div className="w-12 h-12 rounded-xl bg-red-500/20 text-red-400 border border-red-500/40 flex items-center justify-center text-2xl shrink-0 shadow-inner ring-2 ring-red-400/30 animate-pulse">
-                  🎙️
+                <div
+                  className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 shadow-inner ring-2 animate-pulse ${
+                    voiceWarningPopup.stage === 2
+                      ? "bg-amber-500/20 text-amber-400 border border-amber-500/40 ring-amber-400/30"
+                      : "bg-sky-500/20 text-sky-400 border border-sky-500/40 ring-sky-400/30"
+                  }`}
+                >
+                  {voiceWarningPopup.stage === 2 ? "⚠️" : "🎙️"}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-600 text-white font-mono shadow-sm">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                      Speech Alert
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider font-mono shadow-sm ${
+                        voiceWarningPopup.stage === 2
+                          ? "bg-amber-500 text-slate-950"
+                          : "bg-sky-600 text-white"
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping" />
+                      {voiceWarningPopup.stage === 2 ? "Second Warning (Advisory)" : "First Warning (Advisory)"}
                     </span>
                     <button
                       onClick={() => setVoiceWarningPopup(null)}
@@ -2079,25 +2214,27 @@ export default function ExamTake() {
                       ✕
                     </button>
                   </div>
-                  <h4 className="text-sm font-extrabold text-red-300 leading-snug">
-                    Human Speech Detected!
+                  <h4
+                    className={`text-sm font-extrabold leading-snug ${
+                      voiceWarningPopup.stage === 2 ? "text-amber-300" : "text-sky-300"
+                    }`}
+                  >
+                    {voiceWarningPopup.stage === 2 ? "Repeated Speech Detected!" : "Human Speech Detected!"}
                   </h4>
                   <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                    {voiceWarningPopup.message}. Please remain silent during the examination.
+                    {voiceWarningPopup.message}
                   </p>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-[11px] text-red-400/90 font-mono font-medium">
-                      {voiceWarningPopup.speechType
-                        ? `${voiceWarningPopup.speechType.replace("_", " ")} ${
-                            voiceWarningPopup.confidence
-                              ? `(${Math.round(voiceWarningPopup.confidence * 100)}%)`
-                              : ""
-                          }`
-                        : "Silent room required"}
+                    <span className="text-[11px] text-slate-400 font-mono font-medium">
+                      {voiceWarningPopup.stage === 2 ? "Next occurrence = Strike" : "0 Strikes (Advisory)"}
                     </span>
                     <button
                       onClick={() => setVoiceWarningPopup(null)}
-                      className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded-lg shadow-md cursor-pointer transition-transform active:scale-95"
+                      className={`text-xs font-black py-1 px-3 rounded-lg shadow-md cursor-pointer transition-transform active:scale-95 ${
+                        voiceWarningPopup.stage === 2
+                          ? "bg-amber-500 hover:bg-amber-400 text-slate-950"
+                          : "bg-sky-600 hover:bg-sky-500 text-white"
+                      }`}
                     >
                       I Understand
                     </button>
