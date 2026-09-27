@@ -1249,20 +1249,34 @@ export default function ExamTake() {
       logEvent("VOICE_DETECTED", undefined, eventPayload);
       flushNow();
 
-      // Show top-right corner warning popup (Never issues fatal 3-strike terminations on audio)
-      setVoiceWarningPopup({
-        message: transcribedText ? `Spoken words: "${transcribedText}"` : details,
-        speechType,
-        confidence,
-        timestamp: now,
-      });
+      const isLoudOrTranscribed =
+        speechType === "TRANSCRIPTION" ||
+        (speechType === "NORMAL_SPEECH" && confidence >= 0.70);
 
-      // Auto-dismiss popup after 6 seconds if student does not click dismiss
-      setTimeout(() => {
-        if (isMounted) {
-          setVoiceWarningPopup((cur) => (cur?.timestamp === now ? null : cur));
-        }
-      }, 6000);
+      if (isLoudOrTranscribed) {
+        // Trigger official proctoring Warning Strike (1 of 3)
+        issueWarningStrike(
+          reasonTitle,
+          transcribedText
+            ? `Candidate spoke aloud during examination: "${transcribedText}".`
+            : `${details}. Candidate must remain silent during the exam.`
+        );
+      } else {
+        // Quiet speech or whisper: show top-right corner warning popup without advancing strike count
+        setVoiceWarningPopup({
+          message: transcribedText ? `Spoken words: "${transcribedText}"` : details,
+          speechType,
+          confidence,
+          timestamp: now,
+        });
+
+        // Auto-dismiss popup after 6 seconds if student does not click dismiss
+        setTimeout(() => {
+          if (isMounted) {
+            setVoiceWarningPopup((cur) => (cur?.timestamp === now ? null : cur));
+          }
+        }, 6000);
+      }
     };
 
     // User gesture handler to ensure AudioContext stays running
