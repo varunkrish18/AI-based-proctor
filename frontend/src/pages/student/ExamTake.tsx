@@ -11,42 +11,6 @@ import type {
 
 type AnswerMap = Record<number, number | undefined>;
 
-function createMockStream(): MediaStream {
-  const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 480;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.fillStyle = "#1e293b";
-    ctx.fillRect(0, 0, 640, 480);
-    ctx.fillStyle = "#38bdf8";
-    ctx.font = "bold 20px sans-serif";
-    ctx.fillText("Simulated Camera Stream", 170, 220);
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = "14px sans-serif";
-    ctx.fillText("(Test / Demo Mode Active)", 210, 260);
-  }
-  const stream = (canvas as any).captureStream ? (canvas as any).captureStream(10) : new MediaStream();
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (AudioCtx) {
-      const actx = new AudioCtx();
-      const osc = actx.createOscillator();
-      const dst = actx.createMediaStreamDestination();
-      osc.connect(dst);
-      osc.start();
-      const track = dst.stream.getAudioTracks()[0];
-      if (track) {
-        track.enabled = false;
-        stream.addTrack(track);
-      }
-    }
-  } catch (e) {
-    console.warn("Mock audio track init failed:", e);
-  }
-  return stream;
-}
-
 function checkIsEntireScreen(videoTrack: MediaStreamTrack): { isEntireScreen: boolean; reason?: string } {
   if (!videoTrack) {
     return { isEntireScreen: false, reason: "No video track detected from screen sharing." };
@@ -101,6 +65,14 @@ export default function ExamTake() {
     reason: string;
     description: string;
   } | null>(null);
+  const [gazeWarningPopup, setGazeWarningPopup] = useState<{
+    direction: "UP" | "DOWN" | "LEFT" | "RIGHT" | "AWAY";
+    timestamp: number;
+  } | null>(null);
+  const [voiceWarningPopup, setVoiceWarningPopup] = useState<{
+    message: string;
+    timestamp: number;
+  } | null>(null);
 
   // Proctoring streams and statuses
   const [screenGatePassed, setScreenGatePassed] = useState(false);
@@ -111,11 +83,19 @@ export default function ExamTake() {
   const [micAudioLevel, setMicAudioLevel] = useState<number>(0);
   const [screenStatus, setScreenStatus] = useState<string>("UNKNOWN");
   const [fullscreenExited, setFullscreenExited] = useState<boolean>(false);
+  const [pendingFullscreen, setPendingFullscreen] = useState<boolean>(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiFrameAnalysisResponse | null>(null);
   const [cameraMinimized, setCameraMinimized] = useState<boolean>(false);
   const [entireScreenMissing, setEntireScreenMissing] = useState<boolean>(false);
   const [reacquiringScreen, setReacquiringScreen] = useState<boolean>(false);
   const [screenError, setScreenError] = useState<string | null>(null);
+  const [locationStatus, setLocationStatus] = useState<string>("UNKNOWN");
+  const [permissionMissing, setPermissionMissing] = useState<{
+    type: "webcam" | "microphone" | "location";
+    reason: string;
+  } | null>(null);
+  const [reacquiringPermissions, setReacquiringPermissions] = useState<boolean>(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
   const [cameraClosedWarning, setCameraClosedWarning] = useState<{ remaining: string; reason: string } | null>(null);
 
   // Tracks how many times the student has exited fullscreen
@@ -136,6 +116,8 @@ export default function ExamTake() {
   const strikesRef = useRef<number>(0);
   const lookAwayStartRef = useRef<number | null>(null);
   const lookAwaySnappedRef = useRef<boolean>(false);
+  const lastGazePopupDismissTime = useRef<number>(0);
+  const gazeWarningLoggedRef = useRef<boolean>(false);
   const cameraCoveredStartRef = useRef<number | null>(null);
   const cameraCoveredSnappedRef = useRef<boolean>(false);
   const faceMissingStartRef = useRef<number | null>(null);
@@ -282,6 +264,8 @@ export default function ExamTake() {
       });
       flushNow();
 
+      setGazeWarningPopup(null);
+      setVoiceWarningPopup(null);
       setActiveWarningModal({
         strike: nextStrikes,
         reason,
@@ -299,6 +283,24 @@ export default function ExamTake() {
     },
     [handleSubmit, logEvent, flushNow]
   );
+
+  // Auto-dismiss voice warning popup after 5 seconds
+  useEffect(() => {
+    if (!voiceWarningPopup) return;
+    const t = setTimeout(() => {
+      setVoiceWarningPopup(null);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [voiceWarningPopup]);
+
+  // Auto-dismiss gaze warning popup after 5 seconds
+  useEffect(() => {
+    if (!gazeWarningPopup) return;
+    const t = setTimeout(() => {
+      setGazeWarningPopup(null);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [gazeWarningPopup]);
 
   // Countdown timer; only runs once screenGatePassed is true
   useEffect(() => {
@@ -324,6 +326,15 @@ export default function ExamTake() {
     if (!session) return;
     setGateLoading(true);
     setSetupError(null);
+
+    // 0. Trigger initial fullscreen request immediately while user click gesture is 100% active
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch (initialFsErr) {
+        console.warn("Initial fullscreen request note:", initialFsErr);
+      }
+    }
 
     const screenRequired = session.screenRequired ?? true;
     const webcamRequired = session.webcamRequired ?? true;
@@ -381,28 +392,33 @@ export default function ExamTake() {
         };
       }
 
-      // 2. Acquire webcam and microphone if required — with automatic simulated fallback for all browsers
+      // 2. Strictly acquire webcam and microphone (Hardware & Permissions required)
       if (webcamRequired || micRequired) {
-        let userMedia: MediaStream;
         if (!navigator.mediaDevices?.getUserMedia) {
-          userMedia = createMockStream();
-        } else {
-          try {
-            userMedia = await navigator.mediaDevices.getUserMedia({
-              video: webcamRequired
-                ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
-                : false,
-              audio: micRequired
-                ? {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                  }
-                : false,
-            });
-          } catch {
-            userMedia = createMockStream();
+          throw new Error("Webcam and microphone access are required for this exam, but your browser does not support media access in this context. Please ensure you are using HTTPS on Google Chrome, Edge, or Firefox.");
+        }
+        let userMedia: MediaStream;
+        try {
+          userMedia = await navigator.mediaDevices.getUserMedia({
+            video: webcamRequired
+              ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+              : false,
+            audio: micRequired
+              ? {
+                  echoCancellation: true,
+                  noiseSuppression: false,
+                  autoGainControl: true,
+                }
+              : false,
+          });
+        } catch (mediaErr: any) {
+          if (mediaErr.name === "NotAllowedError" || mediaErr.name === "PermissionDeniedError") {
+            throw new Error("Camera or Microphone permission was denied in your browser. You must allow Camera and Microphone access in your browser settings to take this exam.");
           }
+          if (mediaErr.name === "NotFoundError" || mediaErr.name === "DevicesNotFoundError") {
+            throw new Error("No camera or microphone hardware found on your device. Hardware webcam and microphone are strictly mandatory.");
+          }
+          throw new Error(`Media access error: ${mediaErr.message || "Failed to initialize camera or microphone"}. Permissions must be allowed.`);
         }
         webcamStreamRef.current = userMedia;
 
@@ -437,38 +453,97 @@ export default function ExamTake() {
             track.onended = () => {
               setWebcamStatus("LOST");
               logEvent("WEBCAM_LOST", undefined, { reason: "Webcam track ended" });
+              setPermissionMissing({ type: "webcam", reason: "Webcam video track disconnected or ended" });
               setWarning("Webcam access lost! Please check camera permissions.");
             };
             track.onmute = () => {
               setWebcamStatus("LOST");
               logEvent("WEBCAM_MUTED", undefined, { reason: "Webcam track muted / privacy button toggled" });
+              setPermissionMissing({ type: "webcam", reason: "Camera muted or privacy shutter closed" });
               setWarning("Camera muted or privacy shutter closed!");
             };
             track.onunmute = () => {
               setWebcamStatus("ACTIVE");
+              setPermissionMissing((prev) => (prev?.type === "webcam" ? null : prev));
             };
           });
         }
 
         if (micRequired) {
           setMicStatus("ACTIVE");
+          userMedia.getAudioTracks().forEach((track) => {
+            track.onended = () => {
+              setMicStatus("LOST");
+              logEvent("MICROPHONE_LOST", undefined, { reason: "Microphone track ended" });
+              setPermissionMissing({ type: "microphone", reason: "Microphone track ended or disconnected" });
+              setWarning("Microphone access lost! Please check microphone permissions.");
+            };
+            track.onmute = () => {
+              setMicStatus("LOST");
+              logEvent("MICROPHONE_MUTED", undefined, { reason: "Microphone track muted / permission revoked" });
+              setPermissionMissing({ type: "microphone", reason: "Microphone muted or permission turned off" });
+              setWarning("Microphone muted or permission revoked!");
+            };
+            track.onunmute = () => {
+              setMicStatus("ACTIVE");
+              setPermissionMissing((prev) => (prev?.type === "microphone" ? null : prev));
+            };
+          });
         }
       }
 
-      // 3. Request fullscreen (strictly mandatory to begin the examination)
+      // 3. Acquire and verify Location
+      if (navigator.geolocation) {
+        try {
+          await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 6000,
+              enableHighAccuracy: true,
+            });
+          });
+          setLocationStatus("ACTIVE");
+        } catch (locErr: any) {
+          if (locErr.code === 1 /* PERMISSION_DENIED */) {
+            logEvent("LOCATION_DENIED", undefined, { reason: "Location permission denied" });
+            throw new Error("Location permission is mandatory throughout the exam. Please allow Location access in your browser settings.");
+          }
+          setLocationStatus("ACTIVE");
+        }
+      }
+
+      // 4. Verify or request fullscreen mode
+      const isAlreadyFullscreen = Boolean(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+
+      if (isAlreadyFullscreen) {
+        examStartTimeRef.current = Date.now();
+        setScreenGatePassed(true);
+        return;
+      }
+
+      // If not yet in fullscreen, try requesting it
       if (document.documentElement.requestFullscreen) {
         try {
           await document.documentElement.requestFullscreen();
+          examStartTimeRef.current = Date.now();
+          setScreenGatePassed(true);
+          return;
         } catch (fsErr) {
-          console.error("Fullscreen request failed:", fsErr);
-          throw new Error("Fullscreen mode is mandatory to begin the examination. Please allow fullscreen when prompted.");
+          console.warn("Fullscreen request after async media acquisition was deferred:", fsErr);
+          // Do NOT stop media streams! All channels (Screen, Webcam, Mic, Location) are verified and active.
+          // Prompt user with a single direct click button to enter fullscreen without re-prompting screen share.
+          setPendingFullscreen(true);
+          return;
         }
       } else {
-        throw new Error("Fullscreen mode is not supported by your browser. Please use Chrome, Edge, or Firefox.");
+        examStartTimeRef.current = Date.now();
+        setScreenGatePassed(true);
+        return;
       }
-
-      examStartTimeRef.current = Date.now();
-      setScreenGatePassed(true);
     } catch (err: any) {
       console.error("Proctoring gate failed:", err);
       stopAllMediaStreams();
@@ -541,6 +616,100 @@ export default function ExamTake() {
     }
   }
 
+  async function reacquireMediaPermissions() {
+    setReacquiringPermissions(true);
+    setPermissionError(null);
+    try {
+      const webcamRequired = session?.webcamRequired ?? true;
+      const micRequired = session?.microphoneRequired ?? true;
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Media devices are not accessible in this browser environment.");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: webcamRequired
+          ? { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+          : false,
+        audio: micRequired
+          ? { echoCancellation: true, noiseSuppression: false, autoGainControl: true }
+          : false,
+      });
+
+      if (webcamStreamRef.current) {
+        webcamStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      webcamStreamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+      if (bgVideoRef.current) {
+        bgVideoRef.current.srcObject = stream;
+        bgVideoRef.current.play().catch(() => {});
+      }
+
+      if (webcamRequired) {
+        setWebcamStatus("ACTIVE");
+        stream.getVideoTracks().forEach((track) => {
+          track.onended = () => {
+            setWebcamStatus("LOST");
+            logEvent("WEBCAM_LOST", undefined, { reason: "Webcam track ended" });
+            setPermissionMissing({ type: "webcam", reason: "Webcam video track disconnected or ended" });
+          };
+          track.onmute = () => {
+            setWebcamStatus("LOST");
+            logEvent("WEBCAM_MUTED", undefined, { reason: "Webcam track muted / privacy shutter closed" });
+            setPermissionMissing({ type: "webcam", reason: "Camera muted or privacy shutter closed" });
+          };
+          track.onunmute = () => {
+            setWebcamStatus("ACTIVE");
+            setPermissionMissing((prev) => (prev?.type === "webcam" ? null : prev));
+          };
+        });
+      }
+
+      if (micRequired) {
+        setMicStatus("ACTIVE");
+        stream.getAudioTracks().forEach((track) => {
+          track.onended = () => {
+            setMicStatus("LOST");
+            logEvent("MICROPHONE_LOST", undefined, { reason: "Microphone track ended" });
+            setPermissionMissing({ type: "microphone", reason: "Microphone track disconnected" });
+          };
+          track.onmute = () => {
+            setMicStatus("LOST");
+            logEvent("MICROPHONE_MUTED", undefined, { reason: "Microphone track muted / permission turned off" });
+            setPermissionMissing({ type: "microphone", reason: "Microphone muted or permission revoked" });
+          };
+          track.onunmute = () => {
+            setMicStatus("ACTIVE");
+            setPermissionMissing((prev) => (prev?.type === "microphone" ? null : prev));
+          };
+        });
+      }
+
+      // Re-verify Location
+      if (navigator.geolocation) {
+        await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+        });
+        setLocationStatus("ACTIVE");
+      }
+
+      setPermissionMissing(null);
+      setPermissionError(null);
+      setWarning(null);
+    } catch (err: any) {
+      setPermissionError(
+        err?.message || "Failed to restore permissions. Please enable Camera, Microphone, and Location in your browser address bar."
+      );
+    } finally {
+      setReacquiringPermissions(false);
+    }
+  }
+
   // Periodic proctoring heartbeat every 10 seconds
   useEffect(() => {
     if (!session || !screenGatePassed || submittedRef.current) return;
@@ -603,6 +772,22 @@ export default function ExamTake() {
     let timeoutId: ReturnType<typeof setTimeout>;
     let isMounted = true;
 
+    const takeCleanSnapshot = (): string | null => {
+      const v = videoRef.current;
+      if (!v || v.readyState < 2) return null;
+      try {
+        const snapCanvas = document.createElement("canvas");
+        snapCanvas.width = 320;
+        snapCanvas.height = 240;
+        const sCtx = snapCanvas.getContext("2d");
+        if (!sCtx) return null;
+        sCtx.drawImage(v, 0, 0, 320, 240);
+        return snapCanvas.toDataURL("image/jpeg", 0.7);
+      } catch {
+        return null;
+      }
+    };
+
     async function captureAndSendFrame() {
       if (!isMounted || submittedRef.current) return;
       const video = videoRef.current;
@@ -638,7 +823,7 @@ export default function ExamTake() {
                   const elapsedMs = Date.now() - cameraCoveredStartRef.current;
                   if (elapsedMs >= 2500 && !cameraCoveredSnappedRef.current) {
                     cameraCoveredSnappedRef.current = true;
-                    const photo = canvas.toDataURL("image/jpeg", 0.7);
+                    const photo = takeCleanSnapshot();
                     logEvent("CAMERA_COVERED", Math.round(elapsedMs / 1000), {
                       photo,
                       reason: "Webcam lens is covered or occluded",
@@ -664,7 +849,7 @@ export default function ExamTake() {
                   const elapsedMs = Date.now() - faceMissingStartRef.current;
                   if (elapsedMs >= 5000 && !faceMissingSnappedRef.current) {
                     faceMissingSnappedRef.current = true;
-                    const photo = canvas.toDataURL("image/jpeg", 0.7);
+                    const photo = takeCleanSnapshot();
                     logEvent("FACE_NOT_VISIBLE", Math.round(elapsedMs / 1000), {
                       photo,
                       durationSeconds: Math.round(elapsedMs / 1000),
@@ -682,22 +867,54 @@ export default function ExamTake() {
                 faceMissingSnappedRef.current = false;
               }
 
-              // 2. Gaze tracking: Continuous look-away for >= 5 seconds takes a photo snapshot for proctor review
+              // 2. Gaze tracking: Looking UP, DOWN, LEFT, RIGHT -> Generate Warning Popup
               // Only triggers when face IS detected and face count is exactly 1
               const isLookingAway = res.faceDetected && res.faceCount === 1 && res.gazeDirection !== "CENTER";
               if (isLookingAway) {
+                const dir = (res.gazeDirection || "AWAY") as "UP" | "DOWN" | "LEFT" | "RIGHT" | "AWAY";
                 if (!lookAwayStartRef.current) {
                   lookAwayStartRef.current = Date.now();
+                  gazeWarningLoggedRef.current = false;
                 } else {
                   const elapsedMs = Date.now() - lookAwayStartRef.current;
+                  const now = Date.now();
+
+                  // 1. Show warning popup promptly when looking away (UP, DOWN, LEFT, RIGHT)
+                  if (
+                    elapsedMs >= 800 &&
+                    !gazeWarningPopup &&
+                    now - lastGazePopupDismissTime.current >= 2500
+                  ) {
+                    setGazeWarningPopup({ direction: dir, timestamp: now });
+                    if (!gazeWarningLoggedRef.current) {
+                      gazeWarningLoggedRef.current = true;
+                      const eventType =
+                        dir === "UP"
+                          ? "LOOKING_UP"
+                          : dir === "DOWN"
+                          ? "LOOKING_DOWN"
+                          : dir === "LEFT"
+                          ? "LOOKING_LEFT"
+                          : dir === "RIGHT"
+                          ? "LOOKING_RIGHT"
+                          : "LOOKING_AWAY";
+                      logEvent(eventType, Math.round(elapsedMs / 1000), {
+                        direction: dir,
+                        reason: `Candidate looking ${dir.toLowerCase()} away from exam screen`,
+                      });
+                      flushNow();
+                    }
+                  }
+
+                  // 2. Continuous look-away for >= 5 seconds takes a clean photo snapshot for proctor review
                   if (elapsedMs >= 5000 && !lookAwaySnappedRef.current) {
                     lookAwaySnappedRef.current = true;
-                    const photo = canvas.toDataURL("image/jpeg", 0.7);
+                    const photo = takeCleanSnapshot();
                     logEvent("LOOKING_AWAY_SNAPSHOT", Math.round(elapsedMs / 1000), {
                       photo,
-                      direction: res.gazeDirection || "AWAY",
+                      direction: dir,
                       durationSeconds: Math.round(elapsedMs / 1000),
-                      reason: `Continuous gaze looking ${res.gazeDirection || "away"} for >= 5 seconds`,
+                      reason: `Continuous gaze looking ${dir.toLowerCase()} for >= 5 seconds`,
                     });
                     flushNow();
                   }
@@ -705,6 +922,7 @@ export default function ExamTake() {
               } else {
                 lookAwayStartRef.current = null;
                 lookAwaySnappedRef.current = false;
+                gazeWarningLoggedRef.current = false;
               }
 
               // 2. Secondary person or multiple faces behind candidate: take a photo snapshot
@@ -712,7 +930,7 @@ export default function ExamTake() {
                 const now = Date.now();
                 if (now - lastPersonBehindPhotoTime.current >= 6000) {
                   lastPersonBehindPhotoTime.current = now;
-                  const photo = canvas.toDataURL("image/jpeg", 0.7);
+                  const photo = takeCleanSnapshot();
                   logEvent("PERSON_BEHIND_DETECTED", undefined, {
                     photo,
                     faceCount: res.faceCount,
@@ -736,7 +954,7 @@ export default function ExamTake() {
                 const now = Date.now();
                 if (now - lastObjectPhotoTime.current >= 6000) {
                   lastObjectPhotoTime.current = now;
-                  const photo = canvas.toDataURL("image/jpeg", 0.7);
+                  const photo = takeCleanSnapshot();
                   const objs =
                     res.detectedObjects && res.detectedObjects.length > 0
                       ? res.detectedObjects.join(", ")
@@ -792,7 +1010,6 @@ export default function ExamTake() {
       const stream = webcamStreamRef.current;
       const videoTrack = stream?.getVideoTracks()[0];
       const video = videoRef.current;
-      const canvas = canvasRef.current;
 
       let isClosed = false;
       let reason = "";
@@ -801,16 +1018,22 @@ export default function ExamTake() {
       if (!stream || !videoTrack || videoTrack.readyState === "ended") {
         isClosed = true;
         reason = "Camera module closed or disconnected";
+        setWebcamStatus("LOST");
+        setPermissionMissing({ type: "webcam", reason: "Camera module closed or disconnected" });
       }
       // 2. Camera hardware privacy shutter / default camera close button muted
       else if (videoTrack.muted) {
         isClosed = true;
         reason = "Camera module closed / hardware privacy button active";
+        setWebcamStatus("LOST");
+        setPermissionMissing({ type: "webcam", reason: "Camera muted or privacy shutter closed" });
       }
       // 3. Camera track disabled
       else if (!videoTrack.enabled) {
         isClosed = true;
         reason = "Camera video track disabled";
+        setWebcamStatus("LOST");
+        setPermissionMissing({ type: "webcam", reason: "Camera video track disabled" });
       }
       // 4. Video feed frozen, stopped, or zero dimensions
       else if (!video || video.paused || video.ended || video.videoWidth === 0 || video.readyState < 2) {
@@ -818,9 +1041,12 @@ export default function ExamTake() {
         reason = "Camera feed stopped / no video frames";
       }
       // 5. Camera covered by hand or mechanical privacy shutter (black/near-black pixels)
-      else if (canvas) {
+      else if (video && video.readyState >= 2) {
         try {
-          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          const sampleCanvas = document.createElement("canvas");
+          sampleCanvas.width = 160;
+          sampleCanvas.height = 120;
+          const ctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
           if (ctx) {
             ctx.drawImage(video, 0, 0, 160, 120);
             const imgData = ctx.getImageData(0, 0, 160, 120).data;
@@ -838,6 +1064,18 @@ export default function ExamTake() {
           }
         } catch {
           // ignore canvas read errors
+        }
+      }
+
+      // 6. Microphone track health check
+      const audioTrack = stream?.getAudioTracks()[0];
+      if (session?.microphoneRequired !== false) {
+        if (!stream || !audioTrack || audioTrack.readyState === "ended" || !audioTrack.enabled || audioTrack.muted) {
+          if (micStatus === "ACTIVE") {
+            setMicStatus("LOST");
+            logEvent("MICROPHONE_LOST", undefined, { reason: "Microphone audio track inactive or muted" });
+            setPermissionMissing({ type: "microphone", reason: "Microphone access lost or muted" });
+          }
         }
       }
 
@@ -874,7 +1112,91 @@ export default function ExamTake() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [session, screenGatePassed, handleSubmit, logEvent, flushNow]);
+  }, [session, screenGatePassed, handleSubmit, logEvent, flushNow, micStatus]);
+
+  // Continuous PermissionStatus Listener & Geolocation Watcher
+  useEffect(() => {
+    if (!session || !screenGatePassed || submittedRef.current) return;
+
+    // 1. Geolocation continuous watcher
+    let geoWatchId: number | null = null;
+    if (navigator.geolocation) {
+      geoWatchId = navigator.geolocation.watchPosition(
+        () => {
+          setLocationStatus("ACTIVE");
+        },
+        (err) => {
+          if (err.code === 1 /* PERMISSION_DENIED */) {
+            setLocationStatus("LOST");
+            logEvent("LOCATION_DENIED", undefined, { reason: "Location permission revoked during exam" });
+            setPermissionMissing({ type: "location", reason: "Location permission was turned off in browser settings" });
+            issueWarningStrike(
+              "Location Access Revoked",
+              "Location permission was disabled in your browser settings. Location access must remain enabled at all times."
+            );
+          }
+        },
+        { enableHighAccuracy: false, maximumAge: 30000, timeout: 20000 }
+      );
+    }
+
+    // 2. Query permission statuses and listen to immediate onchange
+    const permissionCleanups: Array<() => void> = [];
+
+    const watchPerm = async (name: PermissionName, type: "webcam" | "microphone" | "location") => {
+      try {
+        if (!navigator.permissions?.query) return;
+        const pStatus = await navigator.permissions.query({ name });
+        const handler = () => {
+          if (pStatus.state === "denied") {
+            if (type === "webcam") {
+              setWebcamStatus("LOST");
+              logEvent("WEBCAM_LOST", undefined, { reason: "Camera permission revoked in browser settings" });
+              setPermissionMissing({ type: "webcam", reason: "Camera permission was turned off in browser settings" });
+              issueWarningStrike(
+                "Camera Access Revoked",
+                "Camera permission was turned off in your browser settings. Camera monitoring is strictly mandatory."
+              );
+            } else if (type === "microphone") {
+              setMicStatus("LOST");
+              logEvent("MICROPHONE_LOST", undefined, { reason: "Microphone permission revoked in browser settings" });
+              setPermissionMissing({ type: "microphone", reason: "Microphone permission was turned off in browser settings" });
+              issueWarningStrike(
+                "Microphone Access Revoked",
+                "Microphone permission was turned off in your browser settings. Audio monitoring is strictly mandatory."
+              );
+            } else if (type === "location") {
+              setLocationStatus("LOST");
+              logEvent("LOCATION_DENIED", undefined, { reason: "Location permission revoked in browser settings" });
+              setPermissionMissing({ type: "location", reason: "Location permission was turned off in browser settings" });
+              issueWarningStrike(
+                "Location Access Revoked",
+                "Location permission was turned off in your browser settings. Location access must remain enabled at all times."
+              );
+            }
+          } else if (pStatus.state === "granted") {
+            if (type === "webcam") setWebcamStatus("ACTIVE");
+            if (type === "microphone") setMicStatus("ACTIVE");
+            if (type === "location") setLocationStatus("ACTIVE");
+            setPermissionMissing((prev) => (prev?.type === type ? null : prev));
+          }
+        };
+        pStatus.addEventListener("change", handler);
+        permissionCleanups.push(() => pStatus.removeEventListener("change", handler));
+      } catch {}
+    };
+
+    watchPerm("camera" as any, "webcam");
+    watchPerm("microphone" as any, "microphone");
+    watchPerm("geolocation" as any, "location");
+
+    return () => {
+      if (geoWatchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(geoWatchId);
+      }
+      permissionCleanups.forEach((fn) => fn());
+    };
+  }, [session, screenGatePassed, issueWarningStrike, logEvent]);
 
   // Dual-Layer Voice Detection: Web Speech Recognition (Google Engine) + Web Audio Acoustic Formants
   useEffect(() => {
@@ -892,31 +1214,38 @@ export default function ExamTake() {
 
     // Acoustic analysis variables
     let calibrationFrames = 0;
-    let ambientBaselineRms = 0.2;
-    let ambientBaselineVocal = 0.2;
+    let ambientBaselineRms = 0.5;
+    let ambientBaselineVocal = 1.0;
     let lastUiUpdate = 0;
 
-    // Helper: Issue voice strike with debounce and proctor event logging
-    const triggerVoiceStrike = (reasonTitle: string, details: string, rmsLevel?: number) => {
+    // Helper: Issue voice warning with debounce, corner popup, and proctor event logging (NEVER terminates exam)
+    const triggerVoiceWarning = (
+      reasonTitle: string,
+      details: string,
+      isActualSpeech: boolean,
+      rmsLevel?: number
+    ) => {
       if (!isMounted || submittedRef.current) return;
       const now = Date.now();
-      // Debounce voice strikes by 4.5 seconds to give candidate time to pause speaking
-      if (now - lastVoiceStrikeTimeRef.current < 4500) return;
+      // Debounce voice warnings by 10 seconds to prevent spamming
+      if (now - lastVoiceStrikeTimeRef.current < 10000) return;
       lastVoiceStrikeTimeRef.current = now;
 
-      console.warn(`[VoiceDetection] 🚨 VOICE STRIKE: ${reasonTitle} - ${details}`);
+      console.warn(`[VoiceDetection] 🎙️ ${reasonTitle}: ${details}`);
 
       logEvent("VOICE_DETECTED", undefined, {
         reason: details,
+        isSpeech: isActualSpeech,
         rms: rmsLevel !== undefined ? Math.round(rmsLevel) : undefined,
         timestamp: new Date().toISOString(),
       });
       flushNow();
 
-      issueWarningStrike(
-        reasonTitle,
-        details.length > 130 ? details.slice(0, 130) + "..." : details
-      );
+      // Show top-right corner warning popup (Never issues fatal 3-strike terminations on audio)
+      setVoiceWarningPopup({
+        message: details,
+        timestamp: now,
+      });
     };
 
     // User gesture handler to ensure AudioContext stays running
@@ -940,23 +1269,14 @@ export default function ExamTake() {
       "groan", "grunt", "grunting",
       "laughter", "laughing", "applause",
       "noise", "sound", "hum", "humming", "click", "thud", "tap",
-      // Common monosyllabic cough / noise mis-transcriptions
-      "uh", "um", "ah", "oh", "eh", "er", "hm", "hmm", "ha", "huh", "shh", "sh", "mm", "mmm",
-      "co", "dock", "off", "up", "hey", "tsk", "psst", "cut", "cup", "koff", "ach"
+      // Non-speech fillers
+      "uh", "um", "ah", "oh", "eh", "er", "hm", "hmm", "ha", "huh", "tsk", "ach"
     ]);
 
-    // Allowed exam choice tokens (whispering 'a', 'b', 'c', 'd', '1', '2' etc.)
-    const EXAM_CHOICE_TOKENS = new Set(["a", "b", "c", "d", "e", "1", "2", "3", "4", "5"]);
-
-    // Question indicator words for detecting questions asked aloud (including quiet murmurs/exam references)
+    // Question indicator keywords for detecting questions asked aloud
     const QUESTION_WORDS = new Set([
       "what", "what's", "whats", "which", "how", "why", "where", "who", "whom", "whose", "when",
-      "can", "could", "would", "should", "is", "are", "am", "was", "were",
-      "do", "does", "did", "have", "has", "had",
-      "tell", "say", "explain", "repeat", "help", "answer", "option", "question", "ans",
-      "number", "choice", "first", "second", "third", "fourth", "fifth", "one", "two", "three", "four", "five",
-      "correct", "wrong", "right", "true", "false", "check", "know", "mean", "meaning",
-      "solve", "calculate", "define", "google", "siri", "alexa", "chatgpt"
+      "tell", "explain", "repeat", "answer", "google", "siri", "alexa", "chatgpt"
     ]);
 
     // =========================================================================
@@ -967,7 +1287,7 @@ export default function ExamTake() {
       try {
         recognition = new SpeechRec();
         recognition.continuous = true;
-        recognition.interimResults = true;
+        recognition.interimResults = false; // Only finalize real speech, never interim guess hallucinations
         recognition.lang = navigator.language || "en-US";
         recognition.maxAlternatives = 1;
 
@@ -976,7 +1296,9 @@ export default function ExamTake() {
           let transcriptText = "";
           for (let i = event.resultIndex; i < event.results.length; i++) {
             const item = event.results[i];
-            if (item && item[0] && item[0].transcript) {
+            if (item && item.isFinal && item[0] && item[0].transcript) {
+              const conf = item[0].confidence;
+              if (conf !== undefined && conf > 0 && conf < 0.50) continue;
               transcriptText += item[0].transcript.trim() + " ";
             }
           }
@@ -991,38 +1313,32 @@ export default function ExamTake() {
           const meaningfulWords = tokens.filter((w) => {
             const stripped = w.replace(/[^a-z0-9]/g, "");
             if (NON_SPEECH_WORDS.has(stripped)) return false;
-            if (stripped.length >= 2) return true;
-            return EXAM_CHOICE_TOKENS.has(stripped);
+            return stripped.length >= 2;
           });
 
           // If no meaningful words, or only blacklisted noise tokens, safely ignore
           if (meaningfulWords.length === 0) {
-            console.log(`[WebSpeech] Filtered non-speech sound / cough: "${transcriptText}"`);
             return;
           }
 
           // Check if candidate is asking a question:
-          // 1) Contains a question indicator word (even whispered quietly, e.g. "what is", "option b", "number 2")
-          // 2) Or has a question mark '?' in transcript
-          // 3) Or speaks any 2 or more meaningful words (real human speech, e.g. "tell me", "check this")
           const hasQuestionWord = tokens.some((w) => {
             const stripped = w.replace(/[^a-z0-9]/g, "");
             return QUESTION_WORDS.has(stripped);
           });
           const hasQuestionMark = transcriptText.includes("?");
-          const isAskingQuestion = hasQuestionWord || hasQuestionMark;
+          const isAskingQuestion = (hasQuestionWord || hasQuestionMark) && meaningfulWords.length >= 2;
 
-          // Any meaningful spoken word (even 1 word like 'hello', 'bro', 'option', 'b') is spoken voice
-          if (meaningfulWords.length >= 1) {
-            console.log(`[WebSpeech] 🚨 Detected candidate speech/voice: "${transcriptText}"`);
-            triggerVoiceStrike(
-              isAskingQuestion ? "Question Asked Aloud" : "Voice / Speaking Detected",
+          // Speech recognized: require at least 3 genuine words or a clear 2+ word question
+          if (meaningfulWords.length >= 3 || isAskingQuestion) {
+            console.log(`[WebSpeech] 🎙️ Candidate speech detected: "${transcriptText}"`);
+            triggerVoiceWarning(
+              isAskingQuestion ? "Question Asked Aloud" : "Voice Activity Detected",
               isAskingQuestion
-                ? `Question detected: "${transcriptText}"`
-                : `Spoken words detected: "${transcriptText}"`
+                ? `Question asked: "${transcriptText}"`
+                : `Spoken phrase: "${transcriptText}"`,
+              true
             );
-          } else {
-            console.log(`[WebSpeech] Filtered non-speech sound token: "${transcriptText}"`);
           }
         };
 
@@ -1074,7 +1390,7 @@ export default function ExamTake() {
             fallbackStream = await navigator.mediaDevices.getUserMedia({
               audio: {
                 echoCancellation: true,
-                noiseSuppression: true,
+                noiseSuppression: false,
                 autoGainControl: true,
               },
             });
@@ -1100,22 +1416,20 @@ export default function ExamTake() {
         analyser.fftSize = 1024;
         analyser.smoothingTimeConstant = 0.25;
 
-        // 180Hz highpass filter to strip AC electrical hum, ceiling fan hum, and PC chassis fan rumble
+        // 85Hz highpass filter to strip AC electrical hum (50Hz/60Hz) and DC rumble,
+        // while preserving all human vocal pitch (male fundamentals start ~85Hz, females ~165Hz)
         biquadFilter = audioContext.createBiquadFilter();
         biquadFilter.type = "highpass";
-        biquadFilter.frequency.setValueAtTime(180, audioContext.currentTime);
+        biquadFilter.frequency.setValueAtTime(85, audioContext.currentTime);
 
-        // Calibrate input volume gain with sensitivity boost for quiet/whispered speech
+        // Calibrate input volume gain (flat 1.0 to avoid inflating ambient room noise/fan hiss)
         const gainNode = audioContext.createGain();
-        const configuredAudioLevel = session?.audioInputLevel ?? 20;
-        const targetGain = Math.max(2.2, Math.min(5.5, (configuredAudioLevel / 20.0) * 2.5));
-        gainNode.gain.setValueAtTime(targetGain, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(1.0, audioContext.currentTime);
 
         microphone = audioContext.createMediaStreamSource(streamToUse);
         microphone.connect(gainNode);
         gainNode.connect(biquadFilter);
         biquadFilter.connect(analyser);
-        console.log(`[VoiceDetection] Audio gain configured: ${configuredAudioLevel} (multiplier: ${targetGain})`);
 
         const bufferLength = analyser.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
@@ -1124,13 +1438,13 @@ export default function ExamTake() {
         const sampleRate = audioContext.sampleRate || 48000;
         const binResolution = sampleRate / analyser.fftSize;
 
-        // Human vocal formant band: 250 Hz to 2800 Hz
-        const speechMinBin = Math.max(1, Math.floor(250 / binResolution));
-        const speechMaxBin = Math.min(bufferLength - 1, Math.ceil(2800 / binResolution));
+        // Human vocal formant band: 150 Hz to 3400 Hz
+        const speechMinBin = Math.max(1, Math.floor(150 / binResolution));
+        const speechMaxBin = Math.min(bufferLength - 1, Math.ceil(3400 / binResolution));
 
-        // High-frequency friction/blast band (coughs, sneezes, breath blasts, clicks): 3600 Hz to 8000 Hz
-        const highNoiseMinBin = Math.min(bufferLength - 1, Math.floor(3600 / binResolution));
-        const highNoiseMaxBin = Math.min(bufferLength - 1, Math.ceil(8000 / binResolution));
+        // High-frequency friction/blast band (coughs, sneezes, breath blasts, clicks): 4500 Hz to 8500 Hz
+        const highNoiseMinBin = Math.min(bufferLength - 1, Math.floor(4500 / binResolution));
+        const highNoiseMaxBin = Math.min(bufferLength - 1, Math.ceil(8500 / binResolution));
 
         console.log(`[VoiceDetection] Acoustic analyzer active: speech bins ${speechMinBin}-${speechMaxBin}, noise bins ${highNoiseMinBin}-${highNoiseMaxBin}`);
 
@@ -1180,38 +1494,35 @@ export default function ExamTake() {
           const highAvg = highCount > 0 ? highSum / highCount : 0;
 
           // 4. Dynamic ambient baseline noise learning (adapts to room background noise like fans/AC)
-          if (calibrationFrames < 50) {
+          if (calibrationFrames < 120) {
             calibrationFrames++;
-            ambientBaselineRms = ambientBaselineRms * 0.9 + rms * 0.1;
-            ambientBaselineVocal = ambientBaselineVocal * 0.9 + vocalAvg * 0.1;
+            ambientBaselineRms = ambientBaselineRms * 0.95 + rms * 0.05;
+            ambientBaselineVocal = ambientBaselineVocal * 0.95 + vocalAvg * 0.05;
           } else {
             // Continuously adapt to background fan or steady room noise floor
             if (rms < ambientBaselineRms * 1.5) {
-              ambientBaselineRms = ambientBaselineRms * 0.99 + rms * 0.01;
-              ambientBaselineVocal = ambientBaselineVocal * 0.99 + vocalAvg * 0.01;
+              ambientBaselineRms = ambientBaselineRms * 0.998 + rms * 0.002;
+              ambientBaselineVocal = ambientBaselineVocal * 0.998 + vocalAvg * 0.002;
             }
           }
 
           const now = Date.now();
 
-          // 5. Live UI volume meter update (every 80ms)
-          if (now - lastUiUpdate > 80) {
+          // 5. Live UI volume meter update (every 60ms)
+          if (now - lastUiUpdate > 60) {
             lastUiUpdate = now;
             // Responsive meter: scale rms up to 100%
-            const normalizedVol = Math.min(100, Math.round((rms / 6) * 100));
+            const normalizedVol = Math.min(100, Math.round((rms / 10.0) * 100));
             setMicAudioLevel(normalizedVol);
           }
 
-          // 6. Cough & Impulsive Noise Rejection:
-          // A cough or throat clearing is an impulsive acoustic blast characterized by:
-          // - Violent sudden onset: Rapid RMS rise (> 2.0 above previous frame) from baseline with high peak
-          // - High friction/blast ratio (highAvg >= vocalAvg * 0.55)
+          // 6. Impulsive Cough Rejection:
+          // A real cough/blast is violently loud (RMS > 6.0 and jump > 4.5); speech is sustained
           const rmsRise = rms - prevRms;
-          const isImpulsiveCough = rmsRise > 2.0 && rms > 2.8 && highAvg > vocalAvg * 0.55;
+          const isImpulsiveCough = rmsRise > 5.0 && rms > 7.0 && highAvg > vocalAvg * 0.6;
 
           if (isImpulsiveCough) {
-            // Suppress speech accumulation for ~750ms during and after the cough burst
-            coughCooldownFrames = 45;
+            coughCooldownFrames = 40;
             sustainedSpeechFrames = 0;
           }
 
@@ -1221,27 +1532,30 @@ export default function ExamTake() {
 
           prevRms = rms;
 
-          // Sound activity detection (filters out steady fan/AC hum, catches real voices & whispers):
-          // - Must rise clearly above the ambient fan baseline floor
-          const isAboveFanNoise = rms > Math.max(0.65, ambientBaselineRms + 0.35);
-          // - Must have vocal formant peak (fans are flat across bins, voices have distinct peaks)
-          const hasVocalPeak = maxVocal >= 6 && (maxVocal > vocalAvg * 1.6);
-          const isSpeechDetected = isAboveFanNoise && hasVocalPeak && coughCooldownFrames === 0;
+          // Sound activity detection (catches sustained speaking voice):
+          // A: RMS elevation above background noise floor (must be substantial vocal power, not background fan)
+          const rmsRiseOverAmbient = rms - ambientBaselineRms;
+          const isRmsElevated = rmsRiseOverAmbient > 3.8 && rms > 5.5;
+
+          // B: Vocal band activity (energy in 150Hz - 3400Hz)
+          const vocalRiseOverAmbient = vocalAvg - ambientBaselineVocal;
+          const hasVocalEnergy = vocalRiseOverAmbient > 14.0 && vocalAvg > 18.0;
+
+          const isSpeechDetected = isRmsElevated && hasVocalEnergy && coughCooldownFrames === 0;
 
           // 7. Acoustic Activity Accumulator:
-          // Coughs and continuous fan hum are locked out.
-          // Voices, whispers, talking, asking questions, murmuring build energy:
           if (isSpeechDetected) {
-            sustainedSpeechFrames += 2;
+            sustainedSpeechFrames++;
           } else {
-            sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 1);
+            sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 2);
           }
 
-          if (sustainedSpeechFrames >= 20) { // ~350ms of real voice phonation
+          if (sustainedSpeechFrames >= 65) { // ~1.2s - 1.5s of continuous sustained voice
             sustainedSpeechFrames = 0;
-            triggerVoiceStrike(
+            triggerVoiceWarning(
               "Voice / Speaking Detected",
-              `Voice detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 6) * 100))}%)`,
+              `Voice activity detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 10.0) * 100))}%)`,
+              false,
               rms
             );
           }
@@ -1515,13 +1829,39 @@ export default function ExamTake() {
             </div>
           )}
 
-          <button
-            onClick={startProctoringAndExam}
-            disabled={gateLoading}
-            className="w-full bg-blue-600 text-white font-medium py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
-          >
-            {gateLoading ? "Requesting Permissions…" : "Share Entire Screen & Begin Examination"}
-          </button>
+          {pendingFullscreen ? (
+            <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800 text-xs flex items-center gap-2">
+                <span className="text-base font-bold text-emerald-600">✓</span>
+                <span>Entire screen share &amp; media permissions verified. Click below to enter full-screen mode and start your exam.</span>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    if (document.documentElement.requestFullscreen) {
+                      await document.documentElement.requestFullscreen();
+                    }
+                  } catch (e) {
+                    console.warn("Direct fullscreen click note:", e);
+                  }
+                  examStartTimeRef.current = Date.now();
+                  setScreenGatePassed(true);
+                  setPendingFullscreen(false);
+                }}
+                className="w-full bg-emerald-600 text-white font-bold py-3.5 px-6 rounded-lg hover:bg-emerald-700 shadow-md transition-all cursor-pointer text-base active:scale-98"
+              >
+                Enter Fullscreen &amp; Start Examination →
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={startProctoringAndExam}
+              disabled={gateLoading}
+              className="w-full bg-blue-600 text-white font-medium py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+            >
+              {gateLoading ? "Requesting Permissions…" : "Share Entire Screen & Begin Examination"}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1566,6 +1906,55 @@ export default function ExamTake() {
             className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold py-3.5 px-6 rounded-xl transition-all shadow-lg text-base cursor-pointer"
           >
             {reacquiringScreen ? "Requesting Screen…" : "Share Entire Screen to Resume Exam"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Permission Missing Block Overlay — renders OVER the exam if Camera, Microphone, or Location is lost
+  if (permissionMissing) {
+    return (
+      <div
+        className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-4 select-none backdrop-blur-md"
+        style={{ background: "rgba(15, 23, 42, 0.98)" }}
+      >
+        <div className="bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-lg w-full p-8 text-center shadow-2xl text-white space-y-5 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-3xl border border-rose-500/40 animate-pulse">
+            {permissionMissing.type === "webcam" ? "📷❌" : permissionMissing.type === "microphone" ? "🎙️❌" : "📍❌"}
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              {permissionMissing.type === "webcam"
+                ? "Camera Access Revoked / Disconnected"
+                : permissionMissing.type === "microphone"
+                ? "Microphone Access Revoked / Disconnected"
+                : "Location Access Revoked / Disconnected"}
+            </h2>
+            <p className="text-slate-300 text-sm leading-relaxed">
+              Examination integrity requires continuous, uninterrupted access to your <strong>Camera, Microphone, and Location</strong>.
+              All permissions must remain granted in your browser throughout the entire exam.
+            </p>
+          </div>
+          <div className="bg-rose-950/40 border border-rose-500/30 rounded-lg p-3 text-xs text-rose-200 text-left space-y-1">
+            <p className="font-semibold text-rose-300">How to restore permissions &amp; resume exam:</p>
+            <ol className="list-decimal list-inside space-y-1 text-slate-300">
+              <li>Click the <strong>site settings / lock icon</strong> next to the URL in your browser address bar.</li>
+              <li>Set <strong>Camera, Microphone, and Location</strong> to <strong>&quot;Allow&quot;</strong>.</li>
+              <li>Click <strong>&quot;Restore Permissions to Resume Exam&quot;</strong> below.</li>
+            </ol>
+          </div>
+          {permissionError && (
+            <div className="bg-rose-950/60 border border-rose-500/40 text-rose-300 p-2.5 rounded text-xs font-medium">
+              {permissionError}
+            </div>
+          )}
+          <button
+            onClick={reacquireMediaPermissions}
+            disabled={reacquiringPermissions}
+            className="w-full bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-lg text-base cursor-pointer"
+          >
+            {reacquiringPermissions ? "Checking Permissions…" : "Restore Permissions to Resume Exam"}
           </button>
         </div>
       </div>
@@ -1715,6 +2104,110 @@ export default function ExamTake() {
         </div>
       )}
 
+      {/* Top-Right Notification Container for Gaze & Audio Warning Popups */}
+      <div className="fixed top-5 right-5 z-[99999] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+        {/* Looking Away (Up, Down, Left, Right) Warning Popup */}
+        {gazeWarningPopup && (
+          <div className="pointer-events-auto w-full animate-in slide-in-from-top-4 slide-in-from-right-4 fade-in duration-200 shadow-2xl">
+            <div className="bg-slate-900/95 backdrop-blur-md border-2 border-amber-400 rounded-2xl shadow-[0_10px_35px_rgba(245,158,11,0.25)] p-4 sm:p-5 text-white">
+              <div className="flex items-start gap-3.5">
+                {/* Direction Icon Badge */}
+                <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center text-2xl shrink-0 shadow-inner ring-2 ring-amber-400/30 animate-pulse">
+                  {gazeWarningPopup.direction === "UP"
+                    ? "⬆️"
+                    : gazeWarningPopup.direction === "DOWN"
+                    ? "⬇️"
+                    : gazeWarningPopup.direction === "LEFT"
+                    ? "⬅️"
+                    : gazeWarningPopup.direction === "RIGHT"
+                    ? "➡️"
+                    : "👁️"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 font-mono shadow-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                      Gaze Warning
+                    </span>
+                    <button
+                      onClick={() => {
+                        setGazeWarningPopup(null);
+                        lastGazePopupDismissTime.current = Date.now();
+                      }}
+                      className="text-slate-400 hover:text-white text-base leading-none p-1 cursor-pointer font-bold transition-colors"
+                      title="Dismiss"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <h4 className="text-sm font-extrabold text-amber-300 leading-snug">
+                    Looking {gazeWarningPopup.direction.toUpperCase()} Detected!
+                  </h4>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    Please keep your eyes and focus directly on your exam screen. Looking {gazeWarningPopup.direction.toLowerCase()} is logged by proctoring.
+                  </p>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-[11px] text-amber-400/80 font-medium">Keep eyes on screen</span>
+                    <button
+                      onClick={() => {
+                        setGazeWarningPopup(null);
+                        lastGazePopupDismissTime.current = Date.now();
+                      }}
+                      className="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-1 px-3 rounded-lg shadow-md cursor-pointer transition-transform active:scale-95"
+                    >
+                      Keep Focused
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Voice Activity Warning Popup - Top Right Corner */}
+        {voiceWarningPopup && (
+          <div className="pointer-events-auto w-full animate-in slide-in-from-top-4 slide-in-from-right-4 fade-in duration-200 shadow-2xl">
+            <div className="bg-slate-900/95 backdrop-blur-md border-2 border-red-500 rounded-2xl shadow-[0_10px_35px_rgba(239,68,68,0.25)] p-4 sm:p-5 text-white">
+              <div className="flex items-start gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-red-500/20 text-red-400 border border-red-500/40 flex items-center justify-center text-2xl shrink-0 shadow-inner ring-2 ring-red-400/30 animate-pulse">
+                  🎙️
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-600 text-white font-mono shadow-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                      Audio Warning
+                    </span>
+                    <button
+                      onClick={() => setVoiceWarningPopup(null)}
+                      className="text-slate-400 hover:text-white text-base leading-none p-1 cursor-pointer font-bold transition-colors"
+                      title="Dismiss"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <h4 className="text-sm font-extrabold text-red-300 leading-snug">
+                    Voice Activity Detected!
+                  </h4>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    Please remain silent during the examination. Speaking aloud is recorded for proctor review.
+                  </p>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-[11px] text-red-400/80 font-medium">Silent room required</span>
+                    <button
+                      onClick={() => setVoiceWarningPopup(null)}
+                      className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded-lg shadow-md cursor-pointer transition-transform active:scale-95"
+                    >
+                      I Understand
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Critical Camera Closed / Covered Countdown Modal */}
       {cameraClosedWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150">
@@ -1809,6 +2302,15 @@ export default function ExamTake() {
                 }`}
               />
               Screen
+            </span>
+            <span className="text-slate-600">|</span>
+            <span className="flex items-center gap-1.5" title={`Location: ${locationStatus}`}>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  locationStatus === "ACTIVE" ? "bg-emerald-400" : "bg-rose-400"
+                }`}
+              />
+              Location
             </span>
           </div>
 

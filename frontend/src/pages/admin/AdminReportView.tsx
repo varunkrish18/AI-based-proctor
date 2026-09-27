@@ -481,7 +481,7 @@ export default function AdminReportView() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={report.riskTimeline.map((pt) => ({
                 time: new Date(pt.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-                score: pt.score,
+                score: Math.max(0, Math.min(100, Number(pt.score ?? (pt as any).riskScore ?? 0))),
                 event: pt.eventType || "Anomaly",
               }))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />

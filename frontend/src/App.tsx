@@ -27,6 +27,7 @@ export default function App() {
         {/* Student exam flow: verify -> system check -> take -> submitted */}
         <Route path="/exam/:examId/verify" element={<ExamVerify />} />
         <Route path="/exam/:examId/system-check" element={<SystemCheck />} />
+        <Route path="/exam/:examId/system_check" element={<SystemCheck />} />
         <Route path="/exam/:examId/take" element={<ExamTake />} />
         <Route path="/exam/:examId/submitted" element={<ExamSubmitted />} />
 

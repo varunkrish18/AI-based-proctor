@@ -36,31 +36,32 @@ const initialChecks: CheckItem[] = [
     label: "Webcam access",
     status: "pending",
     isHardware: true,
-    fixHint: "Allow camera permission when prompted, or access via HTTPS for full hardware tracking.",
+    fixHint: "Click the site permissions / lock icon next to the URL in your browser address bar, turn on Camera, and click 'Re-run Checks'.",
   },
   {
     key: "microphone",
     label: "Microphone access",
     status: "pending",
     isHardware: true,
-    fixHint: "Allow microphone permission when prompted, or access via HTTPS for full audio tracking.",
+    fixHint: "Click the site permissions / lock icon next to the URL in your browser address bar, turn on Microphone, and click 'Re-run Checks'.",
+  },
+  {
+    key: "location",
+    label: "Location access",
+    status: "pending",
+    isHardware: true,
+    fixHint: "Click the site permissions / lock icon next to the URL in your browser address bar, turn on Location, and click 'Re-run Checks'.",
   },
   {
     key: "screen",
     label: "Screen sharing support",
     status: "pending",
     isHardware: true,
-    fixHint: "Screen share will be requested once the exam starts.",
-  },
-  {
-    key: "location",
-    label: "Location access",
-    status: "pending",
-    fixHint: "Optional — allow location when your browser prompts you.",
+    fixHint: "Screen share will be requested once the exam starts (you must select 'Entire Screen').",
   },
 ];
 
-const REQUIRED_KEYS = ["browser", "internet", "fullscreen", "webcam", "microphone"];
+const REQUIRED_KEYS = ["browser", "internet", "fullscreen", "webcam", "microphone", "location", "screen"];
 
 export default function SystemCheck() {
   const { examId } = useParams();
@@ -89,66 +90,85 @@ export default function SystemCheck() {
     update("browser", "ok", "Supported browser environment");
 
     // 2. Internet connectivity
-    update("internet", navigator.onLine ? "ok" : "ok", navigator.onLine ? undefined : "Offline warning (cached)");
+    if (navigator.onLine) {
+      update("internet", "ok", "Active internet connection detected");
+    } else {
+      update("internet", "fail", "No internet connection detected");
+    }
 
     // 3. Fullscreen check
-    update("fullscreen", "ok", document.fullscreenEnabled ? undefined : "Standard window mode supported");
+    if (document.fullscreenEnabled) {
+      update("fullscreen", "ok", "Fullscreen mode supported");
+    } else {
+      update("fullscreen", "fail", "Fullscreen mode not supported or disabled in browser");
+    }
 
-    // 4. Camera check - Real camera if available, otherwise automatic simulated fallback
+    // 4. Camera check - Real camera hardware and permission required
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("MEDIA_UNAVAILABLE");
       }
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       stream.getTracks().forEach((t) => t.stop());
-      update("webcam", "ok", "Hardware camera connected & active");
-    } catch {
-      // In all browsers where camera is denied or insecure HTTP, provide automatic proctoring fallback
+      update("webcam", "ok", "Hardware camera connected & permission granted");
+    } catch (err: any) {
+      const isDenied = err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError";
       update(
         "webcam",
-        "ok",
-        isSecure
-          ? "Virtual camera fallback active (No physical camera detected)"
-          : "Virtual camera fallback active (HTTP connection)"
+        "fail",
+        isDenied
+          ? "Camera permission denied in browser settings"
+          : "Camera hardware not detected or unavailable"
       );
     }
 
-    // 5. Microphone check - Real mic if available, otherwise automatic simulated fallback
+    // 5. Microphone check - Real microphone hardware and permission required
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("MEDIA_UNAVAILABLE");
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((t) => t.stop());
-      update("microphone", "ok", "Hardware microphone connected & active");
-    } catch {
+      update("microphone", "ok", "Hardware microphone connected & permission granted");
+    } catch (err: any) {
+      const isDenied = err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError";
       update(
         "microphone",
-        "ok",
-        isSecure
-          ? "Virtual audio fallback active"
-          : "Virtual audio fallback active (HTTP connection)"
+        "fail",
+        isDenied
+          ? "Microphone permission denied in browser settings"
+          : "Microphone hardware not detected or unavailable"
       );
     }
 
-    // 6. Screen share check
-    if (Boolean(navigator.mediaDevices && "getDisplayMedia" in navigator.mediaDevices)) {
-      update("screen", "ok", "Hardware screen share ready");
-    } else {
-      update("screen", "ok", "Virtual screen share fallback ready");
-    }
-
-    // 7. Location check (Optional)
+    // 6. Location check - Real geolocation permission required
     try {
       if (!navigator.geolocation) {
         throw new Error("GEOLOCATION_UNAVAILABLE");
       }
       await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000 })
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          timeout: 6000,
+          enableHighAccuracy: true,
+        })
       );
-      update("location", "ok", "Location verified");
-    } catch {
-      update("location", "ok", "Optional — bypassed");
+      update("location", "ok", "Location access granted & verified");
+    } catch (err: any) {
+      const isDenied = err?.code === 1 || err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError";
+      update(
+        "location",
+        "fail",
+        isDenied
+          ? "Location permission denied in browser settings"
+          : "Location access timed out or unavailable"
+      );
+    }
+
+    // 7. Screen share check
+    if (Boolean(navigator.mediaDevices && "getDisplayMedia" in navigator.mediaDevices)) {
+      update("screen", "ok", "Hardware screen share ready");
+    } else {
+      update("screen", "fail", "Screen sharing not supported by this browser");
     }
 
     setRunning(false);
@@ -166,6 +186,35 @@ export default function SystemCheck() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Listen to browser permission state changes (e.g. toggled in Chrome site settings popup)
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return;
+
+    const cleanupFns: Array<() => void> = [];
+
+    const watch = async (name: PermissionName) => {
+      try {
+        const pStatus = await navigator.permissions.query({ name });
+        const onPermChange = () => {
+          runChecks();
+        };
+        pStatus.addEventListener("change", onPermChange);
+        cleanupFns.push(() => pStatus.removeEventListener("change", onPermChange));
+      } catch {
+        // unsupported permission query name in some browsers
+      }
+    };
+
+    watch("camera" as any);
+    watch("microphone" as any);
+    watch("geolocation" as any);
+
+    return () => {
+      cleanupFns.forEach((fn) => fn());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const requiredChecks = checks.filter((c) => REQUIRED_KEYS.includes(c.key));
   const allRequiredOk = requiredChecks.every((c) => c.status === "ok");
   const stillChecking = checks.some((c) => c.status === "checking" || c.status === "pending");
@@ -174,8 +223,8 @@ export default function SystemCheck() {
     <div className="max-w-2xl mx-auto px-4 py-10">
       <h1 className="text-xl font-bold text-slate-900 mb-1">System Check</h1>
       <p className="text-slate-500 text-sm mb-6">
-        This check confirms your device and browser meet the requirements <strong>before</strong> your examination timer begins.
-        Works across all browsers (Chrome, Firefox, Safari, Edge).
+        This check confirms that all mandatory proctoring permissions (Webcam, Microphone, Location, and Screen Sharing)
+        are granted <strong>before</strong> your examination timer begins.
       </p>
 
       {/* Helpful HTTPS Recommendation Banner if on HTTP (Non-blocking) */}
@@ -188,7 +237,7 @@ export default function SystemCheck() {
                 Tip for Full Hardware Camera &amp; Microphone Tracking
               </h3>
               <p className="mt-1 text-xs text-blue-800 leading-relaxed">
-                You can start your exam right now in any browser! For enhanced hardware camera &amp; microphone streaming, switch to our secure HTTPS link:
+                Browser security requires HTTPS for camera, microphone, and location access:
               </p>
               <div className="mt-2.5 flex items-center gap-2">
                 <button
@@ -205,22 +254,35 @@ export default function SystemCheck() {
 
       {/* Status banner */}
       {!stillChecking && (
-        <div className="mb-5 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <span className="text-lg leading-none mt-0.5">✅</span>
-          <div>
-            <p className="font-semibold">Ready for examination</p>
-            <p className="mt-0.5 text-xs text-emerald-700">
-              All browser diagnostics passed. You can start your examination immediately.
-            </p>
+        allRequiredOk ? (
+          <div className="mb-5 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <span className="text-lg leading-none mt-0.5">✅</span>
+            <div>
+              <p className="font-semibold">Ready for examination</p>
+              <p className="mt-0.5 text-xs text-emerald-700">
+                All browser diagnostics and required permissions passed. You can start your examination immediately.
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <span className="text-lg leading-none mt-0.5">⚠️</span>
+            <div>
+              <p className="font-semibold">Permissions Required to Proceed</p>
+              <p className="mt-0.5 text-xs text-red-700">
+                Camera, Microphone, and Location permissions must be granted to take this exam.
+                Please enable the blocked permissions in your browser address bar (lock/site settings icon) and click &quot;Re-run Checks&quot;.
+              </p>
+            </div>
+          </div>
+        )
       )}
 
       {/* Check list */}
       <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100 mb-5">
         {checks.map((c) => {
           const isRequired = REQUIRED_KEYS.includes(c.key);
-          const showFix = expandedFix === c.key;
+          const showFix = expandedFix === c.key || c.status === "fail";
           return (
             <div key={c.key} className="px-4 py-3">
               <div className="flex items-center justify-between">
@@ -235,18 +297,22 @@ export default function SystemCheck() {
                 <div className="flex items-center gap-2">
                   {c.status === "fail" && c.fixHint && (
                     <button
-                      onClick={() => setExpandedFix(showFix ? null : c.key)}
+                      onClick={() => setExpandedFix(expandedFix === c.key ? null : c.key)}
                       className="text-[11px] text-blue-600 hover:underline"
                     >
-                      {showFix ? "Hide ▲" : "How to fix ▼"}
+                      {expandedFix === c.key ? "Hide ▲" : "How to fix ▼"}
                     </button>
                   )}
                   <StatusBadge status={c.status} />
                 </div>
               </div>
               {c.detail && (
-                <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
-                  <span className="text-emerald-600 font-bold">✓</span> {c.detail}
+                <p
+                  className={`text-xs mt-1 flex items-center gap-1.5 ${
+                    c.status === "ok" ? "text-emerald-700" : c.status === "fail" ? "text-rose-600 font-medium" : "text-slate-500"
+                  }`}
+                >
+                  <span className="font-bold">{c.status === "ok" ? "✓" : "✗"}</span> {c.detail}
                 </p>
               )}
               {showFix && c.fixHint && (
@@ -272,10 +338,10 @@ export default function SystemCheck() {
         <button
           onClick={() => navigate(`/exam/${examId}/take`)}
           disabled={!allRequiredOk || running}
-          title="Start the examination"
-          className={`px-6 py-2 rounded-md text-sm font-semibold shadow-sm transition-all cursor-pointer ${
+          title={allRequiredOk ? "Start the examination" : "Please grant all required permissions to start"}
+          className={`px-6 py-2 rounded-md text-sm font-semibold shadow-sm transition-all ${
             allRequiredOk && !running
-              ? "bg-blue-600 text-white hover:bg-blue-700"
+              ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
               : "bg-slate-200 text-slate-400 cursor-not-allowed"
           }`}
         >
@@ -291,7 +357,7 @@ function StatusBadge({ status }: { status: CheckStatus }) {
     pending: { text: "Pending", cls: "bg-slate-100 text-slate-500" },
     checking: { text: "Checking…", cls: "bg-amber-100 text-amber-700 animate-pulse" },
     ok: { text: "✓ Ready", cls: "bg-green-100 text-green-700" },
-    fail: { text: "✗ Unavailable", cls: "bg-red-100 text-red-700" },
+    fail: { text: "✗ Permission Denied / Unavailable", cls: "bg-red-100 text-red-700 font-semibold" },
   };
   const { text, cls } = map[status];
   return <span className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${cls}`}>{text}</span>;

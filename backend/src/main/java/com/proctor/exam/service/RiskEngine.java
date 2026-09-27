@@ -152,7 +152,9 @@ public class RiskEngine {
             int weight = weights.getOrDefault(ev.getEventType(), 5);
             total += weight * multiplier;
         }
-        return BigDecimal.valueOf(total).setScale(2, RoundingMode.HALF_UP);
+        // Risk score is strictly capped between 0 and 100
+        double clampedTotal = Math.max(0.0, Math.min(100.0, total));
+        return BigDecimal.valueOf(clampedTotal).setScale(2, RoundingMode.HALF_UP);
     }
 
     private String generateProgressiveMessage(int level, ProctoringEvent ev) {

@@ -1868,17 +1868,15 @@ function RiskScoreChart({ history }: { history: RiskPoint[] }) {
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = height - padding.top - padding.bottom;
 
-  const validScores = history
-    .map((p) => Number(p.score ?? (p as any).riskScore ?? 0))
-    .filter((n) => !isNaN(n));
-  const maxScore = Math.max(100, ...(validScores.length > 0 ? validScores : [100]));
+  // Risk score is strictly calculated and scaled out of 100
+  const maxScore = 100;
 
   const points = history.map((pt, i) => {
     const rawVal = Number(pt.score ?? (pt as any).riskScore ?? 0);
-    const scoreVal = isNaN(rawVal) ? 0 : rawVal;
+    const scoreVal = Math.max(0, Math.min(100, isNaN(rawVal) ? 0 : rawVal));
     const x =
       padding.left + (history.length === 1 ? innerWidth / 2 : (i / Math.max(1, history.length - 1)) * innerWidth);
-    const y = padding.top + innerHeight - (scoreVal / Math.max(1, maxScore)) * innerHeight;
+    const y = padding.top + innerHeight - (scoreVal / maxScore) * innerHeight;
     return { x, y, scoreVal, ...pt };
   });
 
@@ -1893,7 +1891,7 @@ function RiskScoreChart({ history }: { history: RiskPoint[] }) {
     padding.top + innerHeight
   } L ${(firstPoint?.x ?? 0).toFixed(1)} ${padding.top + innerHeight} Z`;
 
-  const thresholdY = padding.top + innerHeight - (75 / Math.max(1, maxScore)) * innerHeight;
+  const thresholdY = padding.top + innerHeight - (75 / maxScore) * innerHeight;
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-4">
@@ -1906,7 +1904,7 @@ function RiskScoreChart({ history }: { history: RiskPoint[] }) {
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto overflow-visible">
         {/* Y Grid lines */}
         {[0, 25, 50, 75, 100].map((val) => {
-          const y = padding.top + innerHeight - (val / Math.max(1, maxScore)) * innerHeight;
+          const y = padding.top + innerHeight - (val / maxScore) * innerHeight;
           return (
             <g key={val}>
               <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#f1f5f9" strokeWidth="1" />
