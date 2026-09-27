@@ -65,6 +65,7 @@ public class RiskEngine {
             Map.entry("CAMERA_COVERED", 30),
             Map.entry("LOOKING_AWAY_SNAPSHOT", 15),
             Map.entry("VOICE_DETECTED", 20),
+            Map.entry("SPEECH_DETECTED", 20),
             Map.entry("WEBCAM_MUTED", 25),
             Map.entry("CAMERA_CLOSED_AUTO_SUBMIT", 50)
     );

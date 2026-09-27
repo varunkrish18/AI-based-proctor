@@ -200,6 +200,7 @@ public class ProctoringEventService {
                 return "MEDIUM";
 
             case "VOICE_DETECTED":
+            case "SPEECH_DETECTED":
                 return "MEDIUM";
 
             case "WEBCAM_ANALYSIS_UNAVAILABLE":

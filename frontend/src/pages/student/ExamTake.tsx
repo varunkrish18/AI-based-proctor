@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { useEventLogger } from "../../hooks/useEventLogger";
 import { getTrustedEpochMs, syncTrustedTime } from "../../utils/networkTime";
+import { AudioSpeechClassifier, type SpeechAnalysisMetrics } from "../../utils/audioSpeechClassifier";
 import type {
   StartExamResponse,
   StudentQuestion,
@@ -71,6 +72,8 @@ export default function ExamTake() {
   } | null>(null);
   const [voiceWarningPopup, setVoiceWarningPopup] = useState<{
     message: string;
+    speechType?: string;
+    confidence?: number;
     timestamp: number;
   } | null>(null);
 
@@ -128,6 +131,7 @@ export default function ExamTake() {
   const lastVoiceStrikeTimeRef = useRef<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const speechRecognitionRef = useRef<any>(null);
+  const audioClassifierRef = useRef<AudioSpeechClassifier | null>(null);
 
   const consecutiveFrameErrors = useRef(0);
   const nextCaptureDelayRef = useRef(1000);
@@ -199,6 +203,10 @@ export default function ExamTake() {
     }
     if (bgVideoRef.current) {
       bgVideoRef.current.srcObject = null;
+    }
+    if (audioClassifierRef.current) {
+      audioClassifierRef.current.stop();
+      audioClassifierRef.current = null;
     }
     if (audioContextRef.current && audioContextRef.current.state !== "closed") {
       audioContextRef.current.close().catch(() => {});
@@ -1203,55 +1211,57 @@ export default function ExamTake() {
     const micRequired = session?.microphoneRequired ?? true;
     if (!session || !screenGatePassed || submittedRef.current || !micRequired) return;
 
-    let audioContext: AudioContext | null = audioContextRef.current;
-    let analyser: AnalyserNode | null = null;
-    let biquadFilter: BiquadFilterNode | null = null;
-    let microphone: MediaStreamAudioSourceNode | null = null;
     let fallbackStream: MediaStream | null = null;
     let isMounted = true;
-    let animationFrameId: number;
     let recognition: any = null;
+    let classifier: AudioSpeechClassifier | null = null;
 
-    // Acoustic analysis variables
-    let calibrationFrames = 0;
-    let ambientBaselineRms = 0.5;
-    let ambientBaselineVocal = 1.0;
-    let lastUiUpdate = 0;
-
-    // Helper: Issue voice warning with debounce, corner popup, and proctor event logging (NEVER terminates exam)
-    const triggerVoiceWarning = (
+    // Helper: Issue speech warning with debounce, corner popup, and proctor event logging (NEVER terminates exam)
+    const triggerSpeechEvent = (
       reasonTitle: string,
       details: string,
-      isActualSpeech: boolean,
-      rmsLevel?: number
+      speechType: string,
+      confidence: number,
+      rmsLevel?: number,
+      snrDb?: number,
+      transcribedText?: string
     ) => {
       if (!isMounted || submittedRef.current) return;
       const now = Date.now();
-      // Debounce voice warnings by 10 seconds to prevent spamming
-      if (now - lastVoiceStrikeTimeRef.current < 10000) return;
+      // Debounce speech warnings by 6 seconds to prevent spamming
+      if (now - lastVoiceStrikeTimeRef.current < 6000) return;
       lastVoiceStrikeTimeRef.current = now;
 
-      console.warn(`[VoiceDetection] 🎙️ ${reasonTitle}: ${details}`);
+      console.warn(`[SpeechDetector] 🎙️ ${reasonTitle}: ${details} (Type: ${speechType}, Conf: ${Math.round(confidence * 100)}%)`);
 
-      logEvent("VOICE_DETECTED", undefined, {
+      const eventPayload = {
         reason: details,
-        isSpeech: isActualSpeech,
-        rms: rmsLevel !== undefined ? Math.round(rmsLevel) : undefined,
+        speechType,
+        confidence: Math.round(confidence * 100) / 100,
+        rms: rmsLevel !== undefined ? Math.round(rmsLevel * 10) / 10 : undefined,
+        snrDb: snrDb !== undefined ? Math.round(snrDb * 10) / 10 : undefined,
+        transcript: transcribedText || undefined,
         timestamp: new Date().toISOString(),
-      });
+      };
+
+      // Dispatches SPEECH_DETECTED and VOICE_DETECTED events to backend proctoring log
+      logEvent("SPEECH_DETECTED", undefined, eventPayload);
+      logEvent("VOICE_DETECTED", undefined, eventPayload);
       flushNow();
 
       // Show top-right corner warning popup (Never issues fatal 3-strike terminations on audio)
       setVoiceWarningPopup({
-        message: details,
+        message: transcribedText ? `Spoken words: "${transcribedText}"` : details,
+        speechType,
+        confidence,
         timestamp: now,
       });
     };
 
     // User gesture handler to ensure AudioContext stays running
     const resumeContext = () => {
-      if (audioContext && audioContext.state === "suspended") {
-        audioContext.resume().catch(() => {});
+      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
       }
     };
     window.addEventListener("click", resumeContext);
@@ -1280,7 +1290,7 @@ export default function ExamTake() {
     ]);
 
     // =========================================================================
-    // LAYER 1: Web Speech Recognition (Zero false-alarms from coughs/fans; captures real words)
+    // LAYER 1: Web Speech Recognition (Google Engine / WebKit Speech)
     // =========================================================================
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRec) {
@@ -1332,12 +1342,16 @@ export default function ExamTake() {
           // Speech recognized: require at least 3 genuine words or a clear 2+ word question
           if (meaningfulWords.length >= 3 || isAskingQuestion) {
             console.log(`[WebSpeech] 🎙️ Candidate speech detected: "${transcriptText}"`);
-            triggerVoiceWarning(
-              isAskingQuestion ? "Question Asked Aloud" : "Voice Activity Detected",
+            triggerSpeechEvent(
+              isAskingQuestion ? "Question Asked Aloud" : "Speech Transcribed",
               isAskingQuestion
                 ? `Question asked: "${transcriptText}"`
                 : `Spoken phrase: "${transcriptText}"`,
-              true
+              "TRANSCRIPTION",
+              0.92,
+              undefined,
+              undefined,
+              transcriptText
             );
           }
         };
@@ -1376,14 +1390,14 @@ export default function ExamTake() {
     }
 
     // =========================================================================
-    // LAYER 2: Web Audio Acoustic Formant & Energy Analyzer (Meter + Parallel VAD)
+    // LAYER 2: AudioSpeechClassifier Pipeline (VAD + Pitch Harmonicity + Multi-Band Noise Floor)
     // =========================================================================
     async function initAudioDetection() {
       try {
         let streamToUse: MediaStream | null = webcamStreamRef.current;
         if (!streamToUse || streamToUse.getAudioTracks().length === 0 || !streamToUse.getAudioTracks()[0].enabled) {
           if (!navigator.mediaDevices?.getUserMedia) {
-            console.warn("[VoiceDetection] getUserMedia unavailable in this context");
+            console.warn("[SpeechDetector] getUserMedia unavailable in this context");
             return;
           }
           try {
@@ -1396,176 +1410,43 @@ export default function ExamTake() {
             });
             streamToUse = fallbackStream;
           } catch (micErr) {
-            console.warn("[VoiceDetection] Could not acquire audio stream fallback:", micErr);
+            console.warn("[SpeechDetector] Could not acquire audio stream fallback:", micErr);
             return;
           }
         }
 
         if (!isMounted || !streamToUse || streamToUse.getAudioTracks().length === 0) return;
 
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        if (!audioContext || audioContext.state === "closed") {
-          audioContext = new AudioContextClass();
-        }
-        if (audioContext.state === "suspended") {
-          audioContext.resume().catch(() => {});
-        }
-        audioContextRef.current = audioContext;
-
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 1024;
-        analyser.smoothingTimeConstant = 0.25;
-
-        // 85Hz highpass filter to strip AC electrical hum (50Hz/60Hz) and DC rumble,
-        // while preserving all human vocal pitch (male fundamentals start ~85Hz, females ~165Hz)
-        biquadFilter = audioContext.createBiquadFilter();
-        biquadFilter.type = "highpass";
-        biquadFilter.frequency.setValueAtTime(85, audioContext.currentTime);
-
-        // Calibrate input volume gain (flat 1.0 to avoid inflating ambient room noise/fan hiss)
-        const gainNode = audioContext.createGain();
-        gainNode.gain.setValueAtTime(1.0, audioContext.currentTime);
-
-        microphone = audioContext.createMediaStreamSource(streamToUse);
-        microphone.connect(gainNode);
-        gainNode.connect(biquadFilter);
-        biquadFilter.connect(analyser);
-
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        const timeDataArray = new Uint8Array(analyser.fftSize);
-
-        const sampleRate = audioContext.sampleRate || 48000;
-        const binResolution = sampleRate / analyser.fftSize;
-
-        // Human vocal formant band: 150 Hz to 3400 Hz
-        const speechMinBin = Math.max(1, Math.floor(150 / binResolution));
-        const speechMaxBin = Math.min(bufferLength - 1, Math.ceil(3400 / binResolution));
-
-        // High-frequency friction/blast band (coughs, sneezes, breath blasts, clicks): 4500 Hz to 8500 Hz
-        const highNoiseMinBin = Math.min(bufferLength - 1, Math.floor(4500 / binResolution));
-        const highNoiseMaxBin = Math.min(bufferLength - 1, Math.ceil(8500 / binResolution));
-
-        console.log(`[VoiceDetection] Acoustic analyzer active: speech bins ${speechMinBin}-${speechMaxBin}, noise bins ${highNoiseMinBin}-${highNoiseMaxBin}`);
-
-        // Sustained phonation frame tracking for parallel acoustic voice activity detection
-        let sustainedSpeechFrames = 0;
-        let coughCooldownFrames = 0;
-        let prevRms = 1.0;
-
-        const checkAudio = () => {
-          if (!isMounted || submittedRef.current) return;
-
-          if (audioContext && audioContext.state === "suspended") {
-            audioContext.resume().catch(() => {});
-          }
-
-          analyser!.getByteFrequencyData(dataArray as any);
-          analyser!.getByteTimeDomainData(timeDataArray as any);
-
-          // 1. Time-domain analysis: RMS amplitude centered at 128
-          let sumSquares = 0;
-          const timeLen = timeDataArray.length;
-          for (let i = 0; i < timeLen; i++) {
-            const dev = Math.abs(timeDataArray[i] - 128);
-            sumSquares += dev * dev;
-          }
-          const rms = Math.sqrt(sumSquares / timeLen);
-
-          // 2. Frequency-domain analysis within speech formant band
-          let vocalSum = 0;
-          let maxVocal = 0;
-          let vocalCount = 0;
-          for (let i = speechMinBin; i <= speechMaxBin; i++) {
-            const val = dataArray[i];
-            vocalSum += val;
-            if (val > maxVocal) maxVocal = val;
-            vocalCount++;
-          }
-          const vocalAvg = vocalCount > 0 ? vocalSum / vocalCount : 0;
-
-          // 3. Frequency-domain analysis within high-frequency friction / turbulent band
-          let highSum = 0;
-          let highCount = 0;
-          for (let i = highNoiseMinBin; i <= highNoiseMaxBin; i++) {
-            highSum += dataArray[i];
-            highCount++;
-          }
-          const highAvg = highCount > 0 ? highSum / highCount : 0;
-
-          // 4. Dynamic ambient baseline noise learning (adapts to room background noise like fans/AC)
-          if (calibrationFrames < 120) {
-            calibrationFrames++;
-            ambientBaselineRms = ambientBaselineRms * 0.95 + rms * 0.05;
-            ambientBaselineVocal = ambientBaselineVocal * 0.95 + vocalAvg * 0.05;
-          } else {
-            // Continuously adapt to background fan or steady room noise floor
-            if (rms < ambientBaselineRms * 1.5) {
-              ambientBaselineRms = ambientBaselineRms * 0.998 + rms * 0.002;
-              ambientBaselineVocal = ambientBaselineVocal * 0.998 + vocalAvg * 0.002;
-            }
-          }
-
-          const now = Date.now();
-
-          // 5. Live UI volume meter update (every 60ms)
-          if (now - lastUiUpdate > 60) {
-            lastUiUpdate = now;
-            // Responsive meter: scale rms up to 100%
-            const normalizedVol = Math.min(100, Math.round((rms / 10.0) * 100));
-            setMicAudioLevel(normalizedVol);
-          }
-
-          // 6. Impulsive Cough Rejection:
-          // A real cough/blast is violently loud (RMS > 6.0 and jump > 4.5); speech is sustained
-          const rmsRise = rms - prevRms;
-          const isImpulsiveCough = rmsRise > 5.0 && rms > 7.0 && highAvg > vocalAvg * 0.6;
-
-          if (isImpulsiveCough) {
-            coughCooldownFrames = 40;
-            sustainedSpeechFrames = 0;
-          }
-
-          if (coughCooldownFrames > 0) {
-            coughCooldownFrames--;
-          }
-
-          prevRms = rms;
-
-          // Sound activity detection (catches sustained speaking voice):
-          // A: RMS elevation above background noise floor (must be substantial vocal power, not background fan)
-          const rmsRiseOverAmbient = rms - ambientBaselineRms;
-          const isRmsElevated = rmsRiseOverAmbient > 3.8 && rms > 5.5;
-
-          // B: Vocal band activity (energy in 150Hz - 3400Hz)
-          const vocalRiseOverAmbient = vocalAvg - ambientBaselineVocal;
-          const hasVocalEnergy = vocalRiseOverAmbient > 14.0 && vocalAvg > 18.0;
-
-          const isSpeechDetected = isRmsElevated && hasVocalEnergy && coughCooldownFrames === 0;
-
-          // 7. Acoustic Activity Accumulator:
-          if (isSpeechDetected) {
-            sustainedSpeechFrames++;
-          } else {
-            sustainedSpeechFrames = Math.max(0, sustainedSpeechFrames - 2);
-          }
-
-          if (sustainedSpeechFrames >= 65) { // ~1.2s - 1.5s of continuous sustained voice
-            sustainedSpeechFrames = 0;
-            triggerVoiceWarning(
-              "Voice / Speaking Detected",
-              `Voice activity detected (RMS: ${rms.toFixed(1)}, Level: ${Math.min(100, Math.round((rms / 10.0) * 100))}%)`,
-              false,
-              rms
+        // Initialize production AudioSpeechClassifier
+        classifier = new AudioSpeechClassifier(streamToUse, {
+          onSpeechConfirmed: (metrics: SpeechAnalysisMetrics) => {
+            if (!isMounted || submittedRef.current) return;
+            const desc =
+              metrics.speechType === "QUIET_SPEECH"
+                ? "Quiet / low-volume speech detected"
+                : metrics.speechType === "WHISPER"
+                ? "Whispered speech detected"
+                : "Spoken voice detected";
+            triggerSpeechEvent(
+              "Speech Detected",
+              desc,
+              metrics.speechType,
+              metrics.confidence,
+              metrics.rms,
+              metrics.snrDb
             );
-          }
+          },
+          onVolumeUpdate: (normalizedLevel: number) => {
+            if (isMounted) {
+              setMicAudioLevel(normalizedLevel);
+            }
+          },
+        });
 
-          animationFrameId = requestAnimationFrame(checkAudio);
-        };
-
-        checkAudio();
+        await classifier.start();
+        audioClassifierRef.current = classifier;
       } catch (err) {
-        console.error("[VoiceDetection] Acoustic analyzer error:", err);
+        console.error("[SpeechDetector] Audio classifier initialization error:", err);
       }
     }
 
@@ -1573,9 +1454,10 @@ export default function ExamTake() {
 
     return () => {
       isMounted = false;
-      window.removeEventListener("click", resumeContext);
-      window.removeEventListener("keydown", resumeContext);
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      classifier?.stop();
+      if (audioClassifierRef.current === classifier) {
+        audioClassifierRef.current = null;
+      }
       if (recognition) {
         try {
           recognition.onend = null;
@@ -2176,7 +2058,7 @@ export default function ExamTake() {
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-600 text-white font-mono shadow-sm">
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                      Audio Warning
+                      Speech Alert
                     </span>
                     <button
                       onClick={() => setVoiceWarningPopup(null)}
@@ -2187,13 +2069,21 @@ export default function ExamTake() {
                     </button>
                   </div>
                   <h4 className="text-sm font-extrabold text-red-300 leading-snug">
-                    Voice Activity Detected!
+                    Human Speech Detected!
                   </h4>
                   <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                    Please remain silent during the examination. Speaking aloud is recorded for proctor review.
+                    {voiceWarningPopup.message}. Please remain silent during the examination.
                   </p>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-[11px] text-red-400/80 font-medium">Silent room required</span>
+                    <span className="text-[11px] text-red-400/90 font-mono font-medium">
+                      {voiceWarningPopup.speechType
+                        ? `${voiceWarningPopup.speechType.replace("_", " ")} ${
+                            voiceWarningPopup.confidence
+                              ? `(${Math.round(voiceWarningPopup.confidence * 100)}%)`
+                              : ""
+                          }`
+                        : "Silent room required"}
+                    </span>
                     <button
                       onClick={() => setVoiceWarningPopup(null)}
                       className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-3 rounded-lg shadow-md cursor-pointer transition-transform active:scale-95"
