@@ -304,33 +304,33 @@ export class AudioSpeechClassifier {
     const frictionRatio = vocalEnergy > 0 ? frictionEnergy / (vocalEnergy + 0.001) : 0;
 
     // -------------------------------------------------------------------------
-    // 3. Noise Floor Tracking (Fan, AC, Laptop Cooler suppression)
-    // Fast decay downwards, slow creep upwards, capped so speech cannot raise baseline
+    // 3. Adaptive Noise Floor Tracking (Fan, AC, Laptop Cooler suppression)
+    // Fast downward adaptation, slow upward adaptation to absorb stationary fans
     // -------------------------------------------------------------------------
-    if (this.calibrationFrames < 45) {
+    if (this.calibrationFrames < 60) {
       this.calibrationFrames++;
-      this.noiseFloorRms = Math.min(3.5, this.noiseFloorRms * 0.90 + rms * 0.10);
-      this.noiseFloorVocal = Math.min(8.0, this.noiseFloorVocal * 0.90 + vocalEnergy * 0.10);
-      this.noiseFloorFriction = Math.min(6.0, this.noiseFloorFriction * 0.90 + frictionEnergy * 0.10);
-      this.noiseFloorSubBass = Math.min(10.0, this.noiseFloorSubBass * 0.90 + subBassEnergy * 0.10);
+      this.noiseFloorRms = this.noiseFloorRms * 0.90 + rms * 0.10;
+      this.noiseFloorVocal = this.noiseFloorVocal * 0.90 + vocalEnergy * 0.10;
+      this.noiseFloorFriction = this.noiseFloorFriction * 0.90 + frictionEnergy * 0.10;
+      this.noiseFloorSubBass = this.noiseFloorSubBass * 0.90 + subBassEnergy * 0.10;
     } else {
       if (this.temporalState === "IDLE") {
         if (vocalEnergy < this.noiseFloorVocal) {
           this.noiseFloorVocal = this.noiseFloorVocal * 0.92 + vocalEnergy * 0.08;
-        } else if (vocalEnergy < this.noiseFloorVocal * 1.35 && rms < 2.5) {
-          this.noiseFloorVocal = this.noiseFloorVocal * 0.998 + vocalEnergy * 0.002;
+        } else if (vocalEnergy < this.noiseFloorVocal * 1.6) {
+          this.noiseFloorVocal = this.noiseFloorVocal * 0.995 + vocalEnergy * 0.005;
         }
 
         if (rms < this.noiseFloorRms) {
           this.noiseFloorRms = this.noiseFloorRms * 0.92 + rms * 0.08;
-        } else if (rms < this.noiseFloorRms * 1.35 && rms < 2.5) {
-          this.noiseFloorRms = this.noiseFloorRms * 0.998 + rms * 0.002;
+        } else if (rms < this.noiseFloorRms * 1.6) {
+          this.noiseFloorRms = this.noiseFloorRms * 0.995 + rms * 0.005;
         }
       }
     }
 
     // Sub-Band Vocal SNR in dB over dynamic baseline
-    const safeVocalNoise = Math.max(0.3, this.noiseFloorVocal);
+    const safeVocalNoise = Math.max(0.5, this.noiseFloorVocal);
     const snrDb = 10 * Math.log10(Math.max(0.1, vocalEnergy) / safeVocalNoise);
 
     // -------------------------------------------------------------------------
@@ -346,7 +346,7 @@ export class AudioSpeechClassifier {
 
     // A. Sudden Cough / Sneeze:
     const rmsRise = rms - this.prevRms;
-    const isExplosiveCough = rmsRise > 4.5 && rms > 7.0 && frictionRatio > 0.70 && harmonicity < 0.22;
+    const isExplosiveCough = rmsRise > 4.0 && rms > 6.0 && frictionRatio > 0.65 && harmonicity < 0.25;
     if (isExplosiveCough) {
       this.coughCooldownFrames = 15; // ~250ms freeze
       rejectedType = "COUGH_SNEEZE";
@@ -358,20 +358,20 @@ export class AudioSpeechClassifier {
     }
 
     // B. Keyboard Typing & Mouse Clicks:
-    const isClickOrTyping = crestFactor > 4.6 && rms < 3.5 && harmonicity < 0.20 && vocalRatio < 0.35;
+    const isClickOrTyping = crestFactor > 4.2 && rms < 4.0 && harmonicity < 0.22 && vocalRatio < 0.38;
     if (isClickOrTyping) {
       rejectedType = "KEYBOARD_MOUSE";
     }
 
     // C. Low Frequency Impact (Chair scraping, desk thud, door close):
-    const isLowFreqImpact = subBassEnergy > vocalEnergy * 2.5 && vocalRatio < 0.20;
+    const isLowFreqImpact = subBassEnergy > vocalEnergy * 2.0 && vocalRatio < 0.25;
     if (isLowFreqImpact) {
       rejectedType = "LOW_FREQ_IMPACT";
     }
 
     // D. Stationary Background Noise (Fan / AC / Laptop Fan):
-    const isStationaryNoise = snrDb < 1.0 && harmonicity < 0.18;
-    if (!rejectedType && isStationaryNoise && rms < this.noiseFloorRms * 1.6) {
+    const isStationaryNoise = snrDb < 2.0 || (harmonicity < 0.22 && vocalRatio < 0.35);
+    if (!rejectedType && isStationaryNoise && rms < this.noiseFloorRms * 1.8) {
       rejectedType = "STATIONARY_NOISE";
     }
 
@@ -387,45 +387,49 @@ export class AudioSpeechClassifier {
     if (!rejectedType && this.coughCooldownFrames === 0) {
       // 1. Normal Human Speech:
       const isNormalSpeech =
-        (snrDb >= 1.8 || rms >= 2.2) &&
-        (harmonicity >= 0.22 || (vocalRatio >= 0.26 && snrDb >= 2.5));
+        snrDb >= 3.0 &&
+        harmonicity >= 0.30 &&
+        vocalRatio >= 0.30 &&
+        rms >= this.noiseFloorRms + 1.0;
 
       // 2. Quiet / Low-Volume Speech:
       const isQuietSpeech =
         !isNormalSpeech &&
-        (snrDb >= 1.2 || rms >= 1.0) &&
-        (harmonicity >= 0.16 || vocalRatio >= 0.22) &&
-        rms >= 0.6;
+        snrDb >= 2.2 &&
+        harmonicity >= 0.24 &&
+        vocalRatio >= 0.26 &&
+        rms >= this.noiseFloorRms + 0.5;
 
       // 3. Whispering / Unvoiced Speech:
       const isWhisper =
         !isNormalSpeech &&
         !isQuietSpeech &&
-        (snrDb >= 1.0 || rms >= 0.7) &&
-        vocalRatio >= 0.20 &&
-        zeroCrossingRate >= 0.04 &&
-        rms >= 0.5;
+        snrDb >= 1.8 &&
+        vocalRatio >= 0.28 &&
+        frictionRatio <= 0.65 &&
+        zeroCrossingRate >= 0.05 &&
+        rms >= this.noiseFloorRms + 0.4;
 
       if (isNormalSpeech) {
         isCandidateSpeech = true;
         speechType = "NORMAL_SPEECH";
-        const harmScore = Math.min(1.0, harmonicity / 0.50);
+        const harmScore = Math.min(1.0, harmonicity / 0.55);
         const snrScore = Math.min(1.0, Math.max(0, snrDb) / 8.0);
-        const vocalScore = Math.min(1.0, vocalRatio / 0.55);
-        confidence = Math.max(0.68, 0.35 * harmScore + 0.35 * snrScore + 0.30 * vocalScore);
+        const vocalScore = Math.min(1.0, vocalRatio / 0.50);
+        confidence = Math.max(0.65, 0.40 * harmScore + 0.35 * snrScore + 0.25 * vocalScore);
       } else if (isQuietSpeech) {
         isCandidateSpeech = true;
         speechType = "QUIET_SPEECH";
-        const harmScore = Math.min(1.0, harmonicity / 0.40);
+        const harmScore = Math.min(1.0, harmonicity / 0.45);
         const snrScore = Math.min(1.0, Math.max(0, snrDb) / 6.0);
-        const vocalScore = Math.min(1.0, vocalRatio / 0.50);
+        const vocalScore = Math.min(1.0, vocalRatio / 0.45);
         confidence = Math.max(0.60, 0.35 * harmScore + 0.35 * snrScore + 0.30 * vocalScore);
       } else if (isWhisper) {
         isCandidateSpeech = true;
         speechType = "WHISPER";
         const snrScore = Math.min(1.0, Math.max(0, snrDb) / 5.0);
         const formantScore = Math.min(1.0, vocalRatio / 0.45);
-        confidence = Math.max(0.55, 0.50 * snrScore + 0.50 * formantScore);
+        confidence = Math.max(0.58, 0.50 * snrScore + 0.50 * formantScore);
       }
     }
 
@@ -447,7 +451,7 @@ export class AudioSpeechClassifier {
         this.temporalState = "POSSIBLE";
       } else if (this.consecutiveSpeechFrames >= 2 && this.temporalState === "POSSIBLE") {
         this.temporalState = "CONFIRMING";
-      } else if (this.consecutiveSpeechFrames >= 3) {
+      } else if (this.consecutiveSpeechFrames >= 4) {
         this.temporalState = "CONFIRMED";
       }
     } else {
@@ -463,12 +467,12 @@ export class AudioSpeechClassifier {
 
     // -------------------------------------------------------------------------
     // 8. Event Confirmation Dispatch
-    // Minimum 160ms sustained speech duration, confidence >= 0.50, debounced by 3.5s
+    // Minimum 200ms sustained speech duration, confidence >= 0.58, debounced by 3.5s
     // -------------------------------------------------------------------------
     if (this.temporalState === "CONFIRMED" || this.temporalState === "HANGOVER") {
       confirmedDurationMs = now - this.speechStartTimestamp;
 
-      if (confirmedDurationMs >= 160 && confidence >= 0.50) {
+      if (confirmedDurationMs >= 200 && confidence >= 0.58) {
         if (now - this.lastConfirmedEventTime >= 3500) {
           this.lastConfirmedEventTime = now;
 
