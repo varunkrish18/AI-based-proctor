@@ -1228,8 +1228,8 @@ export default function ExamTake() {
     ) => {
       if (!isMounted || submittedRef.current) return;
       const now = Date.now();
-      // Debounce speech warnings by 6 seconds to prevent spamming
-      if (now - lastVoiceStrikeTimeRef.current < 6000) return;
+      // Debounce speech warnings by 3.5 seconds to prevent spamming while remaining responsive
+      if (now - lastVoiceStrikeTimeRef.current < 3500) return;
       lastVoiceStrikeTimeRef.current = now;
 
       console.warn(`[SpeechDetector] 🎙️ ${reasonTitle}: ${details} (Type: ${speechType}, Conf: ${Math.round(confidence * 100)}%)`);
@@ -1360,14 +1360,14 @@ export default function ExamTake() {
           const hasQuestionMark = transcriptText.includes("?");
           const isAskingQuestion = (hasQuestionWord || hasQuestionMark) && meaningfulWords.length >= 2;
 
-          // Speech recognized: require at least 3 genuine words or a clear 2+ word question
-          if (meaningfulWords.length >= 3 || isAskingQuestion) {
+          // Speech recognized: any genuine spoken word that is not blacklisted noise
+          if (meaningfulWords.length >= 1) {
             console.log(`[WebSpeech] 🎙️ Candidate speech detected: "${transcriptText}"`);
             triggerSpeechEvent(
-              isAskingQuestion ? "Question Asked Aloud" : "Speech Transcribed",
+              isAskingQuestion ? "Question Asked Aloud" : "Speech Detected",
               isAskingQuestion
-                ? `Question asked: "${transcriptText}"`
-                : `Spoken phrase: "${transcriptText}"`,
+                ? `Question asked aloud: "${transcriptText}"`
+                : `Spoken words detected: "${transcriptText}"`,
               "TRANSCRIPTION",
               0.92,
               undefined,
@@ -1438,31 +1438,35 @@ export default function ExamTake() {
 
         if (!isMounted || !streamToUse || streamToUse.getAudioTracks().length === 0) return;
 
-        // Initialize production AudioSpeechClassifier
-        classifier = new AudioSpeechClassifier(streamToUse, {
-          onSpeechConfirmed: (metrics: SpeechAnalysisMetrics) => {
-            if (!isMounted || submittedRef.current) return;
-            const desc =
-              metrics.speechType === "QUIET_SPEECH"
-                ? "Quiet / low-volume speech detected"
-                : metrics.speechType === "WHISPER"
-                ? "Whispered speech detected"
-                : "Spoken voice detected";
-            triggerSpeechEvent(
-              "Speech Detected",
-              desc,
-              metrics.speechType,
-              metrics.confidence,
-              metrics.rms,
-              metrics.snrDb
-            );
+        // Initialize production AudioSpeechClassifier with active audioContext
+        classifier = new AudioSpeechClassifier(
+          streamToUse,
+          {
+            onSpeechConfirmed: (metrics: SpeechAnalysisMetrics) => {
+              if (!isMounted || submittedRef.current) return;
+              const desc =
+                metrics.speechType === "QUIET_SPEECH"
+                  ? "Quiet / low-volume speech detected"
+                  : metrics.speechType === "WHISPER"
+                  ? "Whispered speech detected"
+                  : "Spoken voice detected";
+              triggerSpeechEvent(
+                "Speech Detected",
+                desc,
+                metrics.speechType,
+                metrics.confidence,
+                metrics.rms,
+                metrics.snrDb
+              );
+            },
+            onVolumeUpdate: (normalizedLevel: number) => {
+              if (isMounted) {
+                setMicAudioLevel(normalizedLevel);
+              }
+            },
           },
-          onVolumeUpdate: (normalizedLevel: number) => {
-            if (isMounted) {
-              setMicAudioLevel(normalizedLevel);
-            }
-          },
-        });
+          audioContextRef.current
+        );
 
         await classifier.start();
         audioClassifierRef.current = classifier;

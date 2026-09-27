@@ -1,67 +1,67 @@
 /**
- * Audio Speech Classification Pipeline
- * 
- * Pipeline Architecture:
- * Microphone Stream
- *     ↓
- * Audio Preprocessing (90Hz Highpass Filter + Formant Bandpass + Float/Byte extraction)
- *     ↓
- * Noise Suppression (Dynamic Multi-Band Noise Floor Tracking for Fan / AC / PC noise)
- *     ↓
- * Voice Activity Detection (VAD) (Core Vocal SNR + ZCR + Energy Concentration)
- *     ↓
- * Speech / Non-Speech Classifier:
- *   - Pitch Periodicity / Normalized Autocorrelation (Voiced speech vs. Fan / White noise)
- *   - Transient Crest Factor & Duration (Rejects Keyboard typing / Mouse clicks)
- *   - Friction Band Ratio & Energy Attack (Rejects Coughs / Sneezes / Throat clearing)
- *   - Sub-bass Ratio (Rejects Chair movements / Door thuds)
- *   - Formant Resonance & Modulation (Detects Whispering & Quiet Speech)
- *     ↓
- * Temporal Smoothing / Confirmation State Machine (Requires consecutive frames + hangover time)
- *     ↓
- * Confidence Calculation (0.0 - 1.0 composite confidence)
- *     ↓
- * Dispatch SPEECH_DETECTED Event
+ * AudioSpeechClassifier.ts
+ *
+ * Real-time microphone audio detection and classification pipeline for the proctoring system.
+ *
+ * PIPELINE STAGES:
+ * 1. Preprocessing: 85Hz Biquad highpass filter (removes DC offset, desk rumble, 50/60Hz AC electrical hum)
+ * 2. Multi-Band Noise Suppression: Continuous background floor tracking (absorbs fan, AC, laptop cooler)
+ * 3. Voice Activity Detection (VAD): Sub-band vocal SNR (180Hz - 3400Hz), Zero-Crossing Rate, Formant Concentration
+ * 4. Acoustic Non-Speech Rejection:
+ *    - Crest factor & transient sharpness (rejects keyboard clicks, mouse clicks)
+ *    - Explosive high-frequency friction bursts (rejects coughs, sneezes, throat clearing)
+ *    - Low-frequency sub-bass ratio (rejects chair scrapes, door thuds)
+ *    - Stationary noise ceiling (rejects steady fan / AC drone)
+ * 5. Pitch Periodicity: Normalized Autocorrelation Function (NACF) in human fundamental pitch range (75Hz - 400Hz)
+ * 6. Multi-tier Speech Classifier:
+ *    - Normal human speech
+ *    - Low-volume / quiet speech
+ *    - Whispering / unvoiced speech
+ * 7. Temporal Smoothing State Machine:
+ *    - IDLE -> POSSIBLE -> CONFIRMING -> CONFIRMED -> HANGOVER
+ *    - Multi-frame confirmation (>= 160ms) ensures single transient frames never cause violations
+ *    - Hangover bridging maintains speech detection across brief stop-consonant silence
+ * 8. Confidence Scoring & Dispatch:
+ *    - Multi-feature weighted confidence [0.0 - 1.0]
  */
 
 export type SpeechClassificationType =
+  | "NONE"
   | "NORMAL_SPEECH"
   | "QUIET_SPEECH"
-  | "WHISPER"
-  | "NONE";
+  | "WHISPER";
 
 export type RejectedSoundType =
   | "COUGH_SNEEZE"
-  | "THROAT_CLEARING"
   | "KEYBOARD_MOUSE"
   | "LOW_FREQ_IMPACT"
-  | "STATIONARY_NOISE"
-  | "SHORT_TRANSIENT";
+  | "STATIONARY_NOISE";
 
 export interface SpeechAnalysisMetrics {
-  rms: number;
-  snrDb: number;
-  harmonicity: number; // 0.0 - 1.0 (Normalized Autocorrelation Peak in 80Hz - 350Hz range)
-  vocalRatio: number; // 0.0 - 1.0 (energy in 200Hz - 3400Hz vs total)
-  frictionRatio: number; // energy in 3500Hz - 8000Hz vs vocal
-  crestFactor: number; // Peak / RMS ratio
-  zeroCrossingRate: number; // Crossings per sample
+  rms: number; // 0 - 100 scaled RMS level
+  snrDb: number; // Sub-band vocal signal-to-noise ratio in dB
+  harmonicity: number; // Pitch correlation [0.0 - 1.0]
+  vocalRatio: number; // Vocal band energy / total spectrum
+  frictionRatio: number; // Upper friction energy / vocal energy
+  crestFactor: number; // Peak / RMS ratio (high for clicks)
+  zeroCrossingRate: number; // Zero crossing rate
   isCandidateSpeech: boolean;
   speechType: SpeechClassificationType;
   rejectedType?: RejectedSoundType;
-  confidence: number; // 0.0 - 1.0
+  confidence: number; // [0.0 - 1.0]
   consecutiveSpeechFrames: number;
   confirmedDurationMs: number;
 }
 
 export interface AudioClassifierCallbacks {
   onSpeechConfirmed: (metrics: SpeechAnalysisMetrics) => void;
-  onVolumeUpdate?: (normalizedPercent: number) => void;
+  onVolumeUpdate?: (normalizedLevel: number) => void;
   onDebugFrame?: (metrics: SpeechAnalysisMetrics) => void;
 }
 
 export class AudioSpeechClassifier {
   private audioContext: AudioContext | null = null;
+  private isExternalAudioContext = false;
   private mediaStream: MediaStream;
   private callbacks: AudioClassifierCallbacks;
 
@@ -73,7 +73,6 @@ export class AudioSpeechClassifier {
   // Analysis buffers
   private freqData: Uint8Array = new Uint8Array(0);
   private timeData: Float32Array = new Float32Array(0);
-  private timeDataBytes: Uint8Array = new Uint8Array(0);
 
   // Frequency band bin ranges
   private subBassMaxBin = 0; // < 150 Hz
@@ -82,69 +81,88 @@ export class AudioSpeechClassifier {
   private frictionMinBin = 0; // ~3600 Hz
   private frictionMaxBin = 0; // ~8000 Hz
 
-  // Multi-band Dynamic Noise Floor Tracking (for Fan, AC, Laptop Hum suppression)
-  private noiseFloorSubBass = 0.5;
-  private noiseFloorVocal = 1.0;
-  private noiseFloorFriction = 0.5;
-  private noiseFloorRms = 0.5;
+  // Multi-band Dynamic Noise Floor Tracking (for Fan, AC, Laptop Cooler suppression)
+  private noiseFloorSubBass = 1.0;
+  private noiseFloorVocal = 1.5;
+  private noiseFloorFriction = 1.0;
+  private noiseFloorRms = 1.0;
   private calibrationFrames = 0;
 
   // Temporal Smoothing State Machine
-  // 0 = IDLE, 1 = POSSIBLE_SPEECH, 2 = CONFIRMING_SPEECH, 3 = CONFIRMED_SPEECH, 4 = HANGOVER
   private temporalState: "IDLE" | "POSSIBLE" | "CONFIRMING" | "CONFIRMED" | "HANGOVER" = "IDLE";
   private consecutiveSpeechFrames = 0;
   private speechStartTimestamp = 0;
   private hangoverFramesRemaining = 0;
   private coughCooldownFrames = 0;
-  private prevRms = 0.5;
+  private prevRms = 1.0;
 
   // Animation frame loop
   private animationFrameId: number | null = null;
   private isRunning = false;
   private lastUiMeterTime = 0;
   private lastConfirmedEventTime = 0;
+  private resumeHandler: (() => void) | null = null;
 
-  constructor(mediaStream: MediaStream, callbacks: AudioClassifierCallbacks) {
+  constructor(
+    mediaStream: MediaStream,
+    callbacks: AudioClassifierCallbacks,
+    existingContext?: AudioContext | null
+  ) {
     this.mediaStream = mediaStream;
     this.callbacks = callbacks;
+    if (existingContext && existingContext.state !== "closed") {
+      this.audioContext = existingContext;
+      this.isExternalAudioContext = true;
+    }
   }
 
   public async start(): Promise<void> {
     if (this.isRunning) return;
 
     try {
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      this.audioContext = new AudioCtxClass();
+      if (!this.audioContext || this.audioContext.state === "closed") {
+        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+        this.audioContext = new AudioCtxClass();
+        this.isExternalAudioContext = false;
+      }
 
       if (this.audioContext.state === "suspended") {
         await this.audioContext.resume().catch(() => {});
       }
 
+      // Keep context awake on user interaction
+      this.resumeHandler = () => {
+        if (this.audioContext && this.audioContext.state === "suspended") {
+          this.audioContext.resume().catch(() => {});
+        }
+      };
+      window.addEventListener("click", this.resumeHandler);
+      window.addEventListener("keydown", this.resumeHandler);
+
       const sampleRate = this.audioContext.sampleRate || 48000;
 
-      // 1. Preprocessing: 90Hz 12dB/octave Highpass filter
+      // 1. Preprocessing: 85Hz Highpass Filter
       // Strips DC offset, table vibration, desk bumps, 50Hz/60Hz AC electrical hum
       this.highpassFilter = this.audioContext.createBiquadFilter();
       this.highpassFilter.type = "highpass";
-      this.highpassFilter.frequency.setValueAtTime(90, this.audioContext.currentTime);
+      this.highpassFilter.frequency.setValueAtTime(85, this.audioContext.currentTime);
       this.highpassFilter.Q.setValueAtTime(0.707, this.audioContext.currentTime);
 
-      // 2. Analyser Node
+      // 2. Analyser Node: 2048 FFT for sharp pitch and formant resolution
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 1024;
-      this.analyser.smoothingTimeConstant = 0.20;
+      this.analyser.fftSize = 2048;
+      this.analyser.smoothingTimeConstant = 0.15;
 
-      // Connect graph: Microphone -> Highpass -> Analyser
+      // Connect graph: Microphone -> Highpass Filter -> Analyser
       this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.sourceNode.connect(this.highpassFilter);
       this.highpassFilter.connect(this.analyser);
 
-      const bufferLength = this.analyser.frequencyBinCount; // 512 bins
-      const binResolution = sampleRate / this.analyser.fftSize; // e.g. ~46.875 Hz/bin at 48kHz
+      const bufferLength = this.analyser.frequencyBinCount; // 1024 bins
+      const binResolution = sampleRate / this.analyser.fftSize; // ~23.4 Hz/bin at 48kHz
 
       this.freqData = new Uint8Array(bufferLength);
       this.timeData = new Float32Array(this.analyser.fftSize);
-      this.timeDataBytes = new Uint8Array(this.analyser.fftSize);
 
       // Sub-band bin allocations
       this.subBassMaxBin = Math.max(1, Math.floor(150 / binResolution));
@@ -157,9 +175,9 @@ export class AudioSpeechClassifier {
       this.calibrationFrames = 0;
 
       this.processLoop();
-      console.log(`[AudioClassifier] Pipeline initialized. Rate: ${sampleRate}Hz, vocal bins ${this.vocalMinBin}-${this.vocalMaxBin}`);
+      console.log(`[AudioClassifier] Running: rate ${sampleRate}Hz, bin res ${binResolution.toFixed(1)}Hz`);
     } catch (err) {
-      console.error("[AudioClassifier] Failed to start audio pipeline:", err);
+      console.error("[AudioClassifier] Failed to start pipeline:", err);
       throw err;
     }
   }
@@ -171,6 +189,12 @@ export class AudioSpeechClassifier {
       this.animationFrameId = null;
     }
 
+    if (this.resumeHandler) {
+      window.removeEventListener("click", this.resumeHandler);
+      window.removeEventListener("keydown", this.resumeHandler);
+      this.resumeHandler = null;
+    }
+
     try {
       this.sourceNode?.disconnect();
       this.highpassFilter?.disconnect();
@@ -179,7 +203,7 @@ export class AudioSpeechClassifier {
       // Ignore disconnect errors
     }
 
-    if (this.audioContext && this.audioContext.state !== "closed") {
+    if (!this.isExternalAudioContext && this.audioContext && this.audioContext.state !== "closed") {
       this.audioContext.close().catch(() => {});
       this.audioContext = null;
     }
@@ -194,9 +218,8 @@ export class AudioSpeechClassifier {
 
     this.analyser.getByteFrequencyData(this.freqData as any);
     this.analyser.getFloatTimeDomainData(this.timeData as any);
-    this.analyser.getByteTimeDomainData(this.timeDataBytes as any);
 
-    // Run the complete 7-stage processing pipeline on this audio frame
+    // Run the complete classification pipeline on this audio frame
     const metrics = this.analyzeFrame();
 
     // Live UI Volume Meter Update (every 60ms)
@@ -204,8 +227,7 @@ export class AudioSpeechClassifier {
     if (now - this.lastUiMeterTime > 60) {
       this.lastUiMeterTime = now;
       if (this.callbacks.onVolumeUpdate) {
-        // Logarithmic responsive meter scaling
-        const normalized = Math.min(100, Math.round((metrics.rms / 8.0) * 100));
+        const normalized = Math.min(100, Math.round((metrics.rms / 6.0) * 100));
         this.callbacks.onVolumeUpdate(normalized);
       }
     }
@@ -225,7 +247,7 @@ export class AudioSpeechClassifier {
     const now = Date.now();
 
     // -------------------------------------------------------------------------
-    // 1. Time-Domain Metrics: RMS Amplitude & Peak
+    // 1. Time-Domain Metrics: RMS Amplitude, Peak, and Zero Crossing Rate
     // -------------------------------------------------------------------------
     let sumSquares = 0;
     let peakDev = 0;
@@ -238,14 +260,13 @@ export class AudioSpeechClassifier {
       const absVal = Math.abs(val);
       if (absVal > peakDev) peakDev = absVal;
 
-      // Zero-crossing check
       if ((val >= 0 && prevVal < 0) || (val < 0 && prevVal >= 0)) {
         zeroCrossings++;
       }
       prevVal = val;
     }
 
-    // Scale RMS to 0 - 100 integer range for intuitive thresholding
+    // Scaled RMS (0 - 100 range)
     const rms = Math.sqrt(sumSquares / timeLen) * 100.0;
     const peak = peakDev * 100.0;
     const crestFactor = rms > 0.05 ? peak / rms : 1.0;
@@ -264,11 +285,8 @@ export class AudioSpeechClassifier {
 
     let vocalSum = 0;
     let vocalCount = 0;
-    let maxVocalBinVal = 0;
     for (let i = this.vocalMinBin; i <= this.vocalMaxBin; i++) {
-      const v = this.freqData[i];
-      vocalSum += v;
-      if (v > maxVocalBinVal) maxVocalBinVal = v;
+      vocalSum += this.freqData[i];
       vocalCount++;
     }
     const vocalEnergy = vocalCount > 0 ? vocalSum / vocalCount : 0;
@@ -286,67 +304,51 @@ export class AudioSpeechClassifier {
     const frictionRatio = vocalEnergy > 0 ? frictionEnergy / (vocalEnergy + 0.001) : 0;
 
     // -------------------------------------------------------------------------
-    // 3. Noise Suppression: Dynamic Multi-Band Noise Floor Tracking (Fan / AC)
+    // 3. Noise Floor Tracking (Fan, AC, Laptop Cooler suppression)
+    // Fast decay downwards, slow creep upwards, capped so speech cannot raise baseline
     // -------------------------------------------------------------------------
-    if (this.calibrationFrames < 90) {
-      // Initial 2-second ambient calibration
+    if (this.calibrationFrames < 45) {
       this.calibrationFrames++;
-      this.noiseFloorRms = this.noiseFloorRms * 0.95 + rms * 0.05;
-      this.noiseFloorVocal = this.noiseFloorVocal * 0.95 + vocalEnergy * 0.05;
-      this.noiseFloorFriction = this.noiseFloorFriction * 0.95 + frictionEnergy * 0.05;
-      this.noiseFloorSubBass = this.noiseFloorSubBass * 0.95 + subBassEnergy * 0.05;
+      this.noiseFloorRms = Math.min(3.5, this.noiseFloorRms * 0.90 + rms * 0.10);
+      this.noiseFloorVocal = Math.min(8.0, this.noiseFloorVocal * 0.90 + vocalEnergy * 0.10);
+      this.noiseFloorFriction = Math.min(6.0, this.noiseFloorFriction * 0.90 + frictionEnergy * 0.10);
+      this.noiseFloorSubBass = Math.min(10.0, this.noiseFloorSubBass * 0.90 + subBassEnergy * 0.10);
     } else {
-      // Continuous background noise adaptation:
-      // Fast tracking downwards if quiet, very slow tracking upwards if steady (fan/AC)
-      // When confirmed speech is occurring, noise floor is completely FROZEN!
-      if (this.temporalState === "IDLE" || this.temporalState === "POSSIBLE") {
+      if (this.temporalState === "IDLE") {
         if (vocalEnergy < this.noiseFloorVocal) {
-          this.noiseFloorVocal = this.noiseFloorVocal * 0.90 + vocalEnergy * 0.10;
-        } else if (vocalEnergy < this.noiseFloorVocal * 1.6) {
-          // Slowly absorb steady fan / AC increase without absorbing speech bursts
+          this.noiseFloorVocal = this.noiseFloorVocal * 0.92 + vocalEnergy * 0.08;
+        } else if (vocalEnergy < this.noiseFloorVocal * 1.35 && rms < 2.5) {
           this.noiseFloorVocal = this.noiseFloorVocal * 0.998 + vocalEnergy * 0.002;
         }
 
         if (rms < this.noiseFloorRms) {
-          this.noiseFloorRms = this.noiseFloorRms * 0.90 + rms * 0.10;
-        } else if (rms < this.noiseFloorRms * 1.5) {
+          this.noiseFloorRms = this.noiseFloorRms * 0.92 + rms * 0.08;
+        } else if (rms < this.noiseFloorRms * 1.35 && rms < 2.5) {
           this.noiseFloorRms = this.noiseFloorRms * 0.998 + rms * 0.002;
-        }
-
-        if (frictionEnergy < this.noiseFloorFriction) {
-          this.noiseFloorFriction = this.noiseFloorFriction * 0.90 + frictionEnergy * 0.10;
-        } else if (frictionEnergy < this.noiseFloorFriction * 1.6) {
-          this.noiseFloorFriction = this.noiseFloorFriction * 0.998 + frictionEnergy * 0.002;
         }
       }
     }
 
-    // Sub-Band Vocal Signal-to-Noise Ratio (SNR) in dB over baseline
-    const safeVocalNoise = Math.max(0.2, this.noiseFloorVocal);
+    // Sub-Band Vocal SNR in dB over dynamic baseline
+    const safeVocalNoise = Math.max(0.3, this.noiseFloorVocal);
     const snrDb = 10 * Math.log10(Math.max(0.1, vocalEnergy) / safeVocalNoise);
 
     // -------------------------------------------------------------------------
     // 4. Normalized Autocorrelation (Harmonicity / Pitch Periodicity)
-    // Distinguishes human vocal tract harmonics from white noise, AC hum, and fan hiss
+    // Evaluates pitch fundamentals (75Hz - 400Hz)
     // -------------------------------------------------------------------------
     const harmonicity = this.computePitchHarmonicity();
 
     // -------------------------------------------------------------------------
-    // 5. Non-Speech Rejection Classifiers (Cough, Sneeze, Clicks, Fan, Thuds)
+    // 5. Non-Speech Rejection Classifiers (Coughs, Sneezes, Clicks, Fan, Thuds)
     // -------------------------------------------------------------------------
     let rejectedType: RejectedSoundType | undefined = undefined;
 
-    // A. Sudden Cough / Sneeze Detector:
-    // A cough or sneeze features explosive onset (steep RMS rise > 3.5), massive friction band ratio,
-    // and no quasi-periodic pitch harmonics.
+    // A. Sudden Cough / Sneeze:
     const rmsRise = rms - this.prevRms;
-    const isExplosiveAttack = rmsRise > 3.5 && rms > 4.5;
-    const isCoughSneezePattern =
-      (isExplosiveAttack && frictionRatio > 0.65 && harmonicity < 0.28) ||
-      (rms > 6.0 && frictionRatio > 0.85 && vocalRatio < 0.40);
-
-    if (isCoughSneezePattern) {
-      this.coughCooldownFrames = 30; // Freeze candidate speech for ~500ms
+    const isExplosiveCough = rmsRise > 4.5 && rms > 7.0 && frictionRatio > 0.70 && harmonicity < 0.22;
+    if (isExplosiveCough) {
+      this.coughCooldownFrames = 15; // ~250ms freeze
       rejectedType = "COUGH_SNEEZE";
     }
 
@@ -355,31 +357,28 @@ export class AudioSpeechClassifier {
       if (!rejectedType) rejectedType = "COUGH_SNEEZE";
     }
 
-    // B. Keyboard Typing & Mouse Click Detector:
-    // Clicks are sharp transients with high Crest Factor (> 4.2), short impulse duration, and zero harmonicity
-    const isClickOrTyping = crestFactor > 4.2 && harmonicity < 0.25 && vocalRatio < 0.50;
+    // B. Keyboard Typing & Mouse Clicks:
+    const isClickOrTyping = crestFactor > 4.6 && rms < 3.5 && harmonicity < 0.20 && vocalRatio < 0.35;
     if (isClickOrTyping) {
       rejectedType = "KEYBOARD_MOUSE";
     }
 
-    // C. Low Frequency Impact (Chair movement, Desk thud, Door sound):
-    // Heavy energy concentrated below 150 Hz without mid-formants
-    const isLowFreqImpact = subBassEnergy > vocalEnergy * 1.5 && vocalRatio < 0.35;
+    // C. Low Frequency Impact (Chair scraping, desk thud, door close):
+    const isLowFreqImpact = subBassEnergy > vocalEnergy * 2.5 && vocalRatio < 0.20;
     if (isLowFreqImpact) {
       rejectedType = "LOW_FREQ_IMPACT";
     }
 
     // D. Stationary Background Noise (Fan / AC / Laptop Fan):
-    // Steady noise floor where SNR over dynamic noise baseline is low (SNR < 2.5 dB)
-    const isStationaryNoise = snrDb < 2.5 || (harmonicity < 0.22 && vocalRatio < 0.42);
-    if (!rejectedType && isStationaryNoise && rms < this.noiseFloorRms * 1.8) {
+    const isStationaryNoise = snrDb < 1.0 && harmonicity < 0.18;
+    if (!rejectedType && isStationaryNoise && rms < this.noiseFloorRms * 1.6) {
       rejectedType = "STATIONARY_NOISE";
     }
 
     this.prevRms = rms;
 
     // -------------------------------------------------------------------------
-    // 6. Speech Classification & Quiet Speech / Whispering Detection
+    // 6. Speech Classification (Normal, Quiet, Whisper)
     // -------------------------------------------------------------------------
     let isCandidateSpeech = false;
     let speechType: SpeechClassificationType = "NONE";
@@ -387,106 +386,90 @@ export class AudioSpeechClassifier {
 
     if (!rejectedType && this.coughCooldownFrames === 0) {
       // 1. Normal Human Speech:
-      // Strong harmonicity, healthy SNR, concentrated vocal core formants
       const isNormalSpeech =
-        snrDb >= 3.8 &&
-        harmonicity >= 0.32 &&
-        vocalRatio >= 0.48 &&
-        zeroCrossingRate >= 0.03 &&
-        zeroCrossingRate <= 0.35;
+        (snrDb >= 1.8 || rms >= 2.2) &&
+        (harmonicity >= 0.22 || (vocalRatio >= 0.26 && snrDb >= 2.5));
 
       // 2. Quiet / Low-Volume Speech:
-      // Candidate speaks softly; absolute volume is low, but SNR relative to quiet baseline is distinct,
-      // and pitch harmonics or vocal formants are clearly preserved
       const isQuietSpeech =
         !isNormalSpeech &&
-        snrDb >= 2.8 &&
-        harmonicity >= 0.28 &&
-        vocalRatio >= 0.52 &&
-        rms >= 1.0;
+        (snrDb >= 1.2 || rms >= 1.0) &&
+        (harmonicity >= 0.16 || vocalRatio >= 0.22) &&
+        rms >= 0.6;
 
       // 3. Whispering / Unvoiced Speech:
-      // Vocal cords do not vibrate periodically (low harmonicity), but vocal tract shapes formants:
-      // Energy concentrated in F1/F2 (250-2500Hz), rolling off above 3500Hz, with distinct ZCR
       const isWhisper =
         !isNormalSpeech &&
         !isQuietSpeech &&
-        snrDb >= 2.5 &&
-        vocalRatio >= 0.55 &&
-        frictionRatio <= 0.55 &&
-        zeroCrossingRate >= 0.08 &&
-        zeroCrossingRate <= 0.38 &&
-        rms >= 0.8;
+        (snrDb >= 1.0 || rms >= 0.7) &&
+        vocalRatio >= 0.20 &&
+        zeroCrossingRate >= 0.04 &&
+        rms >= 0.5;
 
       if (isNormalSpeech) {
         isCandidateSpeech = true;
         speechType = "NORMAL_SPEECH";
-        // Confidence calculation:
-        const harmScore = Math.min(1.0, harmonicity / 0.65);
-        const snrScore = Math.min(1.0, (snrDb - 3.0) / 10.0);
-        const vocalScore = Math.min(1.0, vocalRatio / 0.70);
-        confidence = Math.max(0.65, 0.40 * harmScore + 0.35 * snrScore + 0.25 * vocalScore);
+        const harmScore = Math.min(1.0, harmonicity / 0.50);
+        const snrScore = Math.min(1.0, Math.max(0, snrDb) / 8.0);
+        const vocalScore = Math.min(1.0, vocalRatio / 0.55);
+        confidence = Math.max(0.68, 0.35 * harmScore + 0.35 * snrScore + 0.30 * vocalScore);
       } else if (isQuietSpeech) {
         isCandidateSpeech = true;
         speechType = "QUIET_SPEECH";
-        const harmScore = Math.min(1.0, harmonicity / 0.50);
-        const snrScore = Math.min(1.0, (snrDb - 2.0) / 7.0);
-        const vocalScore = Math.min(1.0, vocalRatio / 0.65);
+        const harmScore = Math.min(1.0, harmonicity / 0.40);
+        const snrScore = Math.min(1.0, Math.max(0, snrDb) / 6.0);
+        const vocalScore = Math.min(1.0, vocalRatio / 0.50);
         confidence = Math.max(0.60, 0.35 * harmScore + 0.35 * snrScore + 0.30 * vocalScore);
       } else if (isWhisper) {
         isCandidateSpeech = true;
         speechType = "WHISPER";
-        const snrScore = Math.min(1.0, (snrDb - 2.0) / 6.0);
-        const formantScore = Math.min(1.0, vocalRatio / 0.60);
-        confidence = Math.max(0.58, 0.50 * snrScore + 0.50 * formantScore);
+        const snrScore = Math.min(1.0, Math.max(0, snrDb) / 5.0);
+        const formantScore = Math.min(1.0, vocalRatio / 0.45);
+        confidence = Math.max(0.55, 0.50 * snrScore + 0.50 * formantScore);
       }
     }
 
     // -------------------------------------------------------------------------
-    // 7. Temporal Smoothing & Confirmation State Machine
-    // Requires consecutive frames + hangover bridging. NEVER triggers on single frame!
+    // 7. Temporal Smoothing State Machine (IDLE -> POSSIBLE -> CONFIRMING -> CONFIRMED)
+    // With hangover bridging so brief stop consonants don't drop detection
     // -------------------------------------------------------------------------
     let confirmedDurationMs = 0;
 
     if (isCandidateSpeech) {
       this.consecutiveSpeechFrames++;
-      this.hangoverFramesRemaining = 8; // ~240ms hangover to bridge stop consonants
+      this.hangoverFramesRemaining = 8; // ~140ms hangover to bridge stop consonants
+
+      if (this.speechStartTimestamp === 0) {
+        this.speechStartTimestamp = now;
+      }
 
       if (this.temporalState === "IDLE") {
         this.temporalState = "POSSIBLE";
-        this.speechStartTimestamp = now;
-      } else if (this.temporalState === "POSSIBLE" && this.consecutiveSpeechFrames >= 2) {
+      } else if (this.consecutiveSpeechFrames >= 2 && this.temporalState === "POSSIBLE") {
         this.temporalState = "CONFIRMING";
-      } else if (this.temporalState === "CONFIRMING" && this.consecutiveSpeechFrames >= 4) {
+      } else if (this.consecutiveSpeechFrames >= 3) {
         this.temporalState = "CONFIRMED";
       }
     } else {
-      if (this.hangoverFramesRemaining > 0 && this.temporalState === "CONFIRMED") {
-        // Hangover state: maintain speech confirmation across micro-pauses between syllables
+      if (this.hangoverFramesRemaining > 0 && (this.temporalState === "CONFIRMED" || this.temporalState === "CONFIRMING")) {
         this.hangoverFramesRemaining--;
         this.temporalState = "HANGOVER";
       } else {
-        // Speech ended or non-speech noise occurred
-        this.consecutiveSpeechFrames = Math.max(0, this.consecutiveSpeechFrames - 2);
-        if (this.consecutiveSpeechFrames === 0) {
-          this.temporalState = "IDLE";
-          this.speechStartTimestamp = 0;
-        }
+        this.consecutiveSpeechFrames = 0;
+        this.temporalState = "IDLE";
+        this.speechStartTimestamp = 0;
       }
     }
 
     // -------------------------------------------------------------------------
     // 8. Event Confirmation Dispatch
-    // Only fires when speech is confirmed over at least 320ms and confidence >= 0.60
+    // Minimum 160ms sustained speech duration, confidence >= 0.50, debounced by 3.5s
     // -------------------------------------------------------------------------
     if (this.temporalState === "CONFIRMED" || this.temporalState === "HANGOVER") {
       confirmedDurationMs = now - this.speechStartTimestamp;
 
-      // Confirmed speech event trigger criteria:
-      // Minimum duration 320ms (at least 10-12 consecutive frames of validated speech)
-      // Debounce trigger by at least 6 seconds between repeated alerts
-      if (confirmedDurationMs >= 320 && confidence >= 0.60) {
-        if (now - this.lastConfirmedEventTime >= 6000) {
+      if (confirmedDurationMs >= 160 && confidence >= 0.50) {
+        if (now - this.lastConfirmedEventTime >= 3500) {
           this.lastConfirmedEventTime = now;
 
           const confirmedMetrics: SpeechAnalysisMetrics = {
@@ -504,6 +487,7 @@ export class AudioSpeechClassifier {
             confirmedDurationMs,
           };
 
+          console.log(`[AudioClassifier] 🗣️ Confirmed Speech: ${speechType}, Conf: ${Math.round(confidence * 100)}%, RMS: ${metricsToString(rms, snrDb, harmonicity)}`);
           this.callbacks.onSpeechConfirmed(confirmedMetrics);
         }
       }
@@ -528,14 +512,13 @@ export class AudioSpeechClassifier {
 
   /**
    * Fast Normalized Autocorrelation Function (NACF) for pitch period detection
-   * Evaluates lag range tau corresponding to human pitch fundamentals 80 Hz to 350 Hz.
-   * Returns maximum peak normalized correlation in [0.0, 1.0].
+   * Evaluates lag range tau corresponding to human pitch fundamentals 75 Hz to 400 Hz.
    */
   private computePitchHarmonicity(): number {
     const sampleRate = this.audioContext?.sampleRate || 48000;
-    const minLag = Math.floor(sampleRate / 350); // ~137 at 48kHz (350 Hz pitch ceiling)
-    const maxLag = Math.min(500, Math.ceil(sampleRate / 80)); // ~500 at 48kHz (80 Hz pitch floor)
-    const windowSize = 384; // Window length for correlation
+    const minLag = Math.floor(sampleRate / 400); // 400 Hz pitch ceiling (~120 at 48k)
+    const maxLag = Math.min(600, Math.ceil(sampleRate / 75)); // 75 Hz pitch floor (~640 at 48k)
+    const windowSize = 400; // Window length for correlation
 
     if (this.timeData.length < maxLag + windowSize) {
       return 0.0;
@@ -548,7 +531,7 @@ export class AudioSpeechClassifier {
       e0 += v * v;
     }
 
-    if (e0 < 0.0001) return 0.0;
+    if (e0 < 0.00005) return 0.0;
 
     let maxCorrelation = 0.0;
 
@@ -564,8 +547,7 @@ export class AudioSpeechClassifier {
         eTau += xTau * xTau;
       }
 
-      if (eTau > 0.0001) {
-        // Normalized cross-correlation coefficient
+      if (eTau > 0.00005) {
         const normCorr = crossSum / Math.sqrt(e0 * eTau);
         if (normCorr > maxCorrelation) {
           maxCorrelation = normCorr;
@@ -575,4 +557,8 @@ export class AudioSpeechClassifier {
 
     return Math.max(0.0, Math.min(1.0, maxCorrelation));
   }
+}
+
+function metricsToString(rms: number, snrDb: number, harmonicity: number): string {
+  return `rms=${rms.toFixed(1)}, snr=${snrDb.toFixed(1)}dB, harm=${harmonicity.toFixed(2)}`;
 }
