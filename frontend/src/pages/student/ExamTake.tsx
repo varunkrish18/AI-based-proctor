@@ -1256,6 +1256,13 @@ export default function ExamTake() {
         confidence,
         timestamp: now,
       });
+
+      // Auto-dismiss popup after 6 seconds if student does not click dismiss
+      setTimeout(() => {
+        if (isMounted) {
+          setVoiceWarningPopup((cur) => (cur?.timestamp === now ? null : cur));
+        }
+      }, 6000);
     };
 
     // User gesture handler to ensure AudioContext stays running
