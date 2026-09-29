@@ -6,5 +6,7 @@ import jakarta.validation.constraints.NotNull;
 
 public record SubmitAnswerRequest(
         @NotNull Long questionId,
-        @Min(0) @Max(3) Short selectedOption // null-safe via boxed Short; client omits field to clear an answer
+        @Min(0) @Max(3) Short selectedOption,
+        String codeSubmission,
+        String codeLanguage
 ) {}

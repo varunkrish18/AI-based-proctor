@@ -1,15 +1,23 @@
 package com.proctor.exam.dto;
 
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record QuestionRequest(
+        String questionType,
         @NotBlank String questionText,
-        @NotBlank String optionA,
-        @NotBlank String optionB,
-        @NotBlank String optionC,
-        @NotBlank String optionD,
-        @NotNull @Min(0) @Max(3) Short correctAnswer,
-        @NotNull BigDecimal marks
+        String optionA,
+        String optionB,
+        String optionC,
+        String optionD,
+        Short correctAnswer,
+        @NotNull BigDecimal marks,
+        String problemTitle,
+        String constraints,
+        String codeTemplate,
+        String allowedLanguages,
+        List<TestCaseRequest> testCases
 ) {}

@@ -4,10 +4,12 @@ import { api } from "../../api/client";
 import { useEventLogger } from "../../hooks/useEventLogger";
 import { getTrustedEpochMs, syncTrustedTime } from "../../utils/networkTime";
 import { AudioSpeechClassifier, type SpeechAnalysisMetrics } from "../../utils/audioSpeechClassifier";
+import CodeEditor from "../../components/CodeEditor";
 import type {
   StartExamResponse,
   StudentQuestion,
   AiFrameAnalysisResponse,
+  RunCodeResponse,
 } from "../../types";
 
 type AnswerMap = Record<number, number | undefined>;
@@ -54,6 +56,7 @@ export default function ExamTake() {
   const [session, setSession] = useState<StartExamResponse | null>(null);
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<AnswerMap>({});
+  const [codingAnswers, setCodingAnswers] = useState<Record<number, { code: string; language: string }>>({});
   const [marked, setMarked] = useState<Set<number>>(new Set());
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -1764,6 +1767,29 @@ export default function ExamTake() {
     }
   }
 
+  function updateCodingAnswer(questionId: number, code: string, language: string) {
+    setCodingAnswers((prev) => ({
+      ...prev,
+      [questionId]: { code, language },
+    }));
+    if (session?.attemptId) {
+      api.post(
+        `/api/student/attempts/${session.attemptId}/answers`,
+        { questionId, codeSubmission: code, codeLanguage: language },
+        "student"
+      ).catch(() => {});
+    }
+  }
+
+  async function handleRunCode(questionId: number, code: string, language: string, customInput?: string) {
+    if (!session?.attemptId) throw new Error("Attempt not active");
+    return api.post<RunCodeResponse>(
+      `/api/student/attempts/${session.attemptId}/run-code`,
+      { questionId, code, language, customInput },
+      "student"
+    );
+  }
+
   function toggleMark(questionId: number) {
     setMarked((prev) => {
       const next = new Set(prev);
@@ -1993,7 +2019,9 @@ export default function ExamTake() {
     );
   }
 
-  const answeredCount = Object.values(answers).filter((v) => v !== undefined).length;
+  const answeredCount =
+    Object.values(answers).filter((v) => v !== undefined).length +
+    Object.values(codingAnswers).filter((ca) => ca && ca.code && ca.code.trim().length > 0).length;
   const mm = String(Math.floor(remainingSeconds / 60)).padStart(2, "0");
   const ss = String(remainingSeconds % 60).padStart(2, "0");
 
@@ -2399,42 +2427,139 @@ export default function ExamTake() {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm mb-6">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-slate-900 font-medium select-none" onDragStart={(e) => e.preventDefault()}>{q.questionText}</p>
-            <button
-              onClick={() => toggleMark(q.questionId)}
-              className={`text-xs px-2.5 py-1 rounded-full font-medium ml-3 shrink-0 transition-colors cursor-pointer ${
-                marked.has(q.questionId)
-                  ? "bg-purple-100 text-purple-700"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-              }`}
-            >
-              {marked.has(q.questionId) ? "Marked" : "Mark for review"}
-            </button>
+      <div className={`${q.questionType === "CODING" ? "max-w-7xl" : "max-w-2xl"} mx-auto px-4 py-6`}>
+        {q.questionType === "CODING" ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+            {/* Left: Problem Details & Examples */}
+            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col space-y-4 max-h-[720px] overflow-y-auto">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      💻 CODING
+                    </span>
+                    {q.marks !== undefined && (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                        {q.marks} mark{q.marks !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    {q.problemTitle || `Problem ${current + 1}`}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleMark(q.questionId)}
+                  className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 transition-colors cursor-pointer ${
+                    marked.has(q.questionId)
+                      ? "bg-purple-100 text-purple-700"
+                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}
+                >
+                  {marked.has(q.questionId) ? "Marked" : "Mark for review"}
+                </button>
+              </div>
+
+              {/* Problem Statement */}
+              <div className="text-slate-800 text-sm whitespace-pre-wrap leading-relaxed select-none">
+                {q.questionText}
+              </div>
+
+              {/* Sample Test Cases (Examples) */}
+              {q.sampleTestCases && q.sampleTestCases.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-100">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                    Examples
+                  </h3>
+                  {q.sampleTestCases.map((tc, idx) => (
+                    <div key={idx} className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-1.5 font-mono">
+                      <div className="font-bold text-slate-700 font-sans text-xs">Example {idx + 1}:</div>
+                      <div>
+                        <span className="text-slate-500 select-none">Input: </span>
+                        <pre className="inline-block bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-800 font-semibold whitespace-pre-wrap">
+                          {tc.input || "(empty)"}
+                        </pre>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 select-none">Output: </span>
+                        <pre className="inline-block bg-white px-1.5 py-0.5 rounded border border-slate-200 text-emerald-700 font-semibold whitespace-pre-wrap">
+                          {tc.expectedOutput || "(empty)"}
+                        </pre>
+                      </div>
+                      {tc.explanation && (
+                        <div className="font-sans text-[11px] text-slate-600 bg-white p-2 rounded border border-slate-200 mt-1">
+                          <strong>Explanation:</strong> {tc.explanation}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Constraints */}
+              {q.constraints && (
+                <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-3 text-xs space-y-1">
+                  <div className="font-bold text-amber-900 font-sans">Constraints:</div>
+                  <pre className="font-mono text-amber-800 whitespace-pre-wrap">{q.constraints}</pre>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Code Editor & Test Runner */}
+            <div className="lg:col-span-7 h-[720px]">
+              <CodeEditor
+                initialCode={codingAnswers[q.questionId]?.code || q.codeTemplate}
+                initialLanguage={codingAnswers[q.questionId]?.language || "python"}
+                allowedLanguages={
+                  q.allowedLanguages
+                    ? q.allowedLanguages.split(",").map((s) => s.trim().toLowerCase())
+                    : ["python", "javascript"]
+                }
+                sampleTestCases={q.sampleTestCases || []}
+                onCodeChange={(newCode, newLang) => updateCodingAnswer(q.questionId, newCode, newLang)}
+                onRunCode={(c, l, customIn) => handleRunCode(q.questionId, c, l, customIn)}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            {[q.optionA, q.optionB, q.optionC, q.optionD].map((opt, idx) => (
-              <label
-                key={idx}
-                className={`flex items-center gap-3 border rounded-md px-3.5 py-2.5 cursor-pointer transition-all ${
-                  answers[q.questionId] === idx
-                    ? "border-blue-500 bg-blue-50 text-slate-900"
-                    : "border-slate-200 hover:bg-slate-50 text-slate-700"
+        ) : (
+          /* MCQ Card */
+          <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm mb-6">
+            <div className="flex justify-between items-start mb-4">
+              <p className="text-slate-900 font-medium select-none" onDragStart={(e) => e.preventDefault()}>{q.questionText}</p>
+              <button
+                onClick={() => toggleMark(q.questionId)}
+                className={`text-xs px-2.5 py-1 rounded-full font-medium ml-3 shrink-0 transition-colors cursor-pointer ${
+                  marked.has(q.questionId)
+                    ? "bg-purple-100 text-purple-700"
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                 }`}
               >
-                <input
-                  type="radio"
-                  name={`q-${q.questionId}`}
-                  checked={answers[q.questionId] === idx}
-                  onChange={() => selectOption(q.questionId, idx)}
-                />
-                <span className="text-sm">{opt}</span>
-              </label>
-            ))}
+                {marked.has(q.questionId) ? "Marked" : "Mark for review"}
+              </button>
+            </div>
+            <div className="space-y-2">
+              {[q.optionA, q.optionB, q.optionC, q.optionD].map((opt, idx) => (
+                <label
+                  key={idx}
+                  className={`flex items-center gap-3 border rounded-md px-3.5 py-2.5 cursor-pointer transition-all ${
+                    answers[q.questionId] === idx
+                      ? "border-blue-500 bg-blue-50 text-slate-900"
+                      : "border-slate-200 hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={`q-${q.questionId}`}
+                    checked={answers[q.questionId] === idx}
+                    onChange={() => selectOption(q.questionId, idx)}
+                  />
+                  <span className="text-sm">{opt}</span>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex justify-between mb-8">
           <button
@@ -2463,24 +2588,35 @@ export default function ExamTake() {
         </div>
 
         {/* Question palette grid */}
-        <div className="grid grid-cols-8 gap-2">
-          {questions.map((qq, idx) => (
-            <button
-              key={qq.questionId}
-              onClick={() => setCurrent(idx)}
-              className={`h-9 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
-                idx === current
-                  ? "border-blue-600 bg-blue-600 text-white font-bold"
-                  : answers[qq.questionId] !== undefined
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-700 font-semibold"
-                  : marked.has(qq.questionId)
-                  ? "border-purple-300 bg-purple-50 text-purple-700"
-                  : "border-slate-200 text-slate-500 hover:bg-slate-100"
-              }`}
-            >
-              {idx + 1}
-            </button>
-          ))}
+        <div className="grid grid-cols-8 sm:grid-cols-12 gap-2">
+          {questions.map((qq, idx) => {
+            const isAnswered =
+              qq.questionType === "CODING"
+                ? Boolean(codingAnswers[qq.questionId]?.code?.trim())
+                : answers[qq.questionId] !== undefined;
+
+            return (
+              <button
+                key={qq.questionId}
+                onClick={() => setCurrent(idx)}
+                className={`h-9 rounded-md text-xs font-medium border transition-colors cursor-pointer relative ${
+                  idx === current
+                    ? "border-blue-600 bg-blue-600 text-white font-bold"
+                    : isAnswered
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700 font-semibold"
+                    : marked.has(qq.questionId)
+                    ? "border-purple-300 bg-purple-50 text-purple-700"
+                    : "border-slate-200 text-slate-500 hover:bg-slate-100"
+                }`}
+                title={`${qq.questionType === "CODING" ? "Coding: " : "MCQ: "}${qq.problemTitle || `Question ${idx + 1}`}`}
+              >
+                {qq.questionType === "CODING" && (
+                  <span className="absolute top-0.5 right-0.5 text-[8px] leading-none">💻</span>
+                )}
+                {idx + 1}
+              </button>
+            );
+          })}
         </div>
       </div>
 

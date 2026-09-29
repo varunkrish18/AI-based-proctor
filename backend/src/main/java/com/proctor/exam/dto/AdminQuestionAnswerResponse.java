@@ -5,6 +5,8 @@ import java.math.BigDecimal;
 public record AdminQuestionAnswerResponse(
         Long questionId,
         Integer displayOrder,
+        String questionType,
+        String problemTitle,
         String questionText,
         String optionA,
         String optionB,
@@ -14,5 +16,10 @@ public record AdminQuestionAnswerResponse(
         Short correctAnswer,
         Boolean isCorrect,
         BigDecimal marksAwarded,
-        BigDecimal maxMarks
+        BigDecimal maxMarks,
+        String codeSubmission,
+        String codeLanguage,
+        Integer testCasesPassed,
+        Integer totalTestCases,
+        String executionOutput
 ) {}

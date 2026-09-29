@@ -70,9 +70,10 @@ docker compose up -d --build
 ```
 
 ### 4. Service Endpoints
-- **Frontend Web App (HTTPS)**: `https://<YOUR_PROXMOX_IP>` (Port `443` - recommended for camera/mic permissions)
+- **Production Web App**: `https://proctor.campus-notes.in/` (Cloudflare SSL, public access)
+- **Frontend Web App (HTTPS)**: `https://<YOUR_PROXMOX_IP>` (Port `443` - LAN access)
 - **Frontend Web App (HTTP)**: `http://<YOUR_PROXMOX_IP>` (Port `80`)
-- **Backend REST API**: Direct on `:8080` or reverse-proxied at `https://<YOUR_PROXMOX_IP>/api/`
+- **Backend REST API**: Direct on `:8080` or reverse-proxied at `https://proctor.campus-notes.in/api/`
 - **FastAPI AI Vision Service**: Port `:8000/docs` (Swagger UI)
 - **PostgreSQL Database**: Port `5433` (mapped to internal `5432`)
 

@@ -178,19 +178,52 @@ public class ExamAdminService {
                     "Exam question limit reached (" + exam.getNumQuestions() + " max questions). Increase the exam question limit or delete an existing question.");
         }
         int order = (int) currentCount;
+        String qType = req.questionType() != null && !req.questionType().isBlank() ? req.questionType().toUpperCase() : "MCQ";
+
+        if ("CODING".equals(qType)) {
+            if (req.testCases() == null || req.testCases().isEmpty()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Coding questions require at least one test case.");
+            }
+        } else {
+            if (req.optionA() == null || req.optionB() == null || req.optionC() == null || req.optionD() == null || req.correctAnswer() == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "MCQ questions require 4 options (A, B, C, D) and a valid correct answer (0-3).");
+            }
+        }
+
         ExamQuestion q = ExamQuestion.builder()
                 .exam(exam)
+                .questionType(qType)
+                .problemTitle(req.problemTitle())
                 .questionText(req.questionText())
                 .optionA(req.optionA())
                 .optionB(req.optionB())
                 .optionC(req.optionC())
                 .optionD(req.optionD())
                 .correctAnswer(req.correctAnswer())
+                .codeTemplate(req.codeTemplate())
+                .allowedLanguages(req.allowedLanguages() != null ? req.allowedLanguages() : "python,javascript")
+                .constraints(req.constraints())
                 .marks(req.marks())
                 .displayOrder(order)
                 .build();
+
+        if ("CODING".equals(qType) && req.testCases() != null) {
+            int tcOrder = 0;
+            for (com.proctor.exam.dto.TestCaseRequest tcReq : req.testCases()) {
+                ExamQuestionTestCase tc = ExamQuestionTestCase.builder()
+                        .question(q)
+                        .input(tcReq.input() != null ? tcReq.input() : "")
+                        .expectedOutput(tcReq.expectedOutput() != null ? tcReq.expectedOutput() : "")
+                        .isHidden(Boolean.TRUE.equals(tcReq.isHidden()))
+                        .explanation(tcReq.explanation())
+                        .displayOrder(tcReq.displayOrder() != null ? tcReq.displayOrder() : tcOrder++)
+                        .build();
+                q.getTestCases().add(tc);
+            }
+        }
+
         ExamQuestion saved = questionRepository.save(q);
-        auditLogService.logAdmin("admin", "QUESTION_ADDED", "Added question ID " + saved.getId() + " to exam ID " + examId);
+        auditLogService.logAdmin("admin", "QUESTION_ADDED", "Added " + qType + " question ID " + saved.getId() + " to exam ID " + examId);
         return saved;
     }
 
@@ -286,15 +319,40 @@ public class ExamAdminService {
         ExamQuestion q = questionRepository.findByIdAndExamId(questionId, examId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Question not found."));
 
+        String qType = req.questionType() != null && !req.questionType().isBlank() ? req.questionType().toUpperCase() : q.getQuestionType();
+        q.setQuestionType(qType);
+        q.setProblemTitle(req.problemTitle());
         q.setQuestionText(req.questionText());
         q.setOptionA(req.optionA());
         q.setOptionB(req.optionB());
         q.setOptionC(req.optionC());
         q.setOptionD(req.optionD());
         q.setCorrectAnswer(req.correctAnswer());
+        q.setCodeTemplate(req.codeTemplate());
+        if (req.allowedLanguages() != null) {
+            q.setAllowedLanguages(req.allowedLanguages());
+        }
+        q.setConstraints(req.constraints());
         if (req.marks() != null) {
             q.setMarks(req.marks());
         }
+
+        if ("CODING".equals(qType) && req.testCases() != null) {
+            q.getTestCases().clear();
+            int tcOrder = 0;
+            for (com.proctor.exam.dto.TestCaseRequest tcReq : req.testCases()) {
+                ExamQuestionTestCase tc = ExamQuestionTestCase.builder()
+                        .question(q)
+                        .input(tcReq.input() != null ? tcReq.input() : "")
+                        .expectedOutput(tcReq.expectedOutput() != null ? tcReq.expectedOutput() : "")
+                        .isHidden(Boolean.TRUE.equals(tcReq.isHidden()))
+                        .explanation(tcReq.explanation())
+                        .displayOrder(tcReq.displayOrder() != null ? tcReq.displayOrder() : tcOrder++)
+                        .build();
+                q.getTestCases().add(tc);
+            }
+        }
+
         ExamQuestion saved = questionRepository.save(q);
         auditLogService.logAdmin("admin", "QUESTION_UPDATED", "Updated question ID " + saved.getId() + " in exam ID " + examId);
         return saved;

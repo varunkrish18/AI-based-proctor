@@ -321,6 +321,8 @@ public class ReportExportService {
             answerResponses.add(new AdminQuestionAnswerResponse(
                     q.getId(),
                     displayOrder++,
+                    q.getQuestionType(),
+                    q.getProblemTitle(),
                     q.getQuestionText(),
                     q.getOptionA(),
                     q.getOptionB(),
@@ -330,7 +332,12 @@ public class ReportExportService {
                     q.getCorrectAnswer(),
                     isCorrect,
                     awarded,
-                    q.getMarks() != null ? q.getMarks() : BigDecimal.valueOf(1.0)
+                    q.getMarks() != null ? q.getMarks() : BigDecimal.valueOf(1.0),
+                    ans != null ? ans.getCodeSubmission() : null,
+                    ans != null ? ans.getCodeLanguage() : null,
+                    ans != null ? ans.getTestCasesPassed() : null,
+                    ans != null ? ans.getTotalTestCases() : null,
+                    ans != null ? ans.getExecutionOutput() : null
             ));
         }
 

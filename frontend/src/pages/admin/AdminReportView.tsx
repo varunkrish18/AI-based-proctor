@@ -347,14 +347,22 @@ export default function AdminReportView() {
                 ✗ {report.answers.filter((a) => a.isCorrect === false).length} Incorrect
               </span>
               <span className="px-2.5 py-1 rounded-md bg-slate-50 text-slate-600 font-medium border border-slate-200">
-                — {report.answers.filter((a) => a.selectedOption === null || a.selectedOption === undefined).length} Unanswered
+                — {report.answers.filter((a) => {
+                  if (a.questionType === "CODING" || a.codeSubmission !== undefined) {
+                    return !a.codeSubmission;
+                  }
+                  return a.selectedOption === null || a.selectedOption === undefined;
+                }).length} Unanswered
               </span>
             </div>
           </div>
 
           <div className="space-y-4 pt-1">
             {report.answers.map((ans) => {
-              const hasAnswered = ans.selectedOption !== null && ans.selectedOption !== undefined;
+              const isCoding = ans.questionType === "CODING" || ans.codeSubmission !== undefined;
+              const hasAnswered = isCoding
+                ? Boolean(ans.codeSubmission && ans.codeSubmission.trim().length > 0)
+                : ans.selectedOption !== null && ans.selectedOption !== undefined;
               const options = [ans.optionA, ans.optionB, ans.optionC, ans.optionD];
 
               return (
@@ -373,6 +381,15 @@ export default function AdminReportView() {
                       <span className="font-bold text-slate-900 text-sm">
                         Question #{ans.displayOrder}
                       </span>
+                      <span
+                        className={`text-xs font-bold px-2 py-0.5 rounded ${
+                          isCoding
+                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {isCoding ? "💻 CODING" : "🔘 MCQ"}
+                      </span>
                       <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
                         {ans.marksAwarded ?? 0} / {ans.maxMarks ?? 1} pts
                       </span>
@@ -384,7 +401,7 @@ export default function AdminReportView() {
                         </span>
                       ) : hasAnswered ? (
                         <span className="text-xs font-bold text-rose-700 bg-rose-100 border border-rose-200 px-2.5 py-0.5 rounded-full">
-                          ✗ Incorrect (0 pts)
+                          {isCoding ? `${ans.marksAwarded} pts awarded` : "✗ Incorrect (0 pts)"}
                         </span>
                       ) : (
                         <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
@@ -394,45 +411,89 @@ export default function AdminReportView() {
                     </div>
                   </div>
 
-                  <p className="text-sm font-medium text-slate-800 mb-3">{ans.questionText}</p>
+                  {isCoding ? (
+                    <div className="space-y-3">
+                      <div>
+                        {ans.problemTitle && (
+                          <h4 className="font-bold text-slate-900 text-sm mb-1">{ans.problemTitle}</h4>
+                        )}
+                        <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{ans.questionText}</p>
+                      </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {options.map((optText, idx) => {
-                      const isCandidateChoice = ans.selectedOption === idx;
-                      const isKey = ans.correctAnswer === idx;
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="font-semibold text-slate-700">
+                          Language: <span className="font-mono text-indigo-700 font-bold">{ans.codeLanguage || "python"}</span>
+                        </span>
+                        <span className="font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          🧪 Test Cases: <strong>{ans.testCasesPassed ?? 0}</strong> / {ans.totalTestCases ?? 0} Passed
+                        </span>
+                      </div>
 
-                      let pillStyle = "border-slate-200 bg-white text-slate-700";
-                      if (isKey && isCandidateChoice) {
-                        pillStyle = "border-emerald-500 bg-emerald-100 text-emerald-900 font-bold ring-1 ring-emerald-500";
-                      } else if (isKey) {
-                        pillStyle = "border-emerald-400 bg-emerald-50/80 text-emerald-800 font-semibold";
-                      } else if (isCandidateChoice) {
-                        pillStyle = "border-rose-400 bg-rose-100 text-rose-900 font-bold ring-1 ring-rose-400";
-                      }
+                      <div>
+                        <div className="text-[11px] font-semibold text-slate-600 mb-1">Candidate Code Submission:</div>
+                        {hasAnswered ? (
+                          <pre className="p-3 bg-slate-900 text-emerald-400 font-mono text-xs rounded-lg overflow-x-auto max-h-60 leading-relaxed whitespace-pre">
+                            {ans.codeSubmission}
+                          </pre>
+                        ) : (
+                          <p className="text-xs italic text-slate-400 bg-slate-100 p-2.5 rounded-lg">
+                            No code submitted.
+                          </p>
+                        )}
+                      </div>
 
-                      return (
-                        <div
-                          key={idx}
-                          className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${pillStyle}`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold opacity-75">{String.fromCharCode(65 + idx)}.</span>
-                            <span>{optText}</span>
-                          </div>
-                          <div className="shrink-0 flex items-center gap-1.5 font-bold text-[10px]">
-                            {isCandidateChoice && (
-                              <span className={isKey ? "text-emerald-700" : "text-rose-700"}>
-                                👤 Candidate Choice
-                              </span>
-                            )}
-                            {isKey && (
-                              <span className="text-emerald-700">✓ Correct Key</span>
-                            )}
-                          </div>
+                      {ans.executionOutput && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-slate-600 mb-1">Execution Output:</div>
+                          <pre className="p-2.5 bg-slate-100 text-slate-800 font-mono text-[11px] rounded-lg overflow-x-auto max-h-32">
+                            {ans.executionOutput}
+                          </pre>
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-slate-800 mb-3">{ans.questionText}</p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        {options.map((optText, idx) => {
+                          const isCandidateChoice = ans.selectedOption === idx;
+                          const isKey = ans.correctAnswer === idx;
+
+                          let pillStyle = "border-slate-200 bg-white text-slate-700";
+                          if (isKey && isCandidateChoice) {
+                            pillStyle = "border-emerald-500 bg-emerald-100 text-emerald-900 font-bold ring-1 ring-emerald-500";
+                          } else if (isKey) {
+                            pillStyle = "border-emerald-400 bg-emerald-50/80 text-emerald-800 font-semibold";
+                          } else if (isCandidateChoice) {
+                            pillStyle = "border-rose-400 bg-rose-100 text-rose-900 font-bold ring-1 ring-rose-400";
+                          }
+
+                          return (
+                            <div
+                              key={idx}
+                              className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${pillStyle}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold opacity-75">{String.fromCharCode(65 + idx)}.</span>
+                                <span>{optText}</span>
+                              </div>
+                              <div className="shrink-0 flex items-center gap-1.5 font-bold text-[10px]">
+                                {isCandidateChoice && (
+                                  <span className={isKey ? "text-emerald-700" : "text-rose-700"}>
+                                    👤 Candidate Choice
+                                  </span>
+                                )}
+                                {isKey && (
+                                  <span className="text-emerald-700">✓ Correct Key</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}

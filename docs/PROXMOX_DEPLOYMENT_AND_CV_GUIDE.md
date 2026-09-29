@@ -65,11 +65,15 @@ When a candidate attempts to cover or obscure their webcam (using hands, fingers
 
 ## 4. How to Access the Application
 
-### Option A: Direct HTTPS (Recommended for Webcam & Mic Access)
-* **URL**: `https://172.15.16.1` *(or `https://172.15.14.140`)*
-* **SSL Note**: Since the Nginx reverse proxy uses a self-signed certificate (`proctor.crt` / `proctor.key`), click **Advanced $\rightarrow$ Proceed to 172.15.16.1 (unsafe)** once. Modern browsers require HTTPS (or localhost) to grant camera/mic permissions.
+### Option A: Public Live Domain (Recommended & Production-Ready)
+* **URL**: `https://proctor.campus-notes.in`
+* **SSL Note**: Fully secured via Cloudflare SSL certificate. Native webcam and microphone permissions are granted without browser security warnings.
 
-### Option B: Local SSH Tunnel (Bypasses all SSL warnings)
+### Option B: Direct Local Network HTTPS
+* **URL**: `https://172.15.16.1` *(or `https://172.15.14.140`)*
+* **SSL Note**: Since the Nginx reverse proxy uses an internal certificate (`proctor.crt` / `proctor.key`), click **Advanced $\rightarrow$ Proceed to 172.15.16.1 (unsafe)** once if accessing directly over LAN.
+
+### Option C: Local SSH Tunnel
 From your local terminal:
 ```bash
 ssh -L 8081:172.15.14.140:80 root@proxmox.campus-notes.in
@@ -82,22 +86,22 @@ Then open:
 ## 5. Key Portals & Login Credentials
 
 ### Student Exam Portal
-* **Available Exams**: `https://172.15.16.1/exams`
+* **Available Exams**: `https://proctor.campus-notes.in/exams` *(or `https://172.15.16.1/exams`)*
 * **Direct Active Exam Links**:
-  * **Exam 6 (`test1` - DS)**: `https://172.15.16.1/exam/6/verify`
-  * **Exam 7 (`oop` - Java)**: `https://172.15.16.1/exam/7/verify`
-  * **Exam 9 (`DSA` - SZ)**: `https://172.15.16.1/exam/9/verify`
+  * **Exam 2 (`Placement`)**: `https://proctor.campus-notes.in/exam/2/verify`
+  * **Exam 4**: `https://proctor.campus-notes.in/exam/4/verify`
 
 ### Admin Portal & Monitoring Dashboard
-* **Admin Login**: `https://172.15.16.1/admin/login`
+* **Admin Login**: `https://proctor.campus-notes.in/admin/login`
   * **Default Email**: `admin@proctor.com`
-* **Admin Dashboard**: `https://172.15.16.1/admin/dashboard`
+* **Admin Dashboard**: `https://proctor.campus-notes.in/admin/dashboard`
   * Live risk timelines, attempt inspection, evidence snapshots, and warning logs.
-* **Create New Exam**: `https://172.15.16.1/admin/exams/new`
+* **Create New Exam**: `https://proctor.campus-notes.in/admin/exams/new`
 
-### Internal Endpoints
+### API & Internal Endpoints
+* **Public Exams API**: `https://proctor.campus-notes.in/api/exams/public`
+* **Spring Boot API**: `https://proctor.campus-notes.in/api/` (or internal `http://172.15.14.140:8080`)
 * **FastAPI AI Vision Docs**: `http://172.15.14.140:8000/docs`
-* **Spring Boot API**: `https://172.15.16.1/api/` (or `http://172.15.14.140:8080`)
 
 ---
 

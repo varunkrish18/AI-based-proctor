@@ -7,6 +7,8 @@ import type {
   Exam,
   ExamAssignmentItem,
   ExamQuestion,
+  TestCase,
+  RunCodeResponse,
   ProctoringEvent,
   RiskPoint,
   RiskTimelineResponse,
@@ -271,14 +273,10 @@ function QuestionsTab({
   onUpdateLimit: (newLimit: number) => Promise<void>;
   onSwitchToSettings?: () => void;
 }) {
-  const [form, setForm] = useState({ questionText: "", optionA: "", optionB: "", optionC: "", optionD: "", correctAnswer: 0, marks: 1 });
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [increasingLimit, setIncreasingLimit] = useState(false);
+  const [questionType, setQuestionType] = useState<"MCQ" | "CODING">("MCQ");
 
-  // Edit question state
-  const [editingQuestion, setEditingQuestion] = useState<ExamQuestion | null>(null);
-  const [editForm, setEditForm] = useState({
+  // MCQ Form
+  const [mcqForm, setMcqForm] = useState({
     questionText: "",
     optionA: "",
     optionB: "",
@@ -286,6 +284,94 @@ function QuestionsTab({
     optionD: "",
     correctAnswer: 0,
     marks: 1,
+  });
+
+  function setMcq<K extends keyof typeof mcqForm>(key: K, val: (typeof mcqForm)[K]) {
+    setMcqForm((f) => ({ ...f, [key]: val }));
+  }
+
+  // Coding Question Form
+  const [codingForm, setCodingForm] = useState<{
+    problemTitle: string;
+    questionText: string;
+    marks: number;
+    constraints: string;
+    allowedLanguages: string;
+    codeTemplate: string;
+    testCases: TestCase[];
+  }>({
+    problemTitle: "",
+    questionText: "",
+    marks: 10,
+    constraints: "1 <= n <= 10^5\nTime Limit: 5.0 seconds\nMemory Limit: 256 MB",
+    allowedLanguages: "python,javascript",
+    codeTemplate: `import sys
+
+def solve():
+    input_data = sys.stdin.read().strip()
+    if not input_data:
+        return
+    # Your solution here
+    print(input_data)
+
+if __name__ == '__main__':
+    solve()
+`,
+    testCases: [
+      {
+        input: "3\n1 2 3",
+        expectedOutput: "6",
+        isHidden: false,
+        explanation: "Sum of elements 1 + 2 + 3 = 6",
+      },
+      {
+        input: "5\n10 20 30 40 50",
+        expectedOutput: "150",
+        isHidden: true,
+        explanation: "",
+      },
+    ],
+  });
+
+  // Test Run in Admin
+  const [testingCode, setTestingCode] = useState(false);
+  const [testRunResult, setTestRunResult] = useState<RunCodeResponse | null>(null);
+  const [testRunError, setTestRunError] = useState<string | null>(null);
+
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [increasingLimit, setIncreasingLimit] = useState(false);
+
+  // Edit question state
+  const [editingQuestion, setEditingQuestion] = useState<ExamQuestion | null>(null);
+  const [editForm, setEditForm] = useState<{
+    questionType: "MCQ" | "CODING";
+    questionText: string;
+    marks: number;
+    optionA: string;
+    optionB: string;
+    optionC: string;
+    optionD: string;
+    correctAnswer: number;
+    problemTitle: string;
+    constraints: string;
+    allowedLanguages: string;
+    codeTemplate: string;
+    testCases: TestCase[];
+  }>({
+    questionType: "MCQ",
+    questionText: "",
+    marks: 1,
+    optionA: "",
+    optionB: "",
+    optionC: "",
+    optionD: "",
+    correctAnswer: 0,
+    problemTitle: "",
+    constraints: "",
+    allowedLanguages: "python,javascript",
+    codeTemplate: "",
+    testCases: [],
   });
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -312,8 +398,110 @@ function QuestionsTab({
     }
   }
 
-  function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
-    setForm((f) => ({ ...f, [k]: v }));
+  function addTestCase() {
+    setCodingForm((f) => ({
+      ...f,
+      testCases: [
+        ...f.testCases,
+        {
+          input: "",
+          expectedOutput: "",
+          isHidden: false,
+          explanation: "",
+          displayOrder: f.testCases.length,
+        },
+      ],
+    }));
+  }
+
+  function removeTestCase(idx: number) {
+    setCodingForm((f) => ({
+      ...f,
+      testCases: f.testCases.filter((_, i) => i !== idx),
+    }));
+  }
+
+  function updateTestCase(idx: number, field: keyof TestCase, val: any) {
+    setCodingForm((f) => ({
+      ...f,
+      testCases: f.testCases.map((tc, i) => (i === idx ? { ...tc, [field]: val } : tc)),
+    }));
+  }
+
+  function loadTwoSumPreset() {
+    setCodingForm({
+      problemTitle: "Two Sum",
+      questionText: `Given an array of integers nums and an integer target, return the indices of the two numbers such that they add up to target.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.`,
+      marks: 10,
+      constraints: "2 <= nums.length <= 10^4\n-10^9 <= nums[i] <= 10^9\n-10^9 <= target <= 10^9\nOnly one valid answer exists.",
+      allowedLanguages: "python,javascript",
+      codeTemplate: `import sys
+
+def solve():
+    lines = sys.stdin.read().strip().splitlines()
+    if not lines:
+        return
+    nums = [int(x) for x in lines[0].split()]
+    target = int(lines[1].strip())
+    
+    seen = {}
+    for i, num in enumerate(nums):
+        complement = target - num
+        if complement in seen:
+            print(f"{seen[complement]} {i}")
+            return
+        seen[num] = i
+
+if __name__ == '__main__':
+    solve()
+`,
+      testCases: [
+        {
+          input: "2 7 11 15\n9",
+          expectedOutput: "0 1",
+          isHidden: false,
+          explanation: "nums[0] + nums[1] == 9, we return 0 1.",
+        },
+        {
+          input: "3 2 4\n6",
+          expectedOutput: "1 2",
+          isHidden: false,
+          explanation: "nums[1] + nums[2] == 6, we return 1 2.",
+        },
+        {
+          input: "3 3\n6",
+          expectedOutput: "0 1",
+          isHidden: true,
+          explanation: "",
+        },
+      ],
+    });
+  }
+
+  async function handleAdminTestRun() {
+    if (codingForm.testCases.length === 0) {
+      alert("Please add at least one test case before test running.");
+      return;
+    }
+    setTestingCode(true);
+    setTestRunError(null);
+    setTestRunResult(null);
+    try {
+      const res = await api.post<RunCodeResponse>(
+        "/api/admin/exams/questions/test-run",
+        {
+          code: codingForm.codeTemplate,
+          language: "python",
+          testCases: codingForm.testCases,
+        },
+        "admin"
+      );
+      setTestRunResult(res);
+    } catch (err) {
+      setTestRunError(err instanceof Error ? err.message : "Test run failed.");
+    } finally {
+      setTestingCode(false);
+    }
   }
 
   async function addQuestion(e: React.FormEvent) {
@@ -321,8 +509,40 @@ function QuestionsTab({
     setError(null);
     setSubmitting(true);
     try {
-      await api.post(`/api/admin/exams/${exam.id}/questions`, form, "admin");
-      setForm({ questionText: "", optionA: "", optionB: "", optionC: "", optionD: "", correctAnswer: 0, marks: 1 });
+      if (questionType === "MCQ") {
+        await api.post(`/api/admin/exams/${exam.id}/questions`, {
+          ...mcqForm,
+          questionType: "MCQ",
+        }, "admin");
+        setMcqForm({
+          questionText: "",
+          optionA: "",
+          optionB: "",
+          optionC: "",
+          optionD: "",
+          correctAnswer: 0,
+          marks: 1,
+        });
+      } else {
+        if (codingForm.testCases.length === 0) {
+          throw new Error("Coding questions require at least one test case.");
+        }
+        await api.post(`/api/admin/exams/${exam.id}/questions`, {
+          questionType: "CODING",
+          problemTitle: codingForm.problemTitle,
+          questionText: codingForm.questionText,
+          marks: codingForm.marks,
+          constraints: codingForm.constraints,
+          allowedLanguages: codingForm.allowedLanguages,
+          codeTemplate: codingForm.codeTemplate,
+          testCases: codingForm.testCases,
+        }, "admin");
+        setCodingForm((f) => ({
+          ...f,
+          problemTitle: "",
+          questionText: "",
+        }));
+      }
       onAdded();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add question.");
@@ -334,15 +554,58 @@ function QuestionsTab({
   function startEditing(q: ExamQuestion) {
     setEditingQuestion(q);
     setEditForm({
-      questionText: q.questionText,
-      optionA: q.optionA,
-      optionB: q.optionB,
-      optionC: q.optionC,
-      optionD: q.optionD,
-      correctAnswer: q.correctAnswer,
-      marks: q.marks,
+      questionType: (q.questionType as "MCQ" | "CODING") || "MCQ",
+      questionText: q.questionText || "",
+      marks: Number(q.marks) || 1,
+      optionA: q.optionA || "",
+      optionB: q.optionB || "",
+      optionC: q.optionC || "",
+      optionD: q.optionD || "",
+      correctAnswer: q.correctAnswer ?? 0,
+      problemTitle: q.problemTitle || "",
+      constraints: q.constraints || "",
+      allowedLanguages: q.allowedLanguages || "python,javascript",
+      codeTemplate: q.codeTemplate || "",
+      testCases: (q.testCases || []).map((tc, i) => ({
+        id: tc.id,
+        input: tc.input || "",
+        expectedOutput: tc.expectedOutput || "",
+        isHidden: Boolean(tc.isHidden),
+        explanation: tc.explanation || "",
+        displayOrder: tc.displayOrder ?? i,
+      })),
     });
     setEditError(null);
+  }
+
+  function addEditTestCase() {
+    setEditForm((f) => ({
+      ...f,
+      testCases: [
+        ...f.testCases,
+        {
+          input: "",
+          expectedOutput: "",
+          isHidden: false,
+          explanation: "",
+          displayOrder: f.testCases.length,
+        },
+      ],
+    }));
+  }
+
+  function removeEditTestCase(idx: number) {
+    setEditForm((f) => ({
+      ...f,
+      testCases: f.testCases.filter((_, i) => i !== idx),
+    }));
+  }
+
+  function updateEditTestCase(idx: number, field: keyof TestCase, val: any) {
+    setEditForm((f) => ({
+      ...f,
+      testCases: f.testCases.map((tc, i) => (i === idx ? { ...tc, [field]: val } : tc)),
+    }));
   }
 
   async function handleUpdateQuestion(e: React.FormEvent) {
@@ -351,6 +614,9 @@ function QuestionsTab({
     setEditSubmitting(true);
     setEditError(null);
     try {
+      if (editForm.questionType === "CODING" && editForm.testCases.length === 0) {
+        throw new Error("Coding questions require at least one test case.");
+      }
       await api.put(`/api/admin/exams/${exam.id}/questions/${editingQuestion.id}`, editForm, "admin");
       setEditingQuestion(null);
       onAdded();
@@ -438,64 +704,339 @@ function QuestionsTab({
           </div>
         </div>
       ) : (
-        <form onSubmit={addQuestion} className="bg-white border border-slate-200 rounded-xl p-5 space-y-3 h-fit shadow-xs">
-          <div>
-            <div className="flex justify-between items-center">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4 h-fit shadow-xs">
+          <div className="flex justify-between items-center">
+            <div>
               <h3 className="font-bold text-slate-900 text-sm">Add Question</h3>
-              <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                Question {questions.length + 1} of {exam.numQuestions}
-              </span>
+              <p className="text-xs text-slate-500 mt-0.5">Select question format: Multiple Choice or LeetCode Coding</p>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">Create a multiple-choice question for this exam</p>
+            <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
+              Question {questions.length + 1} of {exam.numQuestions}
+            </span>
           </div>
-          <textarea
-            required
-            placeholder="Question text"
-            value={form.questionText}
-            onChange={(e) => set("questionText", e.target.value)}
-            className="input"
-            rows={2}
-          />
-          {(["optionA", "optionB", "optionC", "optionD"] as const).map((key, idx) => (
-            <div key={key} className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="correct"
-                checked={form.correctAnswer === idx}
-                onChange={() => set("correctAnswer", idx)}
-                className="cursor-pointer"
-                title="Mark as correct answer"
-              />
-              <span className="text-xs font-bold text-slate-500 w-4">{String.fromCharCode(65 + idx)}.</span>
-              <input
+
+          {/* Type Selector Tabs */}
+          <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setQuestionType("MCQ")}
+              className={`py-2 rounded-md transition-all cursor-pointer ${
+                questionType === "MCQ" ? "bg-white text-blue-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              🔘 Multiple Choice (MCQ)
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuestionType("CODING")}
+              className={`py-2 rounded-md transition-all cursor-pointer ${
+                questionType === "CODING" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              💻 Coding Question (LeetCode-style)
+            </button>
+          </div>
+
+          {questionType === "MCQ" ? (
+            <form onSubmit={addQuestion} className="space-y-3">
+              <textarea
                 required
-                placeholder={`Option ${String.fromCharCode(65 + idx)}`}
-                value={form[key]}
-                onChange={(e) => set(key, e.target.value)}
+                placeholder="Question text (e.g. What is the time complexity of binary search?)"
+                value={mcqForm.questionText}
+                onChange={(e) => setMcq("questionText", e.target.value)}
                 className="input"
+                rows={2}
               />
-            </div>
-          ))}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-slate-600">Marks</label>
-            <input
-              type="number"
-              min={0}
-              step="0.5"
-              value={form.marks}
-              onChange={(e) => set("marks", Number(e.target.value))}
-              className="input w-24"
-            />
-          </div>
-          {error && <p className="text-rose-600 text-xs bg-rose-50 p-2 rounded">{error}</p>}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors cursor-pointer"
-          >
-            {submitting ? "Adding…" : "+ Add Question"}
-          </button>
-        </form>
+              {(["optionA", "optionB", "optionC", "optionD"] as const).map((key, idx) => (
+                <div key={key} className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="correct"
+                    checked={mcqForm.correctAnswer === idx}
+                    onChange={() => setMcq("correctAnswer", idx)}
+                    className="cursor-pointer"
+                    title="Mark as correct answer"
+                  />
+                  <span className="text-xs font-bold text-slate-500 w-4">{String.fromCharCode(65 + idx)}.</span>
+                  <input
+                    required
+                    placeholder={`Option ${String.fromCharCode(65 + idx)}`}
+                    value={mcqForm[key]}
+                    onChange={(e) => setMcq(key, e.target.value)}
+                    className="input"
+                  />
+                </div>
+              ))}
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-slate-600">Marks</label>
+                <input
+                  type="number"
+                  min={0.5}
+                  step="0.5"
+                  value={mcqForm.marks}
+                  onChange={(e) => setMcq("marks", Number(e.target.value))}
+                  className="input w-24"
+                />
+              </div>
+              {error && <p className="text-rose-600 text-xs bg-rose-50 p-2 rounded">{error}</p>}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors cursor-pointer w-full"
+              >
+                {submitting ? "Adding…" : "+ Add MCQ Question"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={addQuestion} className="space-y-4">
+              <div className="flex justify-between items-center bg-indigo-50/70 border border-indigo-100 rounded-lg p-2.5">
+                <span className="text-xs text-indigo-800 font-medium">LeetCode Coding Question Builder</span>
+                <button
+                  type="button"
+                  onClick={loadTwoSumPreset}
+                  className="text-xs font-semibold text-indigo-700 bg-white hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                >
+                  ⚡ Load Two Sum Preset
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Problem Title</label>
+                  <input
+                    required
+                    placeholder="e.g. Two Sum, Valid Anagram"
+                    value={codingForm.problemTitle}
+                    onChange={(e) => setCodingForm((f) => ({ ...f, problemTitle: e.target.value }))}
+                    className="input"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Marks</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step="1"
+                    value={codingForm.marks}
+                    onChange={(e) => setCodingForm((f) => ({ ...f, marks: Number(e.target.value) }))}
+                    className="input"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Problem Description</label>
+                <textarea
+                  required
+                  placeholder="Problem statement, input format, output format..."
+                  value={codingForm.questionText}
+                  onChange={(e) => setCodingForm((f) => ({ ...f, questionText: e.target.value }))}
+                  className="input"
+                  rows={4}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Constraints</label>
+                <textarea
+                  placeholder="e.g. 1 <= nums.length <= 10^4\n-10^9 <= nums[i] <= 10^9"
+                  value={codingForm.constraints}
+                  onChange={(e) => setCodingForm((f) => ({ ...f, constraints: e.target.value }))}
+                  className="input font-mono text-xs"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Starter Code / Solution Template
+                </label>
+                <textarea
+                  placeholder="Template code provided to students..."
+                  value={codingForm.codeTemplate}
+                  onChange={(e) => setCodingForm((f) => ({ ...f, codeTemplate: e.target.value }))}
+                  className="input font-mono text-xs bg-slate-900 text-emerald-400 p-3 leading-relaxed"
+                  rows={6}
+                />
+              </div>
+
+              {/* Test Cases Builder */}
+              <div className="space-y-2 border-t border-slate-200 pt-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800">
+                      Test Cases ({codingForm.testCases.length})
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      ({codingForm.testCases.filter((tc) => !tc.isHidden).length} Sample,{" "}
+                      {codingForm.testCases.filter((tc) => tc.isHidden).length} Hidden)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addTestCase}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                  >
+                    + Add Test Case
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                  {codingForm.testCases.map((tc, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-lg border text-xs space-y-2.5 transition-all ${
+                        tc.isHidden ? "bg-slate-50 border-slate-300" : "bg-blue-50/30 border-blue-200"
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-700">Case #{idx + 1}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              tc.isHidden ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {tc.isHidden ? "🔒 Hidden (Grading only)" : "👁️ Sample (Visible to Student)"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 text-[11px]">
+                            <input
+                              type="checkbox"
+                              checked={tc.isHidden}
+                              onChange={(e) => updateTestCase(idx, "isHidden", e.target.checked)}
+                              className="rounded border-slate-300"
+                            />
+                            Hidden
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeTestCase(idx)}
+                            className="text-rose-500 hover:text-rose-700 font-bold text-sm cursor-pointer"
+                            title="Delete test case"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-0.5">Input (stdin)</label>
+                          <textarea
+                            rows={2}
+                            value={tc.input}
+                            onChange={(e) => updateTestCase(idx, "input", e.target.value)}
+                            placeholder="Input data"
+                            className="input font-mono text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-0.5">Expected Output</label>
+                          <textarea
+                            rows={2}
+                            value={tc.expectedOutput}
+                            onChange={(e) => updateTestCase(idx, "expectedOutput", e.target.value)}
+                            placeholder="Expected stdout"
+                            className="input font-mono text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      {!tc.isHidden && (
+                        <div>
+                          <label className="block text-[11px] font-medium text-slate-500 mb-0.5">Explanation (optional)</label>
+                          <input
+                            type="text"
+                            value={tc.explanation || ""}
+                            onChange={(e) => updateTestCase(idx, "explanation", e.target.value)}
+                            placeholder="Explanation shown with sample test case"
+                            className="input text-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {codingForm.testCases.length === 0 && (
+                    <div className="text-center p-4 border border-dashed border-slate-300 rounded-lg text-slate-400 text-xs">
+                      No test cases configured. Click "+ Add Test Case" to add one.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Admin Test Run Sandbox */}
+              <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/60 space-y-2">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-800">Sandbox Verification</span>
+                    <p className="text-[11px] text-slate-500">Test execute template solution against all test cases</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAdminTestRun}
+                    disabled={testingCode || codingForm.testCases.length === 0}
+                    className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {testingCode ? "⏳ Running..." : "▶ Test Run"}
+                  </button>
+                </div>
+
+                {testRunError && (
+                  <p className="text-rose-600 text-xs bg-rose-50 border border-rose-200 p-2 rounded">
+                    {testRunError}
+                  </p>
+                )}
+
+                {testRunResult && (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-semibold text-slate-700">
+                        Result: {testRunResult.passedCases} / {testRunResult.totalCases} Passed
+                      </span>
+                      <span className="text-slate-500 font-mono text-[11px]">
+                        {testRunResult.executionTimeMs} ms
+                      </span>
+                    </div>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {testRunResult.results.map((res, i) => (
+                        <div
+                          key={i}
+                          className={`p-2 rounded text-[11px] border font-mono ${
+                            res.passed
+                              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                              : "bg-rose-50 border-rose-200 text-rose-800"
+                          }`}
+                        >
+                          <div className="flex justify-between font-bold">
+                            <span>Case #{res.testCaseIndex + 1}</span>
+                            <span>{res.status} ({res.executionTimeMs}ms)</span>
+                          </div>
+                          {!res.passed && (
+                            <div className="mt-1 space-y-0.5">
+                              <div>Expected: {res.expectedOutput}</div>
+                              <div>Actual: {res.actualOutput || res.errorMessage || "<none>"}</div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {error && <p className="text-rose-600 text-xs bg-rose-50 p-2 rounded">{error}</p>}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors cursor-pointer w-full"
+              >
+                {submitting ? "Adding…" : "+ Add Coding Question"}
+              </button>
+            </form>
+          )}
+        </div>
       )}
 
       <div className="space-y-3">
@@ -504,60 +1045,95 @@ function QuestionsTab({
           <span className="text-xs text-slate-400">Total marks: {questions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0)}</span>
         </div>
 
-        {questions.map((q, idx) => (
-          <div key={q.id} className="bg-white border border-slate-200 rounded-xl p-4 text-sm shadow-xs space-y-3">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                  Q{idx + 1}
-                </span>
-                <span className="text-xs text-slate-400 font-medium">
-                  {q.marks} mark{q.marks !== 1 ? "s" : ""}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => startEditing(q)}
-                  className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded transition-colors cursor-pointer"
-                >
-                  Edit / Correct
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteQuestion(q.id)}
-                  disabled={deletingQuestionId === q.id}
-                  className="text-xs font-medium text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {deletingQuestionId === q.id ? "…" : "Delete"}
-                </button>
-              </div>
-            </div>
-
-            <p className="font-medium text-slate-800 text-sm leading-relaxed">{q.questionText}</p>
-
-            <ul className="space-y-1.5 text-xs text-slate-600">
-              {[q.optionA, q.optionB, q.optionC, q.optionD].map((opt, i) => (
-                <li
-                  key={i}
-                  className={`p-2 rounded-lg flex items-center justify-between ${
-                    i === q.correctAnswer
-                      ? "bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200"
-                      : "bg-slate-50"
-                  }`}
-                >
-                  <span>
-                    <strong className="mr-1.5">{String.fromCharCode(65 + i)}.</strong>
-                    {opt}
+        {questions.map((q, idx) => {
+          const isCoding = q.questionType === "CODING";
+          return (
+            <div key={q.id} className="bg-white border border-slate-200 rounded-xl p-4 text-sm shadow-xs space-y-3">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                    Q{idx + 1}
                   </span>
-                  {i === q.correctAnswer && (
-                    <span className="text-emerald-600 font-bold text-[11px] shrink-0">✓ Correct</span>
+                  <span
+                    className={`text-xs font-bold px-2 py-0.5 rounded ${
+                      isCoding
+                        ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                        : "bg-blue-50 text-blue-700 border border-blue-200"
+                    }`}
+                  >
+                    {isCoding ? "💻 CODING" : "🔘 MCQ"}
+                  </span>
+                  <span className="text-xs text-slate-400 font-medium">
+                    {q.marks} mark{q.marks !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => startEditing(q)}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                  >
+                    Edit / Correct
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteQuestion(q.id)}
+                    disabled={deletingQuestionId === q.id}
+                    className="text-xs font-medium text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {deletingQuestionId === q.id ? "…" : "Delete"}
+                  </button>
+                </div>
+              </div>
+
+              {isCoding ? (
+                <div className="space-y-2">
+                  <h4 className="font-bold text-slate-900 text-sm">{q.problemTitle || "Coding Problem"}</h4>
+                  <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed line-clamp-3">
+                    {q.questionText}
+                  </p>
+                  {q.constraints && (
+                    <div className="p-2 bg-slate-50 border border-slate-200 rounded text-[11px] font-mono text-slate-600">
+                      <strong>Constraints:</strong> {q.constraints}
+                    </div>
                   )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+                  <div className="flex items-center gap-3 pt-1 text-xs text-slate-500">
+                    <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
+                      {q.testCases?.length || 0} Test Cases (
+                      {q.testCases?.filter((tc) => !tc.isHidden).length || 0} sample,{" "}
+                      {q.testCases?.filter((tc) => tc.isHidden).length || 0} hidden)
+                    </span>
+                    <span>Languages: Python 3, JavaScript</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="font-medium text-slate-800 text-sm leading-relaxed">{q.questionText}</p>
+                  <ul className="space-y-1.5 text-xs text-slate-600">
+                    {[q.optionA, q.optionB, q.optionC, q.optionD].map((opt, i) => (
+                      <li
+                        key={i}
+                        className={`p-2 rounded-lg flex items-center justify-between ${
+                          i === q.correctAnswer
+                            ? "bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200"
+                            : "bg-slate-50"
+                        }`}
+                      >
+                        <span>
+                          <strong className="mr-1.5">{String.fromCharCode(65 + i)}.</strong>
+                          {opt}
+                        </span>
+                        {i === q.correctAnswer && (
+                          <span className="text-emerald-600 font-bold text-[11px] shrink-0">✓ Correct</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          );
+        })}
 
         {questions.length === 0 && (
           <div className="p-8 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-white">
@@ -568,12 +1144,14 @@ function QuestionsTab({
 
       {/* Edit Question Modal */}
       {editingQuestion && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4 border border-slate-200">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-6 space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <h3 className="font-bold text-slate-900 text-base">Edit / Correct Question</h3>
-                <p className="text-xs text-slate-500">Update the question text, options, or correct answer</p>
+                <h3 className="font-bold text-slate-900 text-base">
+                  Edit {editForm.questionType === "CODING" ? "Coding Problem" : "MCQ Question"}
+                </h3>
+                <p className="text-xs text-slate-500">Update problem details, options, or test cases</p>
               </div>
               <button
                 type="button"
@@ -584,55 +1162,173 @@ function QuestionsTab({
               </button>
             </div>
 
-            <form onSubmit={handleUpdateQuestion} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Question Text</label>
-                <textarea
-                  required
-                  rows={3}
-                  value={editForm.questionText}
-                  onChange={(e) => setEditForm((f) => ({ ...f, questionText: e.target.value }))}
-                  className="input"
-                />
-              </div>
+            <form onSubmit={handleUpdateQuestion} className="space-y-4">
+              {editForm.questionType === "CODING" ? (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Problem Title</label>
+                      <input
+                        required
+                        value={editForm.problemTitle}
+                        onChange={(e) => setEditForm((f) => ({ ...f, problemTitle: e.target.value }))}
+                        className="input"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Marks</label>
+                      <input
+                        type="number"
+                        min={1}
+                        step="1"
+                        value={editForm.marks}
+                        onChange={(e) => setEditForm((f) => ({ ...f, marks: Number(e.target.value) }))}
+                        className="input"
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Options (Select radio button for the correct option)
-                </label>
-                {(["optionA", "optionB", "optionC", "optionD"] as const).map((key, idx) => (
-                  <div key={key} className="flex items-center gap-2 mb-2">
-                    <input
-                      type="radio"
-                      name="editCorrect"
-                      checked={editForm.correctAnswer === idx}
-                      onChange={() => setEditForm((f) => ({ ...f, correctAnswer: idx }))}
-                      className="cursor-pointer"
-                      title="Set as correct answer"
-                    />
-                    <span className="text-xs font-bold text-slate-500 w-4">{String.fromCharCode(65 + idx)}.</span>
-                    <input
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Problem Statement</label>
+                    <textarea
                       required
-                      placeholder={`Option ${String.fromCharCode(65 + idx)}`}
-                      value={editForm[key]}
-                      onChange={(e) => setEditForm((f) => ({ ...f, [key]: e.target.value }))}
+                      rows={3}
+                      value={editForm.questionText}
+                      onChange={(e) => setEditForm((f) => ({ ...f, questionText: e.target.value }))}
                       className="input"
                     />
                   </div>
-                ))}
-              </div>
 
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-semibold text-slate-700">Marks</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.5"
-                  value={editForm.marks}
-                  onChange={(e) => setEditForm((f) => ({ ...f, marks: Number(e.target.value) }))}
-                  className="input w-24"
-                />
-              </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Constraints</label>
+                    <textarea
+                      rows={2}
+                      value={editForm.constraints}
+                      onChange={(e) => setEditForm((f) => ({ ...f, constraints: e.target.value }))}
+                      className="input font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Code Template</label>
+                    <textarea
+                      rows={4}
+                      value={editForm.codeTemplate}
+                      onChange={(e) => setEditForm((f) => ({ ...f, codeTemplate: e.target.value }))}
+                      className="input font-mono text-xs bg-slate-900 text-emerald-400 p-2"
+                    />
+                  </div>
+
+                  <div className="space-y-2 border-t border-slate-100 pt-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-800">
+                        Test Cases ({editForm.testCases.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={addEditTestCase}
+                        className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded cursor-pointer"
+                      >
+                        + Add Test Case
+                      </button>
+                    </div>
+
+                    <div className="space-y-2 max-h-52 overflow-y-auto">
+                      {editForm.testCases.map((tc, idx) => (
+                        <div key={idx} className="p-2.5 rounded border border-slate-200 bg-slate-50 space-y-2 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold">Case #{idx + 1}</span>
+                            <div className="flex items-center gap-2">
+                              <label className="flex items-center gap-1 cursor-pointer text-slate-600">
+                                <input
+                                  type="checkbox"
+                                  checked={tc.isHidden}
+                                  onChange={(e) => updateEditTestCase(idx, "isHidden", e.target.checked)}
+                                />
+                                Hidden
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => removeEditTestCase(idx)}
+                                className="text-rose-500 font-bold ml-2 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <textarea
+                              rows={2}
+                              value={tc.input}
+                              onChange={(e) => updateEditTestCase(idx, "input", e.target.value)}
+                              placeholder="Input"
+                              className="input font-mono text-xs"
+                            />
+                            <textarea
+                              rows={2}
+                              value={tc.expectedOutput}
+                              onChange={(e) => updateEditTestCase(idx, "expectedOutput", e.target.value)}
+                              placeholder="Expected Output"
+                              className="input font-mono text-xs"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Question Text</label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={editForm.questionText}
+                      onChange={(e) => setEditForm((f) => ({ ...f, questionText: e.target.value }))}
+                      className="input"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Options (Select radio button for the correct option)
+                    </label>
+                    {(["optionA", "optionB", "optionC", "optionD"] as const).map((key, idx) => (
+                      <div key={key} className="flex items-center gap-2 mb-2">
+                        <input
+                          type="radio"
+                          name="editCorrect"
+                          checked={editForm.correctAnswer === idx}
+                          onChange={() => setEditForm((f) => ({ ...f, correctAnswer: idx }))}
+                          className="cursor-pointer"
+                          title="Set as correct answer"
+                        />
+                        <span className="text-xs font-bold text-slate-500 w-4">{String.fromCharCode(65 + idx)}.</span>
+                        <input
+                          required
+                          placeholder={`Option ${String.fromCharCode(65 + idx)}`}
+                          value={editForm[key]}
+                          onChange={(e) => setEditForm((f) => ({ ...f, [key]: e.target.value }))}
+                          className="input"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-semibold text-slate-700">Marks</label>
+                    <input
+                      type="number"
+                      min={0.5}
+                      step="0.5"
+                      value={editForm.marks}
+                      onChange={(e) => setEditForm((f) => ({ ...f, marks: Number(e.target.value) }))}
+                      className="input w-24"
+                    />
+                  </div>
+                </>
+              )}
 
               {editError && <p className="text-rose-600 text-xs bg-rose-50 p-2 rounded">{editError}</p>}
 

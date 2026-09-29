@@ -18,9 +18,12 @@ import java.util.Map;
 public class AdminExamController {
 
     private final ExamAdminService examAdminService;
+    private final com.proctor.exam.service.CodeExecutionService codeExecutionService;
 
-    public AdminExamController(ExamAdminService examAdminService) {
+    public AdminExamController(ExamAdminService examAdminService,
+                               com.proctor.exam.service.CodeExecutionService codeExecutionService) {
         this.examAdminService = examAdminService;
+        this.codeExecutionService = codeExecutionService;
     }
 
     @PostMapping
@@ -110,5 +113,10 @@ public class AdminExamController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteQuestion(@PathVariable Long examId, @PathVariable Long questionId) {
         examAdminService.deleteQuestion(examId, questionId);
+    }
+
+    @PostMapping("/questions/test-run")
+    public RunCodeResponse testRunCode(@Valid @RequestBody AdminTestRunRequest request) {
+        return codeExecutionService.testRun(request.testCases(), request.code(), request.language());
     }
 }

@@ -25,15 +25,30 @@ export interface Exam extends ExamSummary {
   openToAll?: boolean;
 }
 
+export interface TestCase {
+  id?: number;
+  input: string;
+  expectedOutput: string;
+  isHidden: boolean;
+  explanation?: string;
+  displayOrder?: number;
+}
+
 export interface ExamQuestion {
   id: number;
+  questionType?: "MCQ" | "CODING";
+  problemTitle?: string;
   questionText: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
-  correctAnswer: number;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  correctAnswer?: number;
   marks: number;
+  codeTemplate?: string;
+  allowedLanguages?: string;
+  constraints?: string;
+  testCases?: TestCase[];
 }
 
 export interface ExamAssignmentItem {
@@ -44,11 +59,37 @@ export interface ExamAssignmentItem {
 
 export interface StudentQuestion {
   questionId: number;
+  questionType?: "MCQ" | "CODING";
+  problemTitle?: string;
   questionText: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  marks?: number;
+  codeTemplate?: string;
+  allowedLanguages?: string;
+  constraints?: string;
+  sampleTestCases?: TestCase[];
+}
+
+export interface TestCaseExecutionResult {
+  testCaseIndex: number;
+  input: string;
+  expectedOutput: string;
+  actualOutput: string;
+  passed: boolean;
+  status: string;
+  executionTimeMs: number;
+  errorMessage?: string;
+}
+
+export interface RunCodeResponse {
+  status: string;
+  totalCases: number;
+  passedCases: number;
+  executionTimeMs: number;
+  results: TestCaseExecutionResult[];
 }
 
 export interface StartExamResponse {
@@ -241,16 +282,23 @@ export interface AdminAttemptReport {
 export interface AdminQuestionAnswer {
   questionId: number;
   displayOrder: number;
+  questionType?: "MCQ" | "CODING";
+  problemTitle?: string;
   questionText: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
-  selectedOption: number | null;
-  correctAnswer: number;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  selectedOption?: number | null;
+  correctAnswer?: number;
   isCorrect: boolean | null;
   marksAwarded: number;
   maxMarks: number;
+  codeSubmission?: string;
+  codeLanguage?: string;
+  testCasesPassed?: number;
+  totalTestCases?: number;
+  executionOutput?: string;
 }
 
 export interface AdminAttemptEvaluationRequest {

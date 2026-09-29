@@ -41,4 +41,20 @@ public class ExamAnswer {
 
     @Column(name = "answered_at")
     private Instant answeredAt;
+
+    // Coding question submission fields
+    @Column(name = "code_submission", columnDefinition = "TEXT")
+    private String codeSubmission;
+
+    @Column(name = "code_language", length = 50)
+    private String codeLanguage;
+
+    @Column(name = "test_cases_passed")
+    private Integer testCasesPassed;
+
+    @Column(name = "total_test_cases")
+    private Integer totalTestCases;
+
+    @Column(name = "execution_output", columnDefinition = "TEXT")
+    private String executionOutput;
 }

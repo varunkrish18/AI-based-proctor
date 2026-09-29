@@ -26,6 +26,8 @@ public class StudentExamService {
     private final JwtService jwtService;
     private final ProctoringSessionService proctoringSessionService;
     private final TrustedTimeService trustedTimeService;
+    private final ExamQuestionTestCaseRepository testCaseRepository;
+    private final CodeExecutionService codeExecutionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public StudentExamService(ExamRepository examRepository,
@@ -36,7 +38,9 @@ public class StudentExamService {
                                StudentRepository studentRepository,
                                JwtService jwtService,
                                ProctoringSessionService proctoringSessionService,
-                               TrustedTimeService trustedTimeService) {
+                               TrustedTimeService trustedTimeService,
+                               ExamQuestionTestCaseRepository testCaseRepository,
+                               CodeExecutionService codeExecutionService) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
@@ -46,6 +50,8 @@ public class StudentExamService {
         this.jwtService = jwtService;
         this.proctoringSessionService = proctoringSessionService;
         this.trustedTimeService = trustedTimeService;
+        this.testCaseRepository = testCaseRepository;
+        this.codeExecutionService = codeExecutionService;
     }
 
     /**
@@ -173,10 +179,36 @@ public class StudentExamService {
     }
 
     private StudentQuestionResponse toStudentQuestion(ExamQuestion q, boolean randomizeOptions) {
-        // NOTE: For simplicity, option randomization is display-only on a fixed A/B/C/D
-        // mapping here; a full implementation stores the per-attempt option permutation
-        // alongside questionOrder so correctAnswer can be re-mapped consistently at grading time.
-        return new StudentQuestionResponse(q.getId(), q.getQuestionText(), q.getOptionA(), q.getOptionB(), q.getOptionC(), q.getOptionD());
+        List<TestCaseResponse> sampleCases = Collections.emptyList();
+        if ("CODING".equals(q.getQuestionType())) {
+            List<ExamQuestionTestCase> cases = testCaseRepository.findByQuestionIdAndIsHiddenFalseOrderByDisplayOrderAsc(q.getId());
+            sampleCases = cases.stream()
+                    .map(tc -> new TestCaseResponse(
+                            tc.getId(),
+                            tc.getInput(),
+                            tc.getExpectedOutput(),
+                            tc.getIsHidden(),
+                            tc.getExplanation(),
+                            tc.getDisplayOrder()
+                    ))
+                    .toList();
+        }
+
+        return new StudentQuestionResponse(
+                q.getId(),
+                q.getQuestionType(),
+                q.getProblemTitle(),
+                q.getQuestionText(),
+                q.getOptionA(),
+                q.getOptionB(),
+                q.getOptionC(),
+                q.getOptionD(),
+                q.getMarks(),
+                q.getCodeTemplate(),
+                q.getAllowedLanguages(),
+                q.getConstraints(),
+                sampleCases
+        );
     }
 
     @Transactional
@@ -191,9 +223,24 @@ public class StudentExamService {
 
         ExamAnswer answer = answerRepository.findByAttemptIdAndQuestionId(attemptId, req.questionId())
                 .orElse(ExamAnswer.builder().attempt(attempt).question(question).build());
-        answer.setSelectedOption(req.selectedOption());
+        if (req.selectedOption() != null) {
+            answer.setSelectedOption(req.selectedOption());
+        }
+        if (req.codeSubmission() != null) {
+            answer.setCodeSubmission(req.codeSubmission());
+            answer.setCodeLanguage(req.codeLanguage());
+        }
         answer.setAnsweredAt(trustedTimeService.now());
         answerRepository.save(answer);
+    }
+
+    public RunCodeResponse runCode(Long attemptId, String studentEmail, RunCodeRequest req) {
+        ExamAttempt attempt = attemptRepository.findByIdAndStudentEmailIgnoreCase(attemptId, studentEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+        if (!"IN_PROGRESS".equals(attempt.getStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This attempt is no longer in progress.");
+        }
+        return codeExecutionService.runPublicTestCases(req.questionId(), req.code(), req.language(), req.customInput());
     }
 
     @Transactional
@@ -218,14 +265,39 @@ public class StudentExamService {
             ExamQuestion q = byId.get(qid);
             if (q == null) continue;
             ExamAnswer a = answerByQuestion.get(qid);
-            if (a == null || a.getSelectedOption() == null) continue;
-            answeredCount++;
-            boolean correct = a.getSelectedOption().equals(q.getCorrectAnswer());
-            a.setIsCorrect(correct);
-            BigDecimal awarded = correct ? q.getMarks() : exam.getNegativeMarking().negate();
-            a.setMarksAwarded(awarded);
-            score = score.add(awarded);
-            answerRepository.save(a);
+
+            if ("CODING".equals(q.getQuestionType())) {
+                if (a != null && a.getCodeSubmission() != null && !a.getCodeSubmission().isBlank()) {
+                    answeredCount++;
+                    RunCodeResponse eval = codeExecutionService.evaluateAllTestCases(q.getId(), a.getCodeSubmission(), a.getCodeLanguage());
+                    a.setTestCasesPassed(eval.passedCases());
+                    a.setTotalTestCases(eval.totalCases());
+                    a.setExecutionOutput(eval.status() + " (" + eval.passedCases() + "/" + eval.totalCases() + " passed)");
+
+                    BigDecimal awarded = BigDecimal.ZERO;
+                    if (eval.totalCases() > 0) {
+                        awarded = q.getMarks()
+                                .multiply(BigDecimal.valueOf(eval.passedCases()))
+                                .divide(BigDecimal.valueOf(eval.totalCases()), 2, java.math.RoundingMode.HALF_UP);
+                        a.setIsCorrect(eval.passedCases() == eval.totalCases());
+                    } else {
+                        a.setIsCorrect(true);
+                        awarded = q.getMarks();
+                    }
+                    a.setMarksAwarded(awarded);
+                    score = score.add(awarded);
+                    answerRepository.save(a);
+                }
+            } else {
+                if (a == null || a.getSelectedOption() == null) continue;
+                answeredCount++;
+                boolean correct = a.getSelectedOption().equals(q.getCorrectAnswer());
+                a.setIsCorrect(correct);
+                BigDecimal awarded = correct ? q.getMarks() : exam.getNegativeMarking().negate();
+                a.setMarksAwarded(awarded);
+                score = score.add(awarded);
+                answerRepository.save(a);
+            }
         }
 
         attempt.setStatus("SUBMITTED");
@@ -251,7 +323,7 @@ public class StudentExamService {
                     q.getOptionD(),
                     a != null ? a.getSelectedOption() : null,
                     q.getCorrectAnswer(),
-                    a != null && a.getSelectedOption() != null ? a.getIsCorrect() : null,
+                    a != null && (a.getSelectedOption() != null || a.getCodeSubmission() != null) ? a.getIsCorrect() : null,
                     a != null ? a.getMarksAwarded() : BigDecimal.ZERO
             ));
         }

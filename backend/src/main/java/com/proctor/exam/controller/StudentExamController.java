@@ -46,6 +46,11 @@ public class StudentExamController {
         studentExamService.saveAnswer(attemptId, auth.getName(), request);
     }
 
+    @PostMapping("/attempts/{attemptId}/run-code")
+    public RunCodeResponse runCode(@PathVariable Long attemptId, @Valid @RequestBody RunCodeRequest request, Authentication auth) {
+        return studentExamService.runCode(attemptId, auth.getName(), request);
+    }
+
     @PostMapping("/attempts/{attemptId}/submit")
     public AttemptResultResponse submit(@PathVariable Long attemptId, Authentication auth) {
         return studentExamService.submit(attemptId, auth.getName());
