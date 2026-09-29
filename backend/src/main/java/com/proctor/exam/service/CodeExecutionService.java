@@ -222,7 +222,8 @@ public class CodeExecutionService {
             case "py": {
                 Path file = dir.resolve("solution.py");
                 Files.writeString(file, code, StandardCharsets.UTF_8);
-                return List.of("python3", file.toAbsolutePath().toString());
+                String pyCmd = System.getProperty("os.name", "").toLowerCase().contains("win") ? "python" : "python3";
+                return List.of(pyCmd, file.toAbsolutePath().toString());
             }
             case "javascript":
             case "node":
