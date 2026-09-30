@@ -45,14 +45,16 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public: landing page data, exam listing, student verification, admin login
-                .requestMatchers(HttpMethod.GET, "/", "/api/exams/public/**").permitAll()
+                // Public: landing page data, exam listing, network time, student verification, admin login
+                .requestMatchers(HttpMethod.GET, "/", "/api/exams/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/admin/auth/login", "/api/admin/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/exams/*/verify-student").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/ws/**").permitAll() // WebSocket handshake; per-session auth handled at connect time
-                // Admin-only surface
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // Admin user & credential management strictly restricted to ADMIN
+                .requestMatchers("/api/admin/users/**").hasRole("ADMIN")
+                // General Admin & Examiner surface (exam creation/editing/managing, report generation, dashboard analytics)
+                .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "EXAMINER")
                 // Student exam-taking surface (requires a student session token)
                 .requestMatchers("/api/student/**").hasRole("STUDENT")
                 .anyRequest().authenticated()

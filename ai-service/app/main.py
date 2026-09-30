@@ -1,14 +1,15 @@
-from fastapi import FastAPI, HTTPException, status
+﻿from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 import time
 
 from app.schemas import FrameAnalysisRequest, FrameAnalysisResponse
 from app.models.face_detector import analyze_frame, get_capabilities
+from app.assessment_routes import router as assessment_router
 
 app = FastAPI(
-    title="AI Proctoring Service",
-    description="Stateless computer-vision analysis service for face presence, multi-face detection, head pose, and gaze direction.",
-    version="1.0.0"
+    title="AI Proctoring & Assessment Service",
+    description="Stateless computer-vision analysis & AI-driven coding assessment platform with Random Forest use-case classification and isolated code execution.",
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -19,12 +20,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register assessment engine routes
+app.include_router(assessment_router)
 
 @app.on_event("startup")
 def startup_event():
     # Warm up models on server start so initial requests don't hit model loading latency
     get_capabilities()
-
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
@@ -38,21 +40,23 @@ def health_check():
         "degraded_reason": "MediaPipe model files not found; gaze/head-pose detection unavailable. Running face-count only via Haar Cascade." if caps["degraded_mode"] else None,
     }
 
-
 @app.get("/")
 def root():
     return {
-        "message": "AI Online Examination Proctoring Service (Phases 4 & 5)",
-        "docs": "/docs"
+        "message": "AI Online Examination Proctoring & Coding Assessment Service",
+        "docs": "/docs",
+        "assessment_endpoints": {
+            "generate": "/v1/assessment/generate",
+            "questions": "/v1/assessment/questions",
+            "run_code": "/v1/assessment/run-code",
+            "submit": "/v1/assessment/submit",
+            "reports": "/v1/assessment/reports",
+            "rf_metrics": "/v1/assessment/rf-metrics"
+        }
     }
-
 
 @app.post("/v1/analyze/frame", response_model=FrameAnalysisResponse)
 def analyze_webcam_frame(req: FrameAnalysisRequest):
-    """
-    Stateless frame analysis endpoint.
-    Takes a base64 encoded frame and returns face counts, confidence, gaze direction, and head pose.
-    """
     if not req.frame:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -63,7 +67,6 @@ def analyze_webcam_frame(req: FrameAnalysisRequest):
         result = analyze_frame(req.frame)
         return result
     except Exception as e:
-        # Never crash or raise 500 unhandled; return graceful response
         print(f"[ERROR] Frame analysis failed: {e}")
         return FrameAnalysisResponse(
             faceDetected=False,
@@ -73,7 +76,6 @@ def analyze_webcam_frame(req: FrameAnalysisRequest):
             headPose=None,
             events=[]
         )
-
 
 if __name__ == "__main__":
     import uvicorn

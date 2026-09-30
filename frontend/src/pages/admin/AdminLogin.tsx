@@ -59,11 +59,57 @@ export default function AdminLogin() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full bg-slate-900 text-white py-2 rounded-md font-medium hover:bg-slate-800 disabled:opacity-50"
+          className="w-full bg-slate-900 text-white py-2 rounded-md font-medium hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
         >
           {submitting ? "Signing in…" : "Sign In"}
         </button>
       </form>
+
+      {/* Available Login Credentials Box */}
+      <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs">
+        <div className="flex items-center gap-1.5 font-bold text-slate-800 mb-2">
+          <span>🔑</span>
+          <span>Configured Admin Credentials</span>
+        </div>
+        <p className="text-slate-500 mb-3 text-[11px]">
+          Click any account below to autofill and test login credentials:
+        </p>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200">
+            <div>
+              <p className="font-bold text-slate-800">Primary Admin</p>
+              <p className="font-mono text-[11px] text-slate-600">admin@proctor.com / admin123</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail("admin@proctor.com");
+                setPassword("admin123");
+              }}
+              className="px-2.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] border border-indigo-200 transition cursor-pointer"
+            >
+              Fill Admin
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200">
+            <div>
+              <p className="font-bold text-slate-800">Exam Proctor (User 2)</p>
+              <p className="font-mono text-[11px] text-slate-600">proctor@proctor.com / proctor123</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail("proctor@proctor.com");
+                setPassword("proctor123");
+              }}
+              className="px-2.5 py-1 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-[11px] border border-purple-200 transition cursor-pointer"
+            >
+              Fill Proctor
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

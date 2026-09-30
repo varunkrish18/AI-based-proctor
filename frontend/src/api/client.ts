@@ -215,3 +215,47 @@ export async function downloadFile(
   window.URL.revokeObjectURL(url);
 }
 
+export interface AdminTokenPayload {
+  sub: string;
+  role: "ADMIN" | "EXAMINER" | "PROCTOR" | string;
+  type: string;
+  exp: number;
+}
+
+export function getAdminTokenPayload(): AdminTokenPayload | null {
+  const token = getToken("admin");
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload) as AdminTokenPayload;
+  } catch {
+    return null;
+  }
+}
+
+export function getAdminUserRole(): string | null {
+  const payload = getAdminTokenPayload();
+  return payload?.role ? payload.role.toUpperCase() : null;
+}
+
+export function isStaffAuthenticated(): boolean {
+  const role = getAdminUserRole();
+  return role === "ADMIN" || role === "EXAMINER";
+}
+
+export function isAdminRole(): boolean {
+  return getAdminUserRole() === "ADMIN";
+}
+
+export function isExaminerRole(): boolean {
+  return getAdminUserRole() === "EXAMINER";
+}

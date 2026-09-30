@@ -24,6 +24,9 @@ public class Admin {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @Column(name = "display_password")
+    private String displayPassword;
+
     @Column(name = "full_name", nullable = false)
     private String fullName;
 

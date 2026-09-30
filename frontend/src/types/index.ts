@@ -307,3 +307,31 @@ export interface AdminAttemptEvaluationRequest {
   flaggedForReview?: boolean;
   feedback?: string;
 }
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  fullName: string;
+  role: string;
+  displayPassword?: string;
+  failedAttempts: number;
+  locked: boolean;
+  lockedUntil?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAdminUserPayload {
+  email: string;
+  password: string;
+  fullName: string;
+  role?: string;
+}
+
+export interface UpdateAdminUserPayload {
+  email?: string;
+  fullName?: string;
+  role?: string;
+  password?: string;
+  resetLock?: boolean;
+}

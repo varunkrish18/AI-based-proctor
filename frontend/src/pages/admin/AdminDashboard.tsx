@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { api, ApiError, clearToken, getAdminRefreshToken, getToken } from "../../api/client";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { api, ApiError, clearToken, getAdminRefreshToken, getToken, getAdminUserRole, isAdminRole } from "../../api/client";
 import type { AdminAttemptSummary, DashboardCharts, DashboardSummary, Exam } from "../../types";
+import UserManagementTab from "./UserManagementTab";
 import {
   ResponsiveContainer,
   BarChart,
@@ -44,6 +45,36 @@ export default function AdminDashboard() {
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
+
+  const userRole = getAdminUserRole() || "ADMIN";
+  const isAdmin = isAdminRole();
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabQuery = searchParams.get("tab");
+  const [currentTab, setCurrentTab] = useState<"analytics" | "users">(
+    tabQuery === "users" && isAdmin ? "users" : "analytics"
+  );
+
+  useEffect(() => {
+    if (tabQuery === "users" && isAdmin) {
+      setCurrentTab("users");
+    } else {
+      setCurrentTab("analytics");
+      if (tabQuery === "users" && !isAdmin) {
+        setSearchParams({});
+      }
+    }
+  }, [tabQuery, isAdmin, setSearchParams]);
+
+  const switchTab = (tab: "analytics" | "users") => {
+    if (tab === "users" && !isAdmin) return;
+    setCurrentTab(tab);
+    if (tab === "users") {
+      setSearchParams({ tab: "users" });
+    } else {
+      setSearchParams({});
+    }
+  };
 
   // Exam deletion dialog state
   const [examToDelete, setExamToDelete] = useState<Exam | null>(null);
@@ -329,13 +360,22 @@ export default function AdminDashboard() {
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase tracking-wider">
               Live Monitor Active
             </span>
+            <span
+              className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider border ${
+                isAdmin
+                  ? "bg-purple-900/60 text-purple-300 border-purple-600/60"
+                  : "bg-emerald-900/60 text-emerald-300 border-emerald-600/60"
+              }`}
+            >
+              Role: {userRole}
+            </span>
           </div>
           <p className="text-slate-300 text-xs mt-1.5 max-w-2xl leading-relaxed">
             Real-time biometric computer-vision telemetry, anomaly detection patterns, and candidate integrity assurance.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => loadDashboardData(selectedExamId)}
             disabled={isRefreshing}
@@ -346,9 +386,42 @@ export default function AdminDashboard() {
             {isRefreshing ? "Syncing…" : "Sync Telemetry"}
           </button>
 
+          {/* Assessment Reports Quick Link (Admin and Examiner) */}
+          <Link
+            to="/admin/coding-reports"
+            className="px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-indigo-300 hover:text-indigo-200 flex items-center gap-1.5"
+            title="Generate & Review Candidate Reports"
+          >
+            <span>📊</span> Reports
+          </Link>
+
+          {/* Coding Lab Sandbox Quick Link (Admin and Examiner) */}
+          <Link
+            to="/assessment/code-editor"
+            className="px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-emerald-300 hover:text-emerald-200 flex items-center gap-1.5"
+            title="Open Algorithmic Coding Lab"
+          >
+            <span>&lt;/&gt;</span> Coding Lab
+          </Link>
+
+          {/* User Credentials Management Tab Button (Strictly ADMIN only) */}
+          {isAdmin && (
+            <button
+              onClick={() => switchTab(currentTab === "users" ? "analytics" : "users")}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer ${
+                currentTab === "users"
+                  ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/25"
+                  : "bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-200"
+              }`}
+            >
+              <span>👥</span> {currentTab === "users" ? "Back to Monitoring" : "User Credentials"}
+            </button>
+          )}
+
+          {/* Create Exam Button (Both Admin and Examiner) */}
           <Link
             to="/admin/exams/new"
-            className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-blue-500/25 flex items-center gap-1.5"
+            className="bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-blue-500/25 flex items-center gap-1.5"
           >
             <span>+</span> Create New Exam
           </Link>
@@ -362,8 +435,47 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Scope Filter Bar */}
-      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+      {/* Primary Navigation Tabs */}
+      <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs">
+        <button
+          onClick={() => switchTab("analytics")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            currentTab === "analytics"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+          }`}
+        >
+          <span>📊</span> Examination &amp; AI Telemetry
+        </button>
+
+        {/* User Accounts tab strictly visible only to ADMIN */}
+        {isAdmin && (
+          <button
+            onClick={() => switchTab("users")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              currentTab === "users"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <span>👥</span> User Accounts &amp; Login Credentials
+          </button>
+        )}
+
+        <Link
+          to="/admin/coding-reports"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-all ml-auto"
+        >
+          <span>📑</span> Assessment &amp; Candidate Reports &rarr;
+        </Link>
+      </div>
+
+      {currentTab === "users" && isAdmin ? (
+        <UserManagementTab />
+      ) : (
+        <>
+          {/* Scope Filter Bar */}
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
         <div className="flex items-center gap-2 flex-1">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">
             Analytics Scope:
@@ -400,14 +512,32 @@ export default function AdminDashboard() {
       )}
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl text-sm flex items-center justify-between">
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-2">
-            <span>⚠️</span>
-            <span>{error}</span>
+            <span className="text-lg">⚠️</span>
+            <div>
+              <p className="font-bold">{error}</p>
+              <p className="text-xs text-rose-600 mt-0.5">
+                {!getToken("admin")
+                  ? "Admin session is expired or unauthenticated. Please sign in with your admin or proctor credentials."
+                  : "Unable to retrieve dashboard metrics from the server."}
+              </p>
+            </div>
           </div>
-          <button onClick={() => loadDashboardData(selectedExamId)} className="underline text-xs font-bold cursor-pointer">
-            Retry
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/admin/login"
+              className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>🔑</span> Sign In
+            </Link>
+            <button
+              onClick={() => loadDashboardData(selectedExamId)}
+              className="bg-white border border-rose-200 hover:bg-rose-100 text-rose-800 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       )}
 
@@ -1094,6 +1224,8 @@ export default function AdminDashboard() {
               </div>
             </div>
           )}
+        </>
+      )}
         </>
       )}
     </div>
