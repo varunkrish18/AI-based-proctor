@@ -1089,9 +1089,18 @@ export default function AdminDashboard() {
             <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
               <div>
                 <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <span>📑</span> Configured Examinations ({filteredExams.length})
+                  <span>📑</span> {userRole === "EXAMINER" ? "My Created Examinations" : "Configured Examinations"} ({filteredExams.length})
+                  {userRole === "EXAMINER" && (
+                    <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                      Examiner Scope (Your Created Exams Only)
+                    </span>
+                  )}
                 </h2>
-                <p className="text-xs text-slate-500">Manage questions, examinee assignments, and live proctor parameters</p>
+                <p className="text-xs text-slate-500">
+                  {userRole === "EXAMINER"
+                    ? "Displaying only examinations authored by your examiner credentials"
+                    : "Manage questions, examinee assignments, and live proctor parameters"}
+                </p>
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">

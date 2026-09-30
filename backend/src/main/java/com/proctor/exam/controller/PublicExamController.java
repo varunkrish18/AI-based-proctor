@@ -56,8 +56,26 @@ public class PublicExamController {
         return "OPEN";
     }
 
+    @GetMapping("/{examId}")
+    public Map<String, Object> getPublicExamDetails(@PathVariable Long examId) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new com.proctor.exam.exception.ApiException(org.springframework.http.HttpStatus.NOT_FOUND, "Exam not found."));
+        return Map.of(
+                "id", exam.getId(),
+                "name", exam.getName(),
+                "subject", exam.getSubject() != null ? exam.getSubject() : "",
+                "durationMinutes", exam.getDurationMinutes(),
+                "numQuestions", exam.getNumQuestions(),
+                "webcamRequired", exam.getWebcamRequired() != null ? exam.getWebcamRequired() : true,
+                "microphoneRequired", exam.getMicrophoneRequired() != null ? exam.getMicrophoneRequired() : true,
+                "screenRequired", exam.getScreenRequired() != null ? exam.getScreenRequired() : true,
+                "locationRequired", exam.getLocationRequired() != null ? exam.getLocationRequired() : false,
+                "openToAll", exam.isOpenToAll()
+        );
+    }
+
     @PostMapping("/{examId}/verify-student")
     public VerifyStudentResponse verifyStudent(@PathVariable Long examId, @Valid @RequestBody VerifyStudentRequest request) {
-        return studentExamService.verifyStudent(examId, request.email());
+        return studentExamService.verifyStudent(examId, request.email(), request.password());
     }
 }

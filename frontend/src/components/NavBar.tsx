@@ -61,6 +61,11 @@ export default function NavBar() {
               <NavLink to="/admin/dashboard" className={linkClass}>
                 🎛️ Dashboard
               </NavLink>
+              {role === "ADMIN" && (
+                <NavLink to="/admin/dashboard?tab=users" className={linkClass}>
+                  👥 User Accounts
+                </NavLink>
+              )}
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ml-1 border ${
                   role === "ADMIN"

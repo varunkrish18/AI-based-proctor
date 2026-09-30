@@ -20,6 +20,7 @@ public class AiProxyService {
 
     private static final Logger log = LoggerFactory.getLogger(AiProxyService.class);
 
+    private final String baseUrl;
     private final RestClient restClient;
     private final AtomicBoolean isAiServiceAvailable = new AtomicBoolean(true);
 
@@ -28,6 +29,7 @@ public class AiProxyService {
             @Value("${app.ai-service.connect-timeout-ms:3000}") int connectTimeout,
             @Value("${app.ai-service.read-timeout-ms:6000}") int readTimeout) {
 
+        this.baseUrl = baseUrl;
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(connectTimeout);
         requestFactory.setReadTimeout(readTimeout);
@@ -105,6 +107,44 @@ public class AiProxyService {
                 List.of(),
                 "fallback"
         );
+    }
+
+    /**
+     * Calls Python AI service to generate exam questions using Google Gemini LLM.
+     */
+    public List<Map<String, Object>> generateExamQuestions(String topics, int numQuestions, String questionType, String difficulty) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("topics", topics);
+        payload.put("numQuestions", numQuestions);
+        payload.put("questionType", questionType != null ? questionType : "MIXED");
+        payload.put("difficulty", difficulty != null ? difficulty : "Medium");
+
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(5000);
+        requestFactory.setReadTimeout(45000);
+
+        RestClient client = RestClient.builder()
+                .baseUrl(this.baseUrl)
+                .requestFactory(requestFactory)
+                .build();
+
+        try {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> response = client.post()
+                    .uri("/v1/assessment/generate-exam-questions")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(List.class);
+
+            return response != null ? response : List.of();
+        } catch (Exception e) {
+            log.error("Failed to generate exam questions via AI service: {}", e.getMessage(), e);
+            throw new com.proctor.exam.exception.ApiException(
+                    org.springframework.http.HttpStatus.BAD_GATEWAY,
+                    "AI question generation failed: " + e.getMessage()
+            );
+        }
     }
 }
 

@@ -1753,6 +1753,54 @@ export default function ExamTake() {
   const questions: StudentQuestion[] = useMemo(() => session?.questions ?? [], [session]);
   const q = questions[current];
 
+  // Requirement 1: Disable the complete keyboard when is MCQs including Windows keys and all special keys
+  useEffect(() => {
+    if (!session || !q || q.questionType === "CODING") {
+      try {
+        if ("keyboard" in navigator && (navigator as any).keyboard?.unlock) {
+          (navigator as any).keyboard.unlock();
+        }
+      } catch {}
+      return;
+    }
+
+    // Try modern Chromium System Keyboard Lock for system keys (Windows key, Alt+Tab, Escape)
+    try {
+      if ("keyboard" in navigator && (navigator as any).keyboard?.lock) {
+        (navigator as any).keyboard.lock().catch(() => {});
+      }
+    } catch {}
+
+    const blockMcqKeyboard = (e: KeyboardEvent) => {
+      // Disallow all physical key events: Windows key (Meta), Function keys (F1-F12), Alt, Ctrl, Tab, Escape, etc.
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      return false;
+    };
+
+    window.addEventListener("keydown", blockMcqKeyboard, { capture: true, passive: false });
+    window.addEventListener("keyup", blockMcqKeyboard, { capture: true, passive: false });
+    window.addEventListener("keypress", blockMcqKeyboard, { capture: true, passive: false });
+    document.addEventListener("keydown", blockMcqKeyboard, { capture: true, passive: false });
+    document.addEventListener("keyup", blockMcqKeyboard, { capture: true, passive: false });
+    document.addEventListener("keypress", blockMcqKeyboard, { capture: true, passive: false });
+
+    return () => {
+      window.removeEventListener("keydown", blockMcqKeyboard, { capture: true });
+      window.removeEventListener("keyup", blockMcqKeyboard, { capture: true });
+      window.removeEventListener("keypress", blockMcqKeyboard, { capture: true });
+      document.removeEventListener("keydown", blockMcqKeyboard, { capture: true });
+      document.removeEventListener("keyup", blockMcqKeyboard, { capture: true });
+      document.removeEventListener("keypress", blockMcqKeyboard, { capture: true });
+      try {
+        if ("keyboard" in navigator && (navigator as any).keyboard?.unlock) {
+          (navigator as any).keyboard.unlock();
+        }
+      } catch {}
+    };
+  }, [session, q]);
+
   async function selectOption(questionId: number, optionIndex: number) {
     setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
     if (!session) return;
@@ -2438,6 +2486,9 @@ export default function ExamTake() {
                     <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
                       💻 CODING
                     </span>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1" title="Physical keyboard is fully active for code typing and shortcuts.">
+                      <span>⌨️</span> Keyboard Enabled
+                    </span>
                     {q.marks !== undefined && (
                       <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                         {q.marks} mark{q.marks !== 1 ? "s" : ""}
@@ -2525,8 +2576,20 @@ export default function ExamTake() {
         ) : (
           /* MCQ Card */
           <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm mb-6">
-            <div className="flex justify-between items-start mb-4">
-              <p className="text-slate-900 font-medium select-none" onDragStart={(e) => e.preventDefault()}>{q.questionText}</p>
+            <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-100 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                  📋 MCQ QUESTION
+                </span>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1" title="Keyboard is disabled for MCQ questions. Use trackpad or mouse to answer.">
+                  <span>🔒</span> Keyboard Locked (Trackpad / Mouse Only)
+                </span>
+                {q.marks !== undefined && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                    {q.marks} mark{q.marks !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
               <button
                 onClick={() => toggleMark(q.questionId)}
                 className={`text-xs px-2.5 py-1 rounded-full font-medium ml-3 shrink-0 transition-colors cursor-pointer ${
@@ -2537,6 +2600,9 @@ export default function ExamTake() {
               >
                 {marked.has(q.questionId) ? "Marked" : "Mark for review"}
               </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-slate-900 font-medium select-none" onDragStart={(e) => e.preventDefault()}>{q.questionText}</p>
             </div>
             <div className="space-y-2">
               {[q.optionA, q.optionB, q.optionC, q.optionD].map((opt, idx) => (

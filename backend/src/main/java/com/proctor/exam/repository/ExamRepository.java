@@ -10,4 +10,7 @@ public interface ExamRepository extends JpaRepository<Exam, Long> {
     List<Exam> findByStatus(String status);
     List<Exam> findByStatusAndStartAtBeforeAndEndAtAfter(String status, Instant now1, Instant now2);
     long countByStatus(String status);
+    List<Exam> findByCreatedBy(Long createdBy);
+    List<Exam> findByCreatedByOrderByCreatedAtDesc(Long createdBy);
 }
+

@@ -14,7 +14,7 @@ def get_gemini_api_key() -> Optional[str]:
     # Check ai-service/.env
     env_file = Path(__file__).resolve().parent.parent.parent / ".env"
     if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
+        for line in env_file.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip()
             if line.startswith("GEMINI_API_KEY="):
                 return line.split("=", 1)[1].strip()
@@ -332,3 +332,252 @@ Synthesize 5 unique coding problem titles and descriptions based on this hint.
             print(f"[WARN] Gemini API call skipped or fell back: {e}")
             
     return synthesize_algorithmic_bank(problem_hint=problem_hint, target_count=target_count)
+
+
+def _procedural_fallback_questions(topics: str, num_questions: int, question_type: str = "MIXED") -> List[Dict[str, Any]]:
+    """Generates structured questions if LLM is temporarily unavailable."""
+    topic_clean = re.sub(r'[^a-zA-Z0-9\s,]', ' ', topics).strip()
+    tokens = [t.strip().title() for t in topic_clean.split(",") if t.strip()]
+    if not tokens:
+        tokens = ["Data Structures", "Algorithms", "System Optimization"]
+
+    results: List[Dict[str, Any]] = []
+    
+    # Template bank for algorithmic coding
+    coding_templates = [
+        {
+            "title": "Optimal Subarray Aggregator",
+            "desc": "Given an array of integers nums and an integer k, find the maximum sum of any contiguous subarray of size k.\n\nInput Format:\nFirst line: two space-separated integers N and K.\nSecond line: N space-separated integers.\n\nOutput Format:\nPrint the maximum sum.",
+            "testCases": [
+                {"input": "4 2\n100 200 300 400", "expectedOutput": "700", "isHidden": False, "explanation": "300 + 400 = 700"},
+                {"input": "5 3\n1 4 2 10 23", "expectedOutput": "37", "isHidden": False, "explanation": "4 + 2 + 10 + 23 = 37"},
+                {"input": "3 1\n-1 -2 -3", "expectedOutput": "-1", "isHidden": True, "explanation": "Max single element"}
+            ]
+        },
+        {
+            "title": "Balanced Parentheses Checker",
+            "desc": "Given a string containing parentheses '(', ')', '{', '}', '[' and ']', determine if the input string is valid.\n\nInput Format:\nA single line string S.\n\nOutput Format:\nPrint true if valid, else false.",
+            "testCases": [
+                {"input": "()[]{}", "expectedOutput": "true", "isHidden": False, "explanation": "All brackets closed properly"},
+                {"input": "([)]", "expectedOutput": "false", "isHidden": False, "explanation": "Mismatched closing order"},
+                {"input": "{[]}", "expectedOutput": "true", "isHidden": True, "explanation": "Nested valid"}
+            ]
+        },
+        {
+            "title": "Two Pointer Target Difference",
+            "desc": "Given a sorted array of distinct integers and a target difference K, count how many pairs (i, j) exist such that nums[j] - nums[i] == K and i < j.\n\nInput Format:\nFirst line: N and K.\nSecond line: N sorted integers.\n\nOutput Format:\nPrint the count of matching pairs.",
+            "testCases": [
+                {"input": "5 2\n1 5 3 4 2", "expectedOutput": "3", "isHidden": False, "explanation": "Pairs with difference 2: (1,3), (3,5), (2,4)"},
+                {"input": "4 1\n1 2 3 4", "expectedOutput": "3", "isHidden": True, "explanation": "All consecutive pairs"}
+            ]
+        },
+        {
+            "title": "Binary Tree Node Level Traverse",
+            "desc": "Given the root representation of a binary tree in level order (comma-separated with null), return the maximum depth.\n\nInput Format:\nA single line with comma-separated node values.\n\nOutput Format:\nPrint an integer representing maximum tree depth.",
+            "testCases": [
+                {"input": "3,9,20,null,null,15,7", "expectedOutput": "3", "isHidden": False, "explanation": "Tree has 3 levels"},
+                {"input": "1,null,2", "expectedOutput": "2", "isHidden": True, "explanation": "Right-skewed tree"}
+            ]
+        }
+    ]
+
+    # Template bank for MCQ
+    mcq_templates = [
+        {
+            "q": "What is the average case time complexity of searching an element in a balanced Binary Search Tree?",
+            "a": "O(1)", "b": "O(log n)", "c": "O(n)", "d": "O(n log n)", "ans": 1
+        },
+        {
+            "q": "Which data structure follows the Last-In First-Out (LIFO) principle?",
+            "a": "Queue", "b": "Stack", "c": "Heap", "d": "Priority Queue", "ans": 1
+        },
+        {
+            "q": "What is the worst-case time complexity of QuickSort?",
+            "a": "O(n)", "b": "O(n log n)", "c": "O(n^2)", "d": "O(log n)", "ans": 2
+        },
+        {
+            "q": "In graph theory, which algorithm is best suited for finding the shortest path from a single source in an unweighted graph?",
+            "a": "Dijkstra's Algorithm", "b": "Breadth-First Search (BFS)", "c": "Depth-First Search (DFS)", "d": "Bellman-Ford", "ans": 1
+        },
+        {
+            "q": "Which problem-solving paradigm does the Merge Sort algorithm use?",
+            "a": "Dynamic Programming", "b": "Greedy Approach", "c": "Divide and Conquer", "d": "Backtracking", "ans": 2
+        },
+        {
+            "q": "What is the minimum number of queues needed to implement a stack?",
+            "a": "1", "b": "2", "c": "3", "d": "4", "ans": 1
+        }
+    ]
+
+    for idx in range(num_questions):
+        t_topic = tokens[idx % len(tokens)]
+        make_coding = False
+        if question_type.upper() == "CODING":
+            make_coding = True
+        elif question_type.upper() == "MCQ":
+            make_coding = False
+        else: # MIXED
+            make_coding = (idx % 2 == 1)
+
+        if make_coding:
+            tmpl = coding_templates[idx % len(coding_templates)]
+            results.append({
+                "questionType": "CODING",
+                "problemTitle": f"{t_topic}: {tmpl['title']}",
+                "questionText": f"### {t_topic} Problem\n\n{tmpl['desc']}",
+                "marks": 10,
+                "constraints": "1 <= N <= 10^5\nTime Limit: 2.0s\nMemory Limit: 256MB",
+                "allowedLanguages": "c,python,java",
+                "codeTemplate": "import sys\n\ndef solve():\n    lines = sys.stdin.read().strip().splitlines()\n    if not lines:\n        return\n    # Solve " + t_topic + " task\n    pass\n\nif __name__ == '__main__':\n    solve()\n",
+                "testCases": tmpl["testCases"]
+            })
+        else:
+            tmpl = mcq_templates[idx % len(mcq_templates)]
+            results.append({
+                "questionType": "MCQ",
+                "questionText": f"[{t_topic}] {tmpl['q']}",
+                "optionA": tmpl["a"],
+                "optionB": tmpl["b"],
+                "optionC": tmpl["c"],
+                "optionD": tmpl["d"],
+                "correctAnswer": tmpl["ans"],
+                "marks": 1
+            })
+
+    return results
+
+
+def generate_exam_questions_llm(
+    topics: str,
+    num_questions: int = 5,
+    question_type: str = "MIXED",
+    difficulty: str = "Medium"
+) -> List[Dict[str, Any]]:
+    """
+    Calls Google Gemini (gemini-3.5-flash-lite) to generate exam questions.
+    Returns a list of question dicts ready to be persisted into the database.
+    """
+    key = get_gemini_api_key()
+    q_type = question_type.upper() if question_type else "MIXED"
+    num_q = max(1, min(num_questions, 25))
+
+    if not key:
+        print("[WARN] No GEMINI_API_KEY found, using procedural fallback questions.")
+        return _procedural_fallback_questions(topics, num_q, q_type)
+
+    type_guideline = ""
+    if q_type == "MCQ":
+        type_guideline = f"All {num_q} questions MUST be MCQ type."
+    elif q_type == "CODING":
+        type_guideline = f"All {num_q} questions MUST be CODING type with unit test cases."
+    else:
+        type_guideline = f"Generate a balanced mix of MCQ questions and CODING questions (total {num_q})."
+
+    prompt = f"""You are an elite Computer Science algorithm author creating LeetCode-style coding problems and technical MCQ questions.
+Generate exactly {num_q} high-quality examination questions based on these exam portions / topics:
+\"{topics}\"
+
+Difficulty level: {difficulty}
+Question Type distribution: {type_guideline}
+
+SCHEMA SPECIFICATION:
+Respond ONLY with a valid, clean JSON array of {num_q} question objects. No conversational text or markdown code fences.
+
+For MCQ Questions:
+{{
+  "questionType": "MCQ",
+  "questionText": "Clear, technically rigorous multiple-choice question stem",
+  "optionA": "First option",
+  "optionB": "Second option",
+  "optionC": "Third option",
+  "optionD": "Fourth option",
+  "correctAnswer": 0, // Integer: 0 for A, 1 for B, 2 for C, 3 for D
+  "marks": 1
+}}
+
+For CODING Questions (LeetCode Style Problem):
+{{
+  "questionType": "CODING",
+  "problemTitle": "Concise LeetCode Style Problem Title",
+  "questionText": "Detailed problem statement including:\\n- Problem Description\\n- Input Format\\n- Output Format\\n- Constraints\\n- Example 1 with Input and Output explanation\\n- Example 2",
+  "marks": 10,
+  "constraints": "1 <= N <= 10^5\\nTime Limit: 2.0s\\nMemory Limit: 256MB",
+  "allowedLanguages": "c,python,java",
+  "codeTemplate": "import sys\\n\\ndef solve():\\n    # Read from stdin, process, print to stdout\\n    pass\\n\\nif __name__ == '__main__':\\n    solve()",
+  "testCases": [
+    {{
+      "input": "sample standard input string",
+      "expectedOutput": "expected standard output string",
+      "isHidden": false,
+      "explanation": "Why this output is expected for the sample input"
+    }},
+    {{
+      "input": "edge case or large standard input string",
+      "expectedOutput": "expected output string",
+      "isHidden": true,
+      "explanation": ""
+    }}
+  ]
+}}
+
+Ensure every coding question has at least 2 test cases (1 public sample, 1 hidden) that match standard I/O format!
+Return ONLY the raw JSON array.
+"""
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=key)
+        resp = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=prompt
+        )
+        raw_text = resp.text.strip()
+        # Remove markdown codeblock wrapper if Gemini wrapped it
+        if raw_text.startswith("```"):
+            raw_text = re.sub(r"^```(?:json)?", "", raw_text).strip()
+            raw_text = re.sub(r"```$", "", raw_text).strip()
+
+        data = json.loads(raw_text)
+        if isinstance(data, list) and len(data) > 0:
+            validated: List[Dict[str, Any]] = []
+            for item in data:
+                item_type = str(item.get("questionType", "MCQ")).upper()
+                if item_type == "CODING":
+                    test_cases = item.get("testCases", [])
+                    if not test_cases:
+                        test_cases = [
+                            {"input": "1", "expectedOutput": "1", "isHidden": False, "explanation": "Sample"},
+                            {"input": "2", "expectedOutput": "2", "isHidden": True, "explanation": "Hidden"}
+                        ]
+                    validated.append({
+                        "questionType": "CODING",
+                        "problemTitle": item.get("problemTitle", "Algorithmic Challenge"),
+                        "questionText": item.get("questionText", "Solve the algorithmic task."),
+                        "marks": int(item.get("marks", 10)),
+                        "constraints": item.get("constraints", "1 <= N <= 10^5\nTime Limit: 2.0s"),
+                        "allowedLanguages": item.get("allowedLanguages", "c,python,java"),
+                        "codeTemplate": item.get("codeTemplate", "import sys\n\ndef solve():\n    pass\n\nif __name__ == '__main__':\n    solve()"),
+                        "testCases": test_cases
+                    })
+                else:
+                    ans = item.get("correctAnswer", 0)
+                    if not isinstance(ans, int) or ans < 0 or ans > 3:
+                        ans = 0
+                    validated.append({
+                        "questionType": "MCQ",
+                        "questionText": item.get("questionText", "Multiple choice question"),
+                        "optionA": str(item.get("optionA", "Option A")),
+                        "optionB": str(item.get("optionB", "Option B")),
+                        "optionC": str(item.get("optionC", "Option C")),
+                        "optionD": str(item.get("optionD", "Option D")),
+                        "correctAnswer": ans,
+                        "marks": int(item.get("marks", 1))
+                    })
+            if validated:
+                print(f"[INFO] Successfully generated {len(validated)} questions via Gemini.")
+                return validated
+    except Exception as e:
+        print(f"[ERROR] Gemini question generation failed: {e}. Falling back to procedural bank.")
+
+    return _procedural_fallback_questions(topics, num_q, q_type)
+

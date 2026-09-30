@@ -204,9 +204,12 @@ public class CodeExecutionService {
         } catch (Exception e) {
             long elapsed = System.currentTimeMillis() - startTime;
             log.error("Execution error for case {}: {}", caseIndex, e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : "Unknown execution error";
+            String status = msg.contains("COMPILATION_ERROR") ? "COMPILATION_ERROR" : "RUNTIME_ERROR";
+            String cleanMsg = msg.replace("COMPILATION_ERROR: ", "");
             return new TestCaseExecutionResult(
                     caseIndex, input, expectedOutput, "", false,
-                    "RUNTIME_ERROR", elapsed, e.getMessage()
+                    status, elapsed, cleanMsg
             );
         } finally {
             if (tempDir != null) {
@@ -215,8 +218,101 @@ public class CodeExecutionService {
         }
     }
 
+    private static volatile String cachedCCompilerPath = null;
+
+    private String findCCompiler() {
+        if (cachedCCompilerPath != null && new File(cachedCCompilerPath).exists()) {
+            return cachedCCompilerPath;
+        }
+
+        // 1. Direct command names if in PATH
+        for (String cmd : List.of("gcc", "clang", "cc")) {
+            try {
+                Process p = new ProcessBuilder(cmd, "--version").start();
+                if (p.waitFor(1, TimeUnit.SECONDS) && p.exitValue() == 0) {
+                    cachedCCompilerPath = cmd;
+                    return cmd;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        // 2. Scan standard WinGet / MinGW / LLVM install paths
+        List<String> directPaths = new ArrayList<>();
+        String localAppData = System.getenv("LOCALAPPDATA");
+        if (localAppData != null) {
+            directPaths.add(localAppData + "\\Microsoft\\WinGet\\Packages\\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\llvm-mingw-20260616-ucrt-x86_64\\bin\\gcc.exe");
+            directPaths.add(localAppData + "\\Microsoft\\WinGet\\Packages\\MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\llvm-mingw-20260616-ucrt-x86_64\\bin\\clang.exe");
+        }
+        directPaths.add("C:\\Program Files\\LLVM\\bin\\clang.exe");
+        directPaths.add("C:\\mingw64\\bin\\gcc.exe");
+        directPaths.add("C:\\msys64\\mingw64\\bin\\gcc.exe");
+        directPaths.add("C:\\msys64\\ucrt64\\bin\\gcc.exe");
+        directPaths.add("C:\\TDM-GCC-64\\bin\\gcc.exe");
+
+        for (String path : directPaths) {
+            File f = new File(path);
+            if (f.exists() && f.canExecute()) {
+                cachedCCompilerPath = f.getAbsolutePath();
+                return cachedCCompilerPath;
+            }
+        }
+
+        // 3. Dynamic search in WinGet Packages directory
+        if (localAppData != null) {
+            File wingetDir = new File(localAppData + "\\Microsoft\\WinGet\\Packages");
+            if (wingetDir.exists() && wingetDir.isDirectory()) {
+                try (var stream = Files.walk(wingetDir.toPath(), 6)) {
+                    Optional<Path> found = stream
+                            .filter(p -> p.getFileName().toString().equalsIgnoreCase("gcc.exe") ||
+                                         p.getFileName().toString().equalsIgnoreCase("clang.exe"))
+                            .findFirst();
+                    if (found.isPresent()) {
+                        cachedCCompilerPath = found.get().toAbsolutePath().toString();
+                        return cachedCCompilerPath;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        return null;
+    }
+
     private List<String> buildCommand(String language, String code, Path dir) throws IOException {
         switch (language) {
+            case "c":
+            case "gcc":
+            case "clang": {
+                Path sourceFile = dir.resolve("solution.c");
+                Files.writeString(sourceFile, code, StandardCharsets.UTF_8);
+                boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
+                Path exeFile = dir.resolve(isWindows ? "solution.exe" : "solution");
+
+                String compiler = findCCompiler();
+                if (compiler == null) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST,
+                            "C compiler (GCC / Clang) is not available on the server host. Please contact admin or use Python / Java.");
+                }
+
+                ProcessBuilder compilePb = new ProcessBuilder(
+                        compiler, "-O2", sourceFile.toAbsolutePath().toString(), "-o", exeFile.toAbsolutePath().toString()
+                );
+                compilePb.directory(dir.toFile());
+                Process compileProc = compilePb.start();
+                Future<String> compileErr = captureStreamAsync(compileProc.getErrorStream());
+                try {
+                    boolean compiled = compileProc.waitFor(10, TimeUnit.SECONDS);
+                    if (!compiled || compileProc.exitValue() != 0) {
+                        String err = compileErr.get(2, TimeUnit.SECONDS);
+                        throw new RuntimeException("COMPILATION_ERROR: " + (!err.isBlank() ? err.trim() : "C compilation failed"));
+                    }
+                } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                    throw new RuntimeException("COMPILATION_ERROR: " + e.getMessage());
+                }
+
+                return List.of(exeFile.toAbsolutePath().toString());
+            }
             case "python":
             case "python3":
             case "py": {

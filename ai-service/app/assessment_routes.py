@@ -1,5 +1,6 @@
-﻿from fastapi import APIRouter, HTTPException, Query, status
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
 from app.assessment_schemas import (
     Question, GenerateQuestionsRequest, RunCodeRequest, 
     CodeExecutionResponse, SubmitSolutionRequest, AssessmentReportItem
@@ -7,8 +8,34 @@ from app.assessment_schemas import (
 from app.services.assessment_store import assessment_store
 from app.services.code_executor import execute_code_submission
 from app.services.random_forest_service import rf_classifier
+from app.services.question_generator import generate_exam_questions_llm
 
 router = APIRouter(prefix="/v1/assessment", tags=["Coding Assessment Engine"])
+
+class GenerateExamQuestionsPayload(BaseModel):
+    topics: str = Field(..., description="Topics or portions of the exam")
+    numQuestions: int = Field(default=5, ge=1, le=25, description="Number of questions to generate")
+    questionType: str = Field(default="MIXED", description="MCQ, CODING, or MIXED")
+    difficulty: str = Field(default="Medium", description="Easy, Medium, Hard, Balanced")
+
+@router.post("/generate-exam-questions", response_model=List[Dict[str, Any]])
+def generate_exam_questions_endpoint(req: GenerateExamQuestionsPayload):
+    """
+    Called by backend when admin or examiner requests AI-generated questions for an exam.
+    Calls Google Gemini to generate MCQ or Coding questions with test cases.
+    """
+    if not req.topics or len(req.topics.strip()) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Exam portions / topics must be provided."
+        )
+    return generate_exam_questions_llm(
+        topics=req.topics,
+        num_questions=req.numQuestions,
+        question_type=req.questionType,
+        difficulty=req.difficulty
+    )
+
 
 @router.post("/generate", response_model=List[Question])
 def generate_questions_api(req: GenerateQuestionsRequest):

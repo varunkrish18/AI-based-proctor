@@ -29,90 +29,100 @@ public class AdminExamController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Exam createExam(@Valid @RequestBody CreateExamRequest request, Authentication auth) {
-        return examAdminService.createExam(request, auth.getName());
+        return examAdminService.createExam(request, auth != null ? auth.getName() : "admin");
     }
 
     @GetMapping
-    public List<Exam> listExams() {
-        return examAdminService.listAll();
+    public List<Exam> listExams(Authentication auth) {
+        return examAdminService.listExamsForUser(auth != null ? auth.getName() : null);
     }
 
     @GetMapping("/{examId}")
-    public Exam getExam(@PathVariable Long examId) {
-        return examAdminService.getById(examId);
+    public Exam getExam(@PathVariable Long examId, Authentication auth) {
+        return examAdminService.getExamForUser(examId, auth != null ? auth.getName() : null);
     }
 
     @PutMapping("/{examId}")
     public Exam updateExam(@PathVariable Long examId,
                            @Valid @RequestBody UpdateExamRequest request,
                            Authentication auth) {
-        return examAdminService.updateExam(examId, request, auth.getName());
+        return examAdminService.updateExam(examId, request, auth != null ? auth.getName() : "admin");
     }
 
     @PostMapping("/{examId}/publish")
-    public Exam publish(@PathVariable Long examId) {
-        return examAdminService.publish(examId);
+    public Exam publish(@PathVariable Long examId, Authentication auth) {
+        return examAdminService.publish(examId, auth != null ? auth.getName() : "admin");
     }
 
     @PostMapping("/{examId}/questions")
     @ResponseStatus(HttpStatus.CREATED)
-    public ExamQuestion addQuestion(@PathVariable Long examId, @Valid @RequestBody QuestionRequest request) {
-        return examAdminService.addQuestion(examId, request);
+    public ExamQuestion addQuestion(@PathVariable Long examId, @Valid @RequestBody QuestionRequest request, Authentication auth) {
+        return examAdminService.addQuestion(examId, request, auth != null ? auth.getName() : "admin");
     }
 
     @GetMapping("/{examId}/questions")
-    public List<ExamQuestion> listQuestions(@PathVariable Long examId) {
-        return examAdminService.listQuestions(examId);
+    public List<ExamQuestion> listQuestions(@PathVariable Long examId, Authentication auth) {
+        return examAdminService.listQuestions(examId, auth != null ? auth.getName() : null);
+    }
+
+    @PostMapping("/{examId}/ai-generate-questions")
+    public List<ExamQuestion> generateAiQuestions(
+            @PathVariable Long examId,
+            @Valid @RequestBody AiGenerateQuestionsRequest request,
+            Authentication auth) {
+        String adminEmail = auth != null ? auth.getName() : "admin";
+        return examAdminService.generateAndAddAiQuestions(examId, request, adminEmail);
     }
 
     @PostMapping("/{examId}/assign")
-    public Map<String, Integer> assignStudents(@PathVariable Long examId, @Valid @RequestBody AssignStudentsRequest request) {
-        return examAdminService.assignStudents(examId, request);
+    public Map<String, Object> assignStudents(@PathVariable Long examId, @Valid @RequestBody AssignStudentsRequest request, Authentication auth) {
+        return examAdminService.assignStudents(examId, request, auth != null ? auth.getName() : "admin");
     }
 
     @PostMapping("/{examId}/open-to-all")
-    public Exam setOpenToAll(@PathVariable Long examId, @RequestBody Map<String, Boolean> body) {
+    public Exam setOpenToAll(@PathVariable Long examId, @RequestBody Map<String, Boolean> body, Authentication auth) {
         Boolean openToAll = body.getOrDefault("openToAll", false);
-        return examAdminService.setOpenToAll(examId, openToAll);
+        return examAdminService.setOpenToAll(examId, openToAll, auth != null ? auth.getName() : "admin");
     }
 
     @PatchMapping("/{examId}/limit")
-    public Exam updateLimit(@PathVariable Long examId, @RequestBody Map<String, Integer> body) {
+    public Exam updateLimit(@PathVariable Long examId, @RequestBody Map<String, Integer> body, Authentication auth) {
         Integer limit = body.get("numQuestions");
         if (limit == null) {
             throw new com.proctor.exam.exception.ApiException(HttpStatus.BAD_REQUEST, "numQuestions is required.");
         }
-        return examAdminService.updateNumQuestions(examId, limit);
+        return examAdminService.updateNumQuestions(examId, limit, auth != null ? auth.getName() : "admin");
     }
 
     @DeleteMapping("/{examId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteExam(@PathVariable Long examId, Authentication auth) {
-        examAdminService.deleteExam(examId, auth.getName());
+        examAdminService.deleteExam(examId, auth != null ? auth.getName() : "admin");
     }
 
     @GetMapping("/{examId}/assignments")
-    public List<com.proctor.exam.entity.ExamAssignment> listAssignments(@PathVariable Long examId) {
-        return examAdminService.listAssignments(examId);
+    public List<com.proctor.exam.entity.ExamAssignment> listAssignments(@PathVariable Long examId, Authentication auth) {
+        return examAdminService.listAssignments(examId, auth != null ? auth.getName() : null);
     }
 
     @DeleteMapping("/{examId}/assignments/{assignmentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void unassignStudent(@PathVariable Long examId, @PathVariable Long assignmentId) {
-        examAdminService.unassignStudent(examId, assignmentId);
+    public void unassignStudent(@PathVariable Long examId, @PathVariable Long assignmentId, Authentication auth) {
+        examAdminService.unassignStudent(examId, assignmentId, auth != null ? auth.getName() : "admin");
     }
 
     @PutMapping("/{examId}/questions/{questionId}")
     public ExamQuestion updateQuestion(@PathVariable Long examId,
                                        @PathVariable Long questionId,
-                                       @Valid @RequestBody QuestionRequest request) {
-        return examAdminService.updateQuestion(examId, questionId, request);
+                                       @Valid @RequestBody QuestionRequest request,
+                                       Authentication auth) {
+        return examAdminService.updateQuestion(examId, questionId, request, auth != null ? auth.getName() : "admin");
     }
 
     @DeleteMapping("/{examId}/questions/{questionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteQuestion(@PathVariable Long examId, @PathVariable Long questionId) {
-        examAdminService.deleteQuestion(examId, questionId);
+    public void deleteQuestion(@PathVariable Long examId, @PathVariable Long questionId, Authentication auth) {
+        examAdminService.deleteQuestion(examId, questionId, auth != null ? auth.getName() : "admin");
     }
 
     @PostMapping("/questions/test-run")

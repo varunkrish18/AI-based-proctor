@@ -8,7 +8,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -21,19 +23,22 @@ public class ExamAdminService {
     private final AdminRepository adminRepository;
     private final AuditLogService auditLogService;
     private final jakarta.persistence.EntityManager entityManager;
+    private final AiProxyService aiProxyService;
 
     public ExamAdminService(ExamRepository examRepository,
                             ExamQuestionRepository questionRepository,
                             ExamAssignmentRepository assignmentRepository,
                             AdminRepository adminRepository,
                             AuditLogService auditLogService,
-                            jakarta.persistence.EntityManager entityManager) {
+                            jakarta.persistence.EntityManager entityManager,
+                            AiProxyService aiProxyService) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
         this.adminRepository = adminRepository;
         this.auditLogService = auditLogService;
         this.entityManager = entityManager;
+        this.aiProxyService = aiProxyService;
     }
 
     @Transactional
@@ -73,6 +78,7 @@ public class ExamAdminService {
     @Transactional
     public Exam updateExam(Long examId, UpdateExamRequest req, String adminEmail) {
         Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
 
         Instant newStartAt = req.startAt() != null ? req.startAt() : exam.getStartAt();
         Instant newEndAt = req.endAt() != null ? req.endAt() : exam.getEndAt();
@@ -146,7 +152,28 @@ public class ExamAdminService {
         return saved;
     }
 
+    public void verifyExamAccess(Exam exam, String staffEmail) {
+        if (staffEmail == null || staffEmail.isBlank() || exam == null) return;
+        Admin admin = adminRepository.findByEmail(staffEmail.toLowerCase()).orElse(null);
+        if (admin != null && "EXAMINER".equalsIgnoreCase(admin.getRole())) {
+            if (exam.getCreatedBy() == null || !exam.getCreatedBy().equals(admin.getId())) {
+                throw new ApiException(HttpStatus.FORBIDDEN,
+                        "Access denied: As an Examiner, you can only view and manage exams created by you.");
+            }
+        }
+    }
+
     public List<Exam> listAll() {
+        return examRepository.findAll();
+    }
+
+    public List<Exam> listExamsForUser(String staffEmail) {
+        if (staffEmail != null && !staffEmail.isBlank()) {
+            Admin admin = adminRepository.findByEmail(staffEmail.toLowerCase()).orElse(null);
+            if (admin != null && "EXAMINER".equalsIgnoreCase(admin.getRole())) {
+                return examRepository.findByCreatedByOrderByCreatedAtDesc(admin.getId());
+            }
+        }
         return examRepository.findAll();
     }
 
@@ -155,9 +182,16 @@ public class ExamAdminService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found."));
     }
 
+    public Exam getExamForUser(Long id, String staffEmail) {
+        Exam exam = getById(id);
+        verifyExamAccess(exam, staffEmail);
+        return exam;
+    }
+
     @Transactional
-    public Exam publish(Long examId) {
+    public Exam publish(Long examId, String adminEmail) {
         Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
         long questionCount = questionRepository.countByExamId(examId);
         if (questionCount < exam.getNumQuestions()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
@@ -165,13 +199,19 @@ public class ExamAdminService {
         }
         exam.setStatus("PUBLISHED");
         Exam saved = examRepository.save(exam);
-        auditLogService.logAdmin("admin", "EXAM_PUBLISHED", "Published exam ID " + examId + " ('" + saved.getName() + "')");
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "EXAM_PUBLISHED", "Published exam ID " + examId + " ('" + saved.getName() + "')");
         return saved;
     }
 
     @Transactional
-    public ExamQuestion addQuestion(Long examId, QuestionRequest req) {
+    public Exam publish(Long examId) {
+        return publish(examId, "admin");
+    }
+
+    @Transactional
+    public ExamQuestion addQuestion(Long examId, QuestionRequest req, String adminEmail) {
         Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
         long currentCount = questionRepository.countByExamId(examId);
         if (currentCount >= exam.getNumQuestions()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
@@ -201,7 +241,7 @@ public class ExamAdminService {
                 .optionD(req.optionD())
                 .correctAnswer(req.correctAnswer())
                 .codeTemplate(req.codeTemplate())
-                .allowedLanguages(req.allowedLanguages() != null ? req.allowedLanguages() : "python,javascript")
+                .allowedLanguages(req.allowedLanguages() != null ? req.allowedLanguages() : "c,python,java")
                 .constraints(req.constraints())
                 .marks(req.marks())
                 .displayOrder(order)
@@ -223,60 +263,223 @@ public class ExamAdminService {
         }
 
         ExamQuestion saved = questionRepository.save(q);
-        auditLogService.logAdmin("admin", "QUESTION_ADDED", "Added " + qType + " question ID " + saved.getId() + " to exam ID " + examId);
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "QUESTION_ADDED", "Added " + qType + " question ID " + saved.getId() + " to exam ID " + examId);
+        return saved;
+    }
+
+    @Transactional
+    public ExamQuestion addQuestion(Long examId, QuestionRequest req) {
+        return addQuestion(examId, req, "admin");
+    }
+
+    @Transactional
+    public List<ExamQuestion> generateAndAddAiQuestions(Long examId, AiGenerateQuestionsRequest req, String adminEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+
+        int countToGenerate = req.numQuestions() != null ? req.numQuestions() : 5;
+        String qType = req.questionType() != null && !req.questionType().isBlank() ? req.questionType().trim() : "MIXED";
+        String difficulty = req.difficulty() != null && !req.difficulty().isBlank() ? req.difficulty().trim() : "Medium";
+
+        List<Map<String, Object>> aiQuestions = aiProxyService.generateExamQuestions(
+                req.topics(),
+                countToGenerate,
+                qType,
+                difficulty
+        );
+
+        if (aiQuestions == null || aiQuestions.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "No questions were generated by the AI service.");
+        }
+
+        long currentCount = questionRepository.countByExamId(examId);
+        int totalNeeded = (int) currentCount + aiQuestions.size();
+        if (totalNeeded > exam.getNumQuestions()) {
+            exam.setNumQuestions(totalNeeded);
+            examRepository.save(exam);
+        }
+
+        List<ExamQuestion> addedQuestions = new ArrayList<>();
+
+        for (Map<String, Object> qMap : aiQuestions) {
+            String itemType = qMap.get("questionType") != null ? qMap.get("questionType").toString().toUpperCase() : "MCQ";
+            String questionText = qMap.get("questionText") != null ? qMap.get("questionText").toString() : "";
+            BigDecimal marks = BigDecimal.valueOf(1);
+            if (qMap.get("marks") instanceof Number num) {
+                marks = BigDecimal.valueOf(num.doubleValue());
+            }
+
+            if ("CODING".equals(itemType)) {
+                String title = qMap.get("problemTitle") != null ? qMap.get("problemTitle").toString() : "Coding Problem";
+                String constraints = qMap.get("constraints") != null ? qMap.get("constraints").toString() : "1 <= N <= 10^5\nTime Limit: 2.0s";
+                String allowedLanguages = qMap.get("allowedLanguages") != null ? qMap.get("allowedLanguages").toString() : "c,python,java";
+                String codeTemplate = qMap.get("codeTemplate") != null ? qMap.get("codeTemplate").toString() : "import sys\n\ndef solve():\n    pass\n\nif __name__ == '__main__':\n    solve()";
+
+                List<TestCaseRequest> testCaseRequests = new ArrayList<>();
+                if (qMap.get("testCases") instanceof List<?> tcList) {
+                    int tcIdx = 0;
+                    for (Object tcObj : tcList) {
+                        if (tcObj instanceof Map<?, ?> tcMap) {
+                            String in = tcMap.get("input") != null ? tcMap.get("input").toString() : "";
+                            String out = tcMap.get("expectedOutput") != null ? tcMap.get("expectedOutput").toString() : "";
+                            Boolean isHidden = Boolean.TRUE.equals(tcMap.get("isHidden"));
+                            String exp = tcMap.get("explanation") != null ? tcMap.get("explanation").toString() : "";
+                            testCaseRequests.add(new TestCaseRequest(null, in, out, isHidden, exp, tcIdx++));
+                        }
+                    }
+                }
+                if (testCaseRequests.isEmpty()) {
+                    testCaseRequests.add(new TestCaseRequest(null, "1", "1", false, "Sample Case", 0));
+                    testCaseRequests.add(new TestCaseRequest(null, "2", "2", true, "Hidden Case", 1));
+                }
+
+                QuestionRequest qReq = new QuestionRequest(
+                        "CODING",
+                        questionText,
+                        null, null, null, null,
+                        null,
+                        marks.compareTo(BigDecimal.ONE) == 0 ? BigDecimal.valueOf(10) : marks,
+                        title,
+                        constraints,
+                        codeTemplate,
+                        allowedLanguages,
+                        testCaseRequests
+                );
+                addedQuestions.add(addQuestion(examId, qReq, adminEmail));
+            } else {
+                String optA = qMap.get("optionA") != null ? qMap.get("optionA").toString() : "Option A";
+                String optB = qMap.get("optionB") != null ? qMap.get("optionB").toString() : "Option B";
+                String optC = qMap.get("optionC") != null ? qMap.get("optionC").toString() : "Option C";
+                String optD = qMap.get("optionD") != null ? qMap.get("optionD").toString() : "Option D";
+                Short correctAns = 0;
+                if (qMap.get("correctAnswer") instanceof Number num) {
+                    correctAns = num.shortValue();
+                }
+
+                QuestionRequest qReq = new QuestionRequest(
+                        "MCQ",
+                        questionText,
+                        optA, optB, optC, optD,
+                        correctAns,
+                        marks,
+                        null, null, null, null,
+                        List.of()
+                );
+                addedQuestions.add(addQuestion(examId, qReq, adminEmail));
+            }
+        }
+
+        auditLogService.logAdmin(
+                adminEmail != null ? adminEmail : "admin",
+                "AI_QUESTIONS_GENERATED",
+                "Generated and attached " + addedQuestions.size() + " AI questions to exam '" + exam.getName() + "' (ID: " + examId + ")"
+        );
+
+        return addedQuestions;
+    }
+
+
+    @Transactional
+    public Exam updateNumQuestions(Long examId, int numQuestions, String adminEmail) {
+        if (numQuestions <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "numQuestions must be greater than 0.");
+        }
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+        exam.setNumQuestions(numQuestions);
+        Exam saved = examRepository.save(exam);
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "EXAM_LIMIT_UPDATED",
+                "Updated question limit to " + numQuestions + " for exam ID " + examId);
         return saved;
     }
 
     @Transactional
     public Exam updateNumQuestions(Long examId, int numQuestions) {
-        if (numQuestions <= 0) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "numQuestions must be greater than 0.");
-        }
-        Exam exam = getById(examId);
-        exam.setNumQuestions(numQuestions);
-        Exam saved = examRepository.save(exam);
-        auditLogService.logAdmin("admin", "EXAM_LIMIT_UPDATED",
-                "Updated question limit to " + numQuestions + " for exam ID " + examId);
-        return saved;
+        return updateNumQuestions(examId, numQuestions, "admin");
     }
 
-    public List<ExamQuestion> listQuestions(Long examId) {
-        getById(examId);
+    public List<ExamQuestion> listQuestions(Long examId, String staffEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, staffEmail);
         return questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
     }
 
-    @Transactional
-    public Map<String, Integer> assignStudents(Long examId, AssignStudentsRequest req) {
-        Exam exam = getById(examId);
-        int assigned = 0;
-        int skipped = 0;
-        for (String rawEmail : req.emails()) {
-            String email = rawEmail.trim().toLowerCase();
-            if (email.isBlank()) continue;
-            if (!assignmentRepository.existsByExamIdAndStudentEmailIgnoreCase(examId, email)) {
-                assignmentRepository.save(ExamAssignment.builder().exam(exam).studentEmail(email).build());
-                assigned++;
-            } else {
-                skipped++;
-            }
+    public List<ExamQuestion> listQuestions(Long examId) {
+        return listQuestions(examId, null);
+    }
+
+    private String generateRandomPassword(int length) {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        StringBuilder sb = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            sb.append(chars.charAt(random.nextInt(chars.length())));
         }
-        auditLogService.logAdmin("admin", "STUDENTS_ASSIGNED", "Assigned " + assigned + " new student(s) to exam ID " + examId);
-        return Map.of("assigned", assigned, "skipped", skipped);
+        return sb.toString();
     }
 
     @Transactional
-    public Exam setOpenToAll(Long examId, boolean openToAll) {
+    public Map<String, Object> assignStudents(Long examId, AssignStudentsRequest req, String adminEmail) {
         Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+        int assigned = 0;
+        int skipped = 0;
+        List<Map<String, String>> credentials = new ArrayList<>();
+        for (String rawEmail : req.emails()) {
+            String email = rawEmail.trim().toLowerCase();
+            if (email.isBlank()) continue;
+            java.util.Optional<ExamAssignment> existing = assignmentRepository.findByExamIdAndStudentEmailIgnoreCase(examId, email);
+            if (existing.isEmpty()) {
+                String pwd = generateRandomPassword(8);
+                ExamAssignment assignment = ExamAssignment.builder()
+                        .exam(exam)
+                        .studentEmail(email)
+                        .accessPassword(pwd)
+                        .build();
+                assignmentRepository.save(assignment);
+                assigned++;
+                credentials.add(Map.of("email", email, "password", pwd));
+            } else {
+                ExamAssignment current = existing.get();
+                String pwd = current.getAccessPassword();
+                if (pwd == null || pwd.isBlank()) {
+                    pwd = generateRandomPassword(8);
+                    current.setAccessPassword(pwd);
+                    assignmentRepository.save(current);
+                }
+                credentials.add(Map.of("email", email, "password", pwd));
+                skipped++;
+            }
+        }
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "STUDENTS_ASSIGNED", "Assigned " + assigned + " new student(s) to exam ID " + examId);
+        return Map.of("assigned", assigned, "skipped", skipped, "credentials", credentials);
+    }
+
+    @Transactional
+    public Map<String, Object> assignStudents(Long examId, AssignStudentsRequest req) {
+        return assignStudents(examId, req, "admin");
+    }
+
+    @Transactional
+    public Exam setOpenToAll(Long examId, boolean openToAll, String adminEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
         exam.setOpenToAll(openToAll);
         Exam saved = examRepository.save(exam);
-        auditLogService.logAdmin("admin", "EXAM_OPEN_TO_ALL_UPDATED",
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "EXAM_OPEN_TO_ALL_UPDATED",
                 "Updated open-to-all status to " + openToAll + " for exam ID " + examId);
         return saved;
     }
 
     @Transactional
+    public Exam setOpenToAll(Long examId, boolean openToAll) {
+        return setOpenToAll(examId, openToAll, "admin");
+    }
+
+    @Transactional
     public void deleteExam(Long examId, String adminEmail) {
         Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
 
         // Safely cascade delete all related entities in proper foreign key order
         entityManager.createNativeQuery("DELETE FROM warnings WHERE attempt_id IN (SELECT id FROM exam_attempts WHERE exam_id = :examId)")
@@ -299,23 +502,43 @@ public class ExamAdminService {
         auditLogService.logAdmin(adminEmail, "EXAM_DELETED", "Deleted exam '" + exam.getName() + "' (ID: " + examId + ")");
     }
 
+    public List<ExamAssignment> listAssignments(Long examId, String staffEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, staffEmail);
+        List<ExamAssignment> list = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
+        for (ExamAssignment a : list) {
+            if (a.getAccessPassword() == null || a.getAccessPassword().isBlank()) {
+                a.setAccessPassword(generateRandomPassword(8));
+                assignmentRepository.save(a);
+            }
+        }
+        return list;
+    }
+
     public List<ExamAssignment> listAssignments(Long examId) {
-        getById(examId);
-        return assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
+        return listAssignments(examId, null);
     }
 
     @Transactional
-    public void unassignStudent(Long examId, Long assignmentId) {
+    public void unassignStudent(Long examId, Long assignmentId, String adminEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
         ExamAssignment assignment = assignmentRepository.findByIdAndExamId(assignmentId, examId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Assignment not found."));
         assignmentRepository.delete(assignment);
-        auditLogService.logAdmin("admin", "STUDENT_UNASSIGNED",
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "STUDENT_UNASSIGNED",
                 "Unassigned " + assignment.getStudentEmail() + " from exam ID " + examId);
     }
 
     @Transactional
-    public ExamQuestion updateQuestion(Long examId, Long questionId, QuestionRequest req) {
-        getById(examId);
+    public void unassignStudent(Long examId, Long assignmentId) {
+        unassignStudent(examId, assignmentId, "admin");
+    }
+
+    @Transactional
+    public ExamQuestion updateQuestion(Long examId, Long questionId, QuestionRequest req, String adminEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
         ExamQuestion q = questionRepository.findByIdAndExamId(questionId, examId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Question not found."));
 
@@ -354,13 +577,19 @@ public class ExamAdminService {
         }
 
         ExamQuestion saved = questionRepository.save(q);
-        auditLogService.logAdmin("admin", "QUESTION_UPDATED", "Updated question ID " + saved.getId() + " in exam ID " + examId);
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "QUESTION_UPDATED", "Updated question ID " + saved.getId() + " in exam ID " + examId);
         return saved;
     }
 
     @Transactional
-    public void deleteQuestion(Long examId, Long questionId) {
-        getById(examId);
+    public ExamQuestion updateQuestion(Long examId, Long questionId, QuestionRequest req) {
+        return updateQuestion(examId, questionId, req, "admin");
+    }
+
+    @Transactional
+    public void deleteQuestion(Long examId, Long questionId, String adminEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
         ExamQuestion q = questionRepository.findByIdAndExamId(questionId, examId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Question not found."));
 
@@ -369,7 +598,12 @@ public class ExamAdminService {
                 .setParameter("qid", questionId).executeUpdate();
 
         questionRepository.delete(q);
-        auditLogService.logAdmin("admin", "QUESTION_DELETED", "Deleted question ID " + questionId + " from exam ID " + examId);
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "QUESTION_DELETED", "Deleted question ID " + questionId + " from exam ID " + examId);
+    }
+
+    @Transactional
+    public void deleteQuestion(Long examId, Long questionId) {
+        deleteQuestion(examId, questionId, "admin");
     }
 
     private String buildProctoringConfigWithAudio(Integer audioInputLevel) {

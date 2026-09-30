@@ -26,6 +26,9 @@ public class ExamAssignment {
     @Column(name = "student_email", nullable = false)
     private String studentEmail;
 
+    @Column(name = "access_password", length = 64)
+    private String accessPassword;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

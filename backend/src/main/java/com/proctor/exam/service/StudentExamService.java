@@ -60,41 +60,67 @@ public class StudentExamService {
      * assignment is missing, so we don't leak which emails are registered.
      */
     @Transactional
-    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail) {
+    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail, String rawPassword) {
         String email = rawEmail.trim().toLowerCase();
         Exam exam = examRepository.findById(examId).orElse(null);
-        boolean isAssigned = exam != null && assignmentRepository.existsByExamIdAndStudentEmailIgnoreCase(examId, email);
-        boolean isOpen = exam != null && exam.isOpenToAll();
-        boolean authorized = exam != null
-                && "PUBLISHED".equals(exam.getStatus())
-                && (isAssigned || isOpen);
-
-        if (!authorized) {
-            return new VerifyStudentResponse(false, null, "This exam is not assigned to this email address.");
+        if (exam == null || !"PUBLISHED".equals(exam.getStatus())) {
+            return new VerifyStudentResponse(false, null, "Exam not found or is not published.", false, false, false, false);
         }
 
-        if (isOpen && !isAssigned) {
+        boolean isOpen = exam.isOpenToAll();
+        Optional<ExamAssignment> assignmentOpt = assignmentRepository.findByExamIdAndStudentEmailIgnoreCase(examId, email);
+
+        if (!isOpen && assignmentOpt.isEmpty()) {
+            return new VerifyStudentResponse(false, null, "This exam is not assigned to this email address.", false, false, false, false);
+        }
+
+        // Verify assignment access password if present
+        if (assignmentOpt.isPresent()) {
+            ExamAssignment assignment = assignmentOpt.get();
+            if (assignment.getAccessPassword() != null && !assignment.getAccessPassword().isBlank()) {
+                if (rawPassword == null || rawPassword.trim().isBlank()) {
+                    return new VerifyStudentResponse(false, null, "Exam access password is required.", false, false, false, false);
+                }
+                if (!assignment.getAccessPassword().trim().equalsIgnoreCase(rawPassword.trim())) {
+                    return new VerifyStudentResponse(false, null, "Invalid access password. Please check your assigned exam password and try again.", false, false, false, false);
+                }
+            }
+        } else if (isOpen) {
             try {
                 assignmentRepository.save(com.proctor.exam.entity.ExamAssignment.builder()
                         .exam(exam)
                         .studentEmail(email)
+                        .accessPassword(rawPassword != null && !rawPassword.isBlank() ? rawPassword.trim() : "OPEN")
                         .build());
             } catch (Exception ignored) {}
         }
 
         Instant now = trustedTimeService.now();
         if (exam.getStartAt() != null && now.isBefore(exam.getStartAt())) {
-            return new VerifyStudentResponse(false, null, "Exam has not started yet. Starts at: " + exam.getStartAt());
+            return new VerifyStudentResponse(false, null, "Exam has not started yet. Starts at: " + exam.getStartAt(), false, false, false, false);
         }
         if (exam.getEndAt() != null && now.isAfter(exam.getEndAt())) {
-            return new VerifyStudentResponse(false, null, "This exam has already ended.");
+            return new VerifyStudentResponse(false, null, "This exam has already ended.", false, false, false, false);
         }
 
         studentRepository.findByEmail(email).orElseGet(() ->
                 studentRepository.save(Student.builder().email(email).build()));
 
         String sessionToken = jwtService.generateStudentSessionToken(email, examId);
-        return new VerifyStudentResponse(true, sessionToken, "Verified.");
+        return new VerifyStudentResponse(
+                true,
+                sessionToken,
+                "Verified.",
+                exam.getWebcamRequired() != null ? exam.getWebcamRequired() : true,
+                exam.getMicrophoneRequired() != null ? exam.getMicrophoneRequired() : true,
+                exam.getScreenRequired() != null ? exam.getScreenRequired() : true,
+                exam.getLocationRequired() != null ? exam.getLocationRequired() : false
+        );
+    }
+
+    @Transactional
+    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail) {
+        return verifyStudent(examId, rawEmail, null);
     }
 
     @Transactional

@@ -54,6 +54,7 @@ export interface ExamQuestion {
 export interface ExamAssignmentItem {
   id: number;
   studentEmail: string;
+  accessPassword?: string;
   createdAt: string;
 }
 

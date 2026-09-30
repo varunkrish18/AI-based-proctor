@@ -68,6 +68,14 @@ export default function App() {
           }
         />
         <Route
+          path="/admin/users"
+          element={
+            <StaffRoute>
+              <Navigate to="/admin/dashboard?tab=users" replace />
+            </StaffRoute>
+          }
+        />
+        <Route
           path="/admin/coding-reports"
           element={
             <StaffRoute>

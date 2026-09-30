@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import * as XLSX from "xlsx";
 import { api, downloadFile } from "../../api/client";
 import ExamSettingsTab from "./ExamSettingsTab";
 import type {
@@ -304,7 +305,7 @@ function QuestionsTab({
     questionText: "",
     marks: 10,
     constraints: "1 <= n <= 10^5\nTime Limit: 5.0 seconds\nMemory Limit: 256 MB",
-    allowedLanguages: "python,javascript",
+    allowedLanguages: "c,python,java",
     codeTemplate: `import sys
 
 def solve():
@@ -369,13 +370,53 @@ if __name__ == '__main__':
     correctAnswer: 0,
     problemTitle: "",
     constraints: "",
-    allowedLanguages: "python,javascript",
+    allowedLanguages: "c,python,java",
     codeTemplate: "",
     testCases: [],
   });
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [deletingQuestionId, setDeletingQuestionId] = useState<number | null>(null);
+
+  // AI Question Generation Modal state
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiTopics, setAiTopics] = useState(exam.subject ? `${exam.subject}` : "");
+  const [aiNumQuestions, setAiNumQuestions] = useState(5);
+  const [aiQuestionType, setAiQuestionType] = useState<"MIXED" | "MCQ" | "CODING">("MIXED");
+  const [aiDifficulty, setAiDifficulty] = useState("Medium");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiSuccessMsg, setAiSuccessMsg] = useState<string | null>(null);
+
+  async function handleAiGenerate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!aiTopics.trim()) {
+      setAiError("Please enter the portions or main topics of the exam.");
+      return;
+    }
+    setAiGenerating(true);
+    setAiError(null);
+    try {
+      const generated = await api.post<ExamQuestion[]>(
+        `/api/admin/exams/${exam.id}/ai-generate-questions`,
+        {
+          topics: aiTopics.trim(),
+          numQuestions: Number(aiNumQuestions),
+          questionType: aiQuestionType,
+          difficulty: aiDifficulty,
+        },
+        "admin"
+      );
+      setShowAiModal(false);
+      setAiSuccessMsg(`✨ Successfully generated and added ${generated.length} question(s) with test cases!`);
+      setTimeout(() => setAiSuccessMsg(null), 6000);
+      onAdded();
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Failed to generate questions with AI.");
+    } finally {
+      setAiGenerating(false);
+    }
+  }
 
   const isLimitReached = questions.length >= exam.numQuestions;
   const isOverLimit = questions.length > exam.numQuestions;
@@ -434,7 +475,7 @@ if __name__ == '__main__':
       questionText: `Given an array of integers nums and an integer target, return the indices of the two numbers such that they add up to target.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.`,
       marks: 10,
       constraints: "2 <= nums.length <= 10^4\n-10^9 <= nums[i] <= 10^9\n-10^9 <= target <= 10^9\nOnly one valid answer exists.",
-      allowedLanguages: "python,javascript",
+      allowedLanguages: "c,python,java",
       codeTemplate: `import sys
 
 def solve():
@@ -476,6 +517,66 @@ if __name__ == '__main__':
         },
       ],
     });
+  }
+
+  function loadPythonTemplate() {
+    setCodingForm((f) => ({
+      ...f,
+      codeTemplate: `import sys
+
+def solve():
+    # Read from stdin
+    input_data = sys.stdin.read().strip()
+    if not input_data:
+        return
+    # Your solution here
+    print(input_data)
+
+if __name__ == '__main__':
+    solve()
+`,
+    }));
+  }
+
+  function loadCTemplate() {
+    setCodingForm((f) => ({
+      ...f,
+      codeTemplate: `#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main() {
+    // Read input from stdin
+    char buffer[1024];
+    while (fgets(buffer, sizeof(buffer), stdin)) {
+        // Your C solution here
+        printf("%s", buffer);
+    }
+    return 0;
+}
+`,
+    }));
+  }
+
+  function loadJavaTemplate() {
+    setCodingForm((f) => ({
+      ...f,
+      codeTemplate: `import java.util.*;
+import java.io.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+        while (scanner.hasNextLine()) {
+            String line = scanner.nextLine();
+            // Your Java solution here
+            System.out.println(line);
+        }
+        scanner.close();
+    }
+}
+`,
+    }));
   }
 
   async function handleAdminTestRun() {
@@ -564,7 +665,7 @@ if __name__ == '__main__':
       correctAnswer: q.correctAnswer ?? 0,
       problemTitle: q.problemTitle || "",
       constraints: q.constraints || "",
-      allowedLanguages: q.allowedLanguages || "python,javascript",
+      allowedLanguages: q.allowedLanguages || "c,python,java",
       codeTemplate: q.codeTemplate || "",
       testCases: (q.testCases || []).map((tc, i) => ({
         id: tc.id,
@@ -642,6 +743,179 @@ if __name__ == '__main__':
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* AI Question Generation Top Banner */}
+      <div className="lg:col-span-2 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-900/50 rounded-2xl p-5 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">✨</span>
+            <h3 className="font-bold text-sm sm:text-base text-white">AI Question &amp; Test Case Generator</h3>
+            <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full">
+              Google Gemini Powered
+            </span>
+          </div>
+          <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+            Specify the exam portions or syllabus topics, select question count and type (MCQ, Coding, or Mixed). The AI generates questions with full test cases and automatically updates the exam.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setAiError(null);
+            setShowAiModal(true);
+          }}
+          className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm hover:shadow-indigo-500/25 flex items-center gap-2 cursor-pointer shrink-0"
+        >
+          <span>✨</span> AI Generate Questions
+        </button>
+      </div>
+
+      {/* Success Notification Banner */}
+      {aiSuccessMsg && (
+        <div className="lg:col-span-2 bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span>✅</span>
+            <span>{aiSuccessMsg}</span>
+          </div>
+          <button onClick={() => setAiSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900 font-bold">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* AI GENERATE QUESTIONS MODAL */}
+      {showAiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">✨</span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Generate Exam Questions</h3>
+                  <p className="text-[11px] text-slate-500">Google Gemini LLM Exam Engine</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !aiGenerating && setShowAiModal(false)}
+                disabled={aiGenerating}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </div>
+
+            {aiError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">
+                {aiError}
+              </div>
+            )}
+
+            <form onSubmit={handleAiGenerate} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Exam Portions / Main Topics <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={aiTopics}
+                  onChange={(e) => setAiTopics(e.target.value)}
+                  placeholder="e.g. Binary Search Trees, Heaps, Dynamic Programming, Graph Traversals (BFS/DFS)"
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Specify chapters, syllabus portions, or topics. The AI will generate technical questions with options and test cases.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Number of Questions
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={aiNumQuestions}
+                    onChange={(e) => setAiNumQuestions(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Question Type
+                  </label>
+                  <select
+                    value={aiQuestionType}
+                    onChange={(e) => setAiQuestionType(e.target.value as any)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="MIXED">⚡ Mixed (MCQ + Coding)</option>
+                    <option value="MCQ">📋 Multiple Choice Only</option>
+                    <option value="CODING">💻 Coding &amp; Test Cases Only</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Difficulty
+                  </label>
+                  <select
+                    value={aiDifficulty}
+                    onChange={(e) => setAiDifficulty(e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="Medium">Medium (Standard)</option>
+                    <option value="Easy">Easy (Foundational)</option>
+                    <option value="Hard">Hard (Competitive)</option>
+                    <option value="Balanced">Balanced Mix</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 space-y-1">
+                <div className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <span>ℹ️</span> Automated Exam Updates:
+                </div>
+                <p>
+                  Generated questions and test cases will be validated and appended directly to the database. If this exceeds the current question limit ({exam.numQuestions}), the limit will be updated automatically.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAiModal(false)}
+                  disabled={aiGenerating}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={aiGenerating}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                >
+                  {aiGenerating ? (
+                    <>
+                      <div className="animate-spin inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" />
+                      <span>Generating with Gemini AI…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>✨</span>
+                      <span>Generate &amp; Save Questions</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {isLimitReached ? (
         <div className="bg-white border border-amber-200 rounded-xl p-6 shadow-xs space-y-4 h-fit">
           <div className="flex items-center gap-3">
@@ -849,8 +1123,72 @@ if __name__ == '__main__':
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Starter Code / Solution Template
+                  Allowed Programming Languages
                 </label>
+                <div className="flex items-center gap-4 text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                  {[
+                    { id: "c", label: "C (GCC)" },
+                    { id: "python", label: "Python 3" },
+                    { id: "java", label: "Java 21" },
+                  ].map(({ id, label }) => {
+                    const currentLangs = (codingForm.allowedLanguages || "c,python,java")
+                      .split(",")
+                      .map((l) => l.trim().toLowerCase());
+                    const checked = currentLangs.includes(id);
+                    return (
+                      <label key={id} className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-700 select-none">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            let next: string[];
+                            if (e.target.checked) {
+                              next = [...currentLangs, id];
+                            } else {
+                              next = currentLangs.filter((l) => l !== id);
+                              if (next.length === 0) next = [id];
+                            }
+                            setCodingForm((f) => ({ ...f, allowedLanguages: next.join(",") }));
+                          }}
+                          className="rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Starter Code / Solution Template
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-500">Insert preset:</span>
+                    <button
+                      type="button"
+                      onClick={loadPythonTemplate}
+                      className="text-[11px] font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                    >
+                      Python
+                    </button>
+                    <button
+                      type="button"
+                      onClick={loadCTemplate}
+                      className="text-[11px] font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                    >
+                      C
+                    </button>
+                    <button
+                      type="button"
+                      onClick={loadJavaTemplate}
+                      className="text-[11px] font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                    >
+                      Java
+                    </button>
+                  </div>
+                </div>
                 <textarea
                   placeholder="Template code provided to students..."
                   value={codingForm.codeTemplate}
@@ -1103,7 +1441,7 @@ if __name__ == '__main__':
                       {q.testCases?.filter((tc) => !tc.isHidden).length || 0} sample,{" "}
                       {q.testCases?.filter((tc) => tc.isHidden).length || 0} hidden)
                     </span>
-                    <span>Languages: Python 3, JavaScript</span>
+                    <span>Languages: {(q.allowedLanguages || "c,python,java").toUpperCase()}</span>
                   </div>
                 </div>
               ) : (
@@ -1207,6 +1545,44 @@ if __name__ == '__main__':
                       onChange={(e) => setEditForm((f) => ({ ...f, constraints: e.target.value }))}
                       className="input font-mono text-xs"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Allowed Programming Languages
+                    </label>
+                    <div className="flex items-center gap-4 text-xs bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                      {[
+                        { id: "c", label: "C (GCC)" },
+                        { id: "python", label: "Python 3" },
+                        { id: "java", label: "Java 21" },
+                      ].map(({ id, label }) => {
+                        const currentLangs = (editForm.allowedLanguages || "c,python,java")
+                          .split(",")
+                          .map((l) => l.trim().toLowerCase());
+                        const checked = currentLangs.includes(id);
+                        return (
+                          <label key={id} className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-700 select-none">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                let next: string[];
+                                if (e.target.checked) {
+                                  next = [...currentLangs, id];
+                                } else {
+                                  next = currentLangs.filter((l) => l !== id);
+                                  if (next.length === 0) next = [id];
+                                }
+                                setEditForm((f) => ({ ...f, allowedLanguages: next.join(",") }));
+                              }}
+                              className="rounded text-blue-600 focus:ring-blue-500"
+                            />
+                            <span>{label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div>
@@ -1368,6 +1744,11 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
   const [loading, setLoading] = useState(true);
   const [searchFilter, setSearchFilter] = useState("");
   const [unassigningId, setUnassigningId] = useState<number | null>(null);
+  const [recentCredentials, setRecentCredentials] = useState<Array<{ email: string; password: string }> | null>(null);
+  const [fileUploading, setFileUploading] = useState(false);
+  const [fileSuccessMsg, setFileSuccessMsg] = useState<string | null>(null);
+  const [copiedPasswordId, setCopiedPasswordId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const studentLink = `${window.location.origin}/exam/${exam.id}`;
 
@@ -1440,15 +1821,95 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     setTimeout(() => setCopiedLink(false), 2500);
   }
 
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileSuccessMsg(null);
+    setFileUploading(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) throw new Error("Uploaded file has no worksheets.");
+      const sheet = workbook.Sheets[firstSheetName];
+      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
+      const extracted: string[] = [];
+
+      for (const row of rows) {
+        if (!row || !row.length) continue;
+        for (const cell of row) {
+          if (cell != null) {
+            const str = String(cell).trim();
+            const match = str.match(emailRegex);
+            if (match) {
+              extracted.push(match[0].toLowerCase());
+            }
+          }
+        }
+      }
+
+      const unique = Array.from(new Set(extracted));
+      if (unique.length === 0) {
+        throw new Error("No valid email addresses found in the uploaded file.");
+      }
+
+      setEmails((prev) => {
+        const existing = prev.split(/[\n,]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+        const merged = Array.from(new Set([...existing, ...unique]));
+        return merged.join("\n");
+      });
+
+      setFileSuccessMsg(`✓ Extracted ${unique.length} email ID(s) from "${file.name}". Click "Assign Students" to generate their access passwords.`);
+    } catch (err: any) {
+      alert(err instanceof Error ? err.message : "Failed to parse file.");
+    } finally {
+      setFileUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function exportCredentialsCsv() {
+    if (!assignments.length) return;
+    const rows = [
+      ["Student Email", "Exam Access Password", "Assigned Date"],
+      ...assignments.map((a) => [a.studentEmail, a.accessPassword || "", new Date(a.createdAt).toLocaleString()])
+    ];
+    const csvContent = "data:text/csv;charset=utf-8," + rows.map((e) => e.map((c) => `"${c}"`).join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `exam_${examId}_student_credentials.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function copyAllCredentials() {
+    if (!assignments.length) return;
+    const text = assignments.map((a) => `${a.studentEmail}\t${a.accessPassword || "N/A"}`).join("\n");
+    navigator.clipboard.writeText(text);
+    alert(`Copied ${assignments.length} student access credentials to clipboard!`);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
+    setFileSuccessMsg(null);
     const list = emails.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
     if (!list.length) return;
     setSubmitting(true);
     try {
-      const res = await api.post<{ assigned: number; skipped: number }>(`/api/admin/exams/${examId}/assign`, { emails: list }, "admin");
-      setStatus(`✓ Assigned ${res.assigned} student(s) (${res.skipped} already assigned).`);
+      const res = await api.post<{
+        assigned: number;
+        skipped: number;
+        credentials?: Array<{ email: string; password: string }>;
+      }>(`/api/admin/exams/${examId}/assign`, { emails: list }, "admin");
+      setStatus(`✓ Assigned ${res.assigned} student(s) (${res.skipped} already assigned). Random passwords generated.`);
+      if (res.credentials && res.credentials.length > 0) {
+        setRecentCredentials(res.credentials);
+      }
       setEmails("");
       loadAssignments();
     } catch (err) {
@@ -1597,23 +2058,121 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         </div>
       </div>
 
+      {/* Recent Credentials Banner (When students are newly assigned) */}
+      {recentCredentials && recentCredentials.length > 0 && (
+        <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🔑</span>
+              <div>
+                <h4 className="font-bold text-emerald-950 text-sm">
+                  Generated Exam Access Passwords ({recentCredentials.length})
+                </h4>
+                <p className="text-emerald-700 text-xs">
+                  Each student must enter their assigned email and random password to start the exam.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const text = recentCredentials.map((c) => `${c.email}\t${c.password}`).join("\n");
+                  navigator.clipboard.writeText(text);
+                  alert("Copied credentials to clipboard!");
+                }}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-700 transition cursor-pointer shadow-xs"
+              >
+                📋 Copy Credentials
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecentCredentials(null)}
+                className="text-xs text-slate-500 hover:text-slate-800 font-medium px-2 py-1 cursor-pointer"
+              >
+                ✕ Dismiss
+              </button>
+            </div>
+          </div>
+          <div className="max-h-48 overflow-y-auto divide-y divide-emerald-200/60 bg-white/80 rounded-xl border border-emerald-200">
+            {recentCredentials.map((c, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
+                <span className="font-medium text-slate-800">{c.email}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded font-bold tracking-wider">
+                    {c.password}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(c.password);
+                      alert(`Password for ${c.email} copied!`);
+                    }}
+                    className="text-[11px] text-blue-600 hover:underline cursor-pointer"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Assign Form */}
       <form onSubmit={submit} className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 h-fit shadow-xs">
         <div>
           <h3 className="font-bold text-slate-900 text-sm">Assign Students by Email</h3>
           <p className="text-slate-500 text-xs mt-0.5">
-            Enter candidate emails below (one per line, or comma-separated).
+            Enter candidate emails below (one per line, or comma-separated). A random access password will be generated for each student.
           </p>
         </div>
         <textarea
-          rows={5}
-          required
+          rows={4}
           placeholder="student1@example.com&#10;student2@example.com"
           value={emails}
           onChange={(e) => setEmails(e.target.value)}
-          className="input font-mono text-xs"
+          className="input font-mono text-xs w-full"
         />
+
+        {/* Excel / CSV File Upload Feature */}
+        <div className="border border-dashed border-slate-300 rounded-xl p-4 bg-slate-50/70 hover:bg-slate-50 transition-colors">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-base">📄</span>
+            <h4 className="font-bold text-slate-800 text-xs">
+              Upload Excel or CSV File
+            </h4>
+          </div>
+          <p className="text-[11px] text-slate-500 mb-2.5">
+            The file should contain only one column of mail IDs. Emails will be extracted automatically.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={handleFileUpload}
+              className="hidden"
+              id="assign-file-input"
+            />
+            <label
+              htmlFor="assign-file-input"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer shadow-2xs transition"
+            >
+              <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              {fileUploading ? "Reading file…" : "Choose .xlsx, .xls or .csv"}
+            </label>
+          </div>
+          {fileSuccessMsg && (
+            <p className="text-[11px] font-medium text-emerald-700 mt-2 bg-emerald-50 border border-emerald-200 p-2 rounded-lg">
+              {fileSuccessMsg}
+            </p>
+          )}
+        </div>
+
         {status && (
           <p
             className={`text-xs font-medium p-2.5 rounded-lg ${
@@ -1627,10 +2186,10 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         )}
         <button
           type="submit"
-          disabled={submitting}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 cursor-pointer"
+          disabled={submitting || (!emails.trim())}
+          className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
         >
-          {submitting ? "Assigning…" : "Assign Students"}
+          {submitting ? "Assigning & Generating Passwords…" : "Assign Students"}
         </button>
       </form>
 
@@ -1641,14 +2200,36 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
             <h3 className="font-bold text-slate-900 text-sm">
               Assigned Students ({assignments.length})
             </h3>
-            <p className="text-slate-500 text-xs">Students authorized to sit for this exam</p>
+            <p className="text-slate-500 text-xs">Students authorized with generated access passwords</p>
           </div>
-          <button
-            onClick={loadAssignments}
-            className="text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
-          >
-            ↻ Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {assignments.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={copyAllCredentials}
+                  className="text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded font-medium transition cursor-pointer"
+                  title="Copy all emails and passwords"
+                >
+                  📋 Copy All
+                </button>
+                <button
+                  type="button"
+                  onClick={exportCredentialsCsv}
+                  className="text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded font-medium transition cursor-pointer"
+                  title="Download student credentials as CSV"
+                >
+                  📥 Export CSV
+                </button>
+              </>
+            )}
+            <button
+              onClick={loadAssignments}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+            >
+              ↻ Refresh
+            </button>
+          </div>
         </div>
 
         {assignments.length > 5 && (
@@ -1658,7 +2239,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
               placeholder="Search assigned emails…"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              className="input text-xs py-1.5"
+              className="input text-xs py-1.5 w-full"
             />
           </div>
         )}
@@ -1668,7 +2249,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         ) : filtered.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-xs border border-dashed border-slate-200 rounded-lg">
             {assignments.length === 0
-              ? "No students assigned to this exam yet. Use the form on the left to assign students."
+              ? "No students assigned to this exam yet. Use the form on the left or upload an Excel/CSV file to assign students."
               : `No students matching "${searchFilter}".`}
           </div>
         ) : (
@@ -1678,11 +2259,27 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                 key={a.id}
                 className="flex items-center justify-between p-3 hover:bg-slate-50/60 transition-colors text-xs"
               >
-                <div>
+                <div className="space-y-0.5">
                   <p className="font-semibold text-slate-800">{a.studentEmail}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Assigned: {new Date(a.createdAt).toLocaleString()}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400">Password:</span>
+                    <span className="font-mono bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded text-[11px] font-bold tracking-wider">
+                      {a.accessPassword || "—"}
+                    </span>
+                    {a.accessPassword && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(a.accessPassword || "");
+                          setCopiedPasswordId(a.id);
+                          setTimeout(() => setCopiedPasswordId(null), 1500);
+                        }}
+                        className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+                      >
+                        {copiedPasswordId === a.id ? "✓ Copied" : "Copy"}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"

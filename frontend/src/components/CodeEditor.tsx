@@ -11,6 +11,22 @@ export interface CodeEditorProps {
   readOnly?: boolean;
 }
 
+const DEFAULT_C_TEMPLATE = `#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main() {
+    // LeetCode-style problem solution
+    // Read input from stdin
+    char buffer[1024];
+    while (fgets(buffer, sizeof(buffer), stdin)) {
+        // Process input and output solution
+        printf("%s", buffer);
+    }
+    return 0;
+}
+`;
+
 const DEFAULT_PYTHON_TEMPLATE = `import sys
 
 def solve():
@@ -19,12 +35,28 @@ def solve():
     if not input_data:
         return
     
-    # Example: lines = input_data.split('\\n')
-    # Write your solution here
+    # Process input and output solution
     print(input_data)
 
 if __name__ == '__main__':
     solve()
+`;
+
+const DEFAULT_JAVA_TEMPLATE = `import java.util.*;
+import java.io.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        // LeetCode-style problem solution
+        Scanner scanner = new Scanner(System.in);
+        while (scanner.hasNextLine()) {
+            String line = scanner.nextLine();
+            // Process input and output solution
+            System.out.println(line);
+        }
+        scanner.close();
+    }
+}
 `;
 
 const DEFAULT_JS_TEMPLATE = `const fs = require('fs');
@@ -41,10 +73,30 @@ function solve() {
 solve();
 `;
 
+function getTemplateForLanguage(lang: string): string {
+  switch (lang.toLowerCase()) {
+    case "c":
+    case "gcc":
+    case "clang":
+      return DEFAULT_C_TEMPLATE;
+    case "java":
+      return DEFAULT_JAVA_TEMPLATE;
+    case "javascript":
+    case "js":
+    case "node":
+      return DEFAULT_JS_TEMPLATE;
+    case "python":
+    case "python3":
+    case "py":
+    default:
+      return DEFAULT_PYTHON_TEMPLATE;
+  }
+}
+
 export default function CodeEditor({
   initialCode,
   initialLanguage = "python",
-  allowedLanguages = ["python", "javascript"],
+  allowedLanguages = ["c", "python", "java"],
   sampleTestCases = [],
   onCodeChange,
   onRunCode,
@@ -52,7 +104,7 @@ export default function CodeEditor({
 }: CodeEditorProps) {
   const [language, setLanguage] = useState(initialLanguage);
   const [code, setCode] = useState(
-    initialCode || (initialLanguage === "javascript" ? DEFAULT_JS_TEMPLATE : DEFAULT_PYTHON_TEMPLATE)
+    initialCode || getTemplateForLanguage(initialLanguage)
   );
 
   // Bottom drawer state
@@ -77,9 +129,14 @@ export default function CodeEditor({
 
   function handleLanguageChange(newLang: string) {
     setLanguage(newLang);
-    const template = newLang === "javascript" ? DEFAULT_JS_TEMPLATE : DEFAULT_PYTHON_TEMPLATE;
-    // If code is empty or is the default template of the old language, switch to the new template
-    if (!code || code === DEFAULT_PYTHON_TEMPLATE || code === DEFAULT_JS_TEMPLATE) {
+    const template = getTemplateForLanguage(newLang);
+    const isDefault =
+      !code ||
+      code === DEFAULT_PYTHON_TEMPLATE ||
+      code === DEFAULT_C_TEMPLATE ||
+      code === DEFAULT_JAVA_TEMPLATE ||
+      code === DEFAULT_JS_TEMPLATE;
+    if (isDefault) {
       setCode(template);
       onCodeChange?.(template, newLang);
     } else {
@@ -119,7 +176,7 @@ export default function CodeEditor({
 
   function handleResetTemplate() {
     if (window.confirm("Reset code to default starter template? Current changes will be overwritten.")) {
-      const template = language === "javascript" ? DEFAULT_JS_TEMPLATE : DEFAULT_PYTHON_TEMPLATE;
+      const template = getTemplateForLanguage(language);
       setCode(template);
       onCodeChange?.(template, language);
     }
@@ -164,9 +221,10 @@ export default function CodeEditor({
             disabled={readOnly}
             className="bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-medium rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition-colors"
           >
-            {allowedLanguages.includes("python") && <option value="python">Python 3 (3.14)</option>}
-            {allowedLanguages.includes("javascript") && <option value="javascript">JavaScript (Node.js)</option>}
+            {allowedLanguages.includes("c") && <option value="c">C (GCC)</option>}
+            {allowedLanguages.includes("python") && <option value="python">Python 3</option>}
             {allowedLanguages.includes("java") && <option value="java">Java 21</option>}
+            {allowedLanguages.includes("javascript") && <option value="javascript">JavaScript (Node.js)</option>}
           </select>
         </div>
 
