@@ -16,7 +16,7 @@ import type {
   WarningResponse,
 } from "../../types";
 
-type Tab = "questions" | "settings" | "assign" | "results";
+type Tab = "questions" | "settings" | "assign" | "results" | "qassign";
 
 export default function ExamDetail() {
   const { examId } = useParams();
@@ -26,7 +26,7 @@ export default function ExamDetail() {
   const [exam, setExam] = useState<Exam | null>(null);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [tab, setTab] = useState<Tab>(
-    queryTab && ["questions", "settings", "assign", "results"].includes(queryTab) ? queryTab : "questions"
+    queryTab && ["questions", "settings", "assign", "results", "qassign"].includes(queryTab) ? queryTab : "questions"
   );
   const [error, setError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -170,6 +170,7 @@ export default function ExamDetail() {
           { id: "settings", label: "Exam Settings & Timing" },
           { id: "assign", label: "Assign Students" },
           { id: "results", label: "Results & Integrity" },
+          { id: "qassign", label: "📋 Question Assignment" },
         ].map((t) => (
           <button
             key={t.id}
@@ -205,6 +206,7 @@ export default function ExamDetail() {
       )}
       {tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
       {tab === "results" && <ResultsTab examId={exam.id} />}
+      {tab === "qassign" && <QuestionAssignTab examId={exam.id} examName={exam.name} questionCount={questions.length} />}
 
       {/* Delete Exam Confirmation Modal */}
       {showDeleteModal && (
@@ -3275,5 +3277,341 @@ function SeverityBadge({ severity }: { severity: string }) {
     <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${cls}`}>
       {severity}
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// QuestionAssignTab  –  Random question assignment per student + report view
+// ---------------------------------------------------------------------------
+
+interface AssignedQuestionSummary {
+  questionId: number;
+  displayOrder: number;
+  questionType: string;
+  questionText: string;
+  problemTitle: string | null;
+}
+
+interface StudentAssignmentEntry {
+  studentEmail: string;
+  questions: AssignedQuestionSummary[];
+  assignedAt: string;
+}
+
+interface QuestionAssignmentReport {
+  examId: number;
+  examName: string;
+  totalQuestions: number;
+  questionsPerStudent: number;
+  totalStudents: number;
+  assignments: StudentAssignmentEntry[];
+}
+
+function QuestionAssignTab({
+  examId,
+  examName,
+  questionCount,
+}: {
+  examId: number;
+  examName: string;
+  questionCount: number;
+}) {
+  const [qps, setQps] = useState<number>(2);
+  const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState<QuestionAssignmentReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  // Load existing report on mount
+  useEffect(() => {
+    api
+      .get<QuestionAssignmentReport>(
+        `/api/admin/exams/${examId}/question-assignment-report`,
+        "admin"
+      )
+      .then((r) => {
+        if (r.assignments.length > 0) {
+          setReport(r);
+          setQps(r.questionsPerStudent || 2);
+        }
+      })
+      .catch(() => {}); // silently ignore – means no assignments yet
+  }, [examId]);
+
+  async function handleAssign() {
+    if (qps <= 0 || qps > questionCount) {
+      setError(`Questions per student must be between 1 and ${questionCount}.`);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.post<QuestionAssignmentReport>(
+        `/api/admin/exams/${examId}/assign-questions-randomly`,
+        { questionsPerStudent: qps },
+        "admin"
+      );
+      setReport(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Assignment failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function exportCSV() {
+    if (!report) return;
+    const rows: string[] = [
+      "Student Email,Question #,Question ID,Type,Preview,Problem Title,Assigned At",
+    ];
+    for (const entry of report.assignments) {
+      for (const [i, q] of entry.questions.entries()) {
+        const preview = (q.questionText ?? "").replace(/"/g, '""').substring(0, 80);
+        rows.push(
+          `"${entry.studentEmail}",${i + 1},${q.questionId},"${q.questionType}","${preview}","${q.problemTitle ?? ""}","${entry.assignedAt}"`
+        );
+      }
+    }
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `question-assignment-${examName.replace(/\s+/g, "_")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportJSON() {
+    if (!report) return;
+    const blob = new Blob([JSON.stringify(report, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `question-assignment-${examName.replace(/\s+/g, "_")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const filtered = report
+    ? report.assignments.filter((e) =>
+        e.studentEmail.toLowerCase().includes(search.toLowerCase())
+      )
+    : [];
+
+  return (
+    <div className="space-y-6">
+      {/* Header card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">
+              📋 Random Question Assignment
+            </h2>
+            <p className="text-sm text-slate-500 mt-1 max-w-xl">
+              Randomly map a fixed number of questions from the question bank to each
+              assigned student. Each student gets a unique, randomised subset.
+              Re-running overwrites any previous assignment.
+            </p>
+          </div>
+          {report && (
+            <div className="flex gap-2">
+              <button
+                onClick={exportCSV}
+                className="flex items-center gap-1.5 text-xs border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer"
+              >
+                ⬇️ Export CSV
+              </button>
+              <button
+                onClick={exportJSON}
+                className="flex items-center gap-1.5 text-xs border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer"
+              >
+                ⬇️ Export JSON
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Config row */}
+        <div className="mt-5 flex items-end gap-4 flex-wrap">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">
+              Questions per student
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="qps-input"
+                type="number"
+                min={1}
+                max={questionCount}
+                value={qps}
+                onChange={(e) => setQps(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                className="w-24 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <span className="text-xs text-slate-400">
+                of {questionCount} total
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleAssign}
+            disabled={loading || questionCount === 0}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2 rounded-lg transition cursor-pointer flex items-center gap-2"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Assigning…
+              </>
+            ) : (
+              "🎲 Assign Randomly"
+            )}
+          </button>
+
+          {questionCount === 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+              ⚠️ Add questions to this exam before assigning.
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p className="mt-3 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-2">
+            {error}
+          </p>
+        )}
+      </div>
+
+      {/* Report */}
+      {report && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+          {/* Stats banner */}
+          <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-4 flex items-center gap-6 flex-wrap">
+            <Stat label="Total Questions in Bank" value={report.totalQuestions} />
+            <Stat label="Questions per Student" value={report.questionsPerStudent} />
+            <Stat label="Students Assigned" value={report.totalStudents} />
+          </div>
+
+          {/* Search */}
+          <div className="px-6 py-3 border-b border-slate-100">
+            <input
+              type="search"
+              placeholder="Search by student email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+            />
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wide border-b border-slate-200">
+                  <th className="text-left px-4 py-3 font-semibold">Student</th>
+                  <th className="text-left px-4 py-3 font-semibold">#</th>
+                  <th className="text-left px-4 py-3 font-semibold">Q&nbsp;ID</th>
+                  <th className="text-left px-4 py-3 font-semibold">Type</th>
+                  <th className="text-left px-4 py-3 font-semibold">Question Preview</th>
+                  <th className="text-left px-4 py-3 font-semibold">Assigned At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center text-slate-400 py-10">
+                      No results found.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((entry) =>
+                    entry.questions.map((q, qi) => (
+                      <tr
+                        key={`${entry.studentEmail}-${q.questionId}`}
+                        className={qi === 0 ? "bg-white" : "bg-slate-50/40"}
+                      >
+                        {qi === 0 && (
+                          <td
+                            rowSpan={entry.questions.length}
+                            className="px-4 py-3 font-medium text-slate-800 align-top border-r border-slate-100"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold shrink-0">
+                                {entry.studentEmail[0].toUpperCase()}
+                              </span>
+                              {entry.studentEmail}
+                            </span>
+                          </td>
+                        )}
+                        <td className="px-4 py-2 text-slate-500">{qi + 1}</td>
+                        <td className="px-4 py-2 font-mono text-indigo-700">#{q.questionId}</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                              q.questionType === "CODING"
+                                ? "bg-violet-100 text-violet-700"
+                                : "bg-sky-100 text-sky-700"
+                            }`}
+                          >
+                            {q.questionType}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-slate-600 max-w-sm">
+                          {q.problemTitle && (
+                            <span className="font-semibold text-slate-700 block text-xs mb-0.5">
+                              {q.problemTitle}
+                            </span>
+                          )}
+                          <span className="line-clamp-2 text-xs">{q.questionText}</span>
+                        </td>
+                        {qi === 0 && (
+                          <td
+                            rowSpan={entry.questions.length}
+                            className="px-4 py-3 text-slate-400 text-xs align-top whitespace-nowrap"
+                          >
+                            {new Date(entry.assignedAt).toLocaleString()}
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer note */}
+          <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
+            Students will receive exactly these questions when they start the exam. Re-clicking
+            "Assign Randomly" will re-shuffle and overwrite all assignments.
+          </div>
+        </div>
+      )}
+
+      {!report && !loading && (
+        <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-12 text-center">
+          <p className="text-4xl mb-3">🎲</p>
+          <p className="text-slate-600 font-semibold">No assignments yet</p>
+          <p className="text-slate-400 text-sm mt-1">
+            Configure the number of questions per student above and click{" "}
+            <strong>Assign Randomly</strong> to generate the assignment map.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="text-center">
+      <p className="text-2xl font-bold text-indigo-700">{value}</p>
+      <p className="text-xs text-indigo-500 font-medium">{label}</p>
+    </div>
   );
 }

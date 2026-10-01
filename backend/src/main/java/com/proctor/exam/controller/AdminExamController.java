@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /** All endpoints here require ROLE_ADMIN (enforced in SecurityConfig). */
 @RestController
@@ -128,5 +129,38 @@ public class AdminExamController {
     @PostMapping("/questions/test-run")
     public RunCodeResponse testRunCode(@Valid @RequestBody AdminTestRunRequest request) {
         return codeExecutionService.testRun(request.testCases(), request.code(), request.language());
+    }
+
+    /**
+     * Randomly assigns a fixed number of questions from the exam's question bank
+     * to each enrolled student.  Overwrites any prior assignment for this exam.
+     *
+     * Body: { "questionsPerStudent": 2 }
+     */
+    @PostMapping("/{examId}/assign-questions-randomly")
+    public com.proctor.exam.dto.QuestionAssignmentReportResponse assignQuestionsRandomly(
+            @PathVariable Long examId,
+            @RequestBody Map<String, Integer> body,
+            Authentication auth) {
+        int qps = Optional.ofNullable(body.get("questionsPerStudent")).orElse(0);
+        if (qps <= 0) {
+            throw new com.proctor.exam.exception.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "questionsPerStudent must be a positive integer.");
+        }
+        return examAdminService.assignQuestionsRandomly(
+                examId, qps, auth != null ? auth.getName() : "admin");
+    }
+
+    /**
+     * Returns the current question-assignment report for an exam
+     * (which student got which questions).
+     */
+    @GetMapping("/{examId}/question-assignment-report")
+    public com.proctor.exam.dto.QuestionAssignmentReportResponse getQuestionAssignmentReport(
+            @PathVariable Long examId,
+            Authentication auth) {
+        return examAdminService.getQuestionAssignmentReport(
+                examId, auth != null ? auth.getName() : "admin");
     }
 }

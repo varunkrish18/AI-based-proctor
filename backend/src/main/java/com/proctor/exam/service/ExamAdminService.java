@@ -1,5 +1,7 @@
 package com.proctor.exam.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.proctor.exam.dto.*;
 import com.proctor.exam.entity.*;
 import com.proctor.exam.exception.ApiException;
@@ -10,12 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class ExamAdminService {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ExamRepository examRepository;
     private final ExamQuestionRepository questionRepository;
@@ -24,6 +26,7 @@ public class ExamAdminService {
     private final AuditLogService auditLogService;
     private final jakarta.persistence.EntityManager entityManager;
     private final AiProxyService aiProxyService;
+    private final StudentQuestionAssignmentRepository sqaRepository;
 
     public ExamAdminService(ExamRepository examRepository,
                             ExamQuestionRepository questionRepository,
@@ -31,7 +34,8 @@ public class ExamAdminService {
                             AdminRepository adminRepository,
                             AuditLogService auditLogService,
                             jakarta.persistence.EntityManager entityManager,
-                            AiProxyService aiProxyService) {
+                            AiProxyService aiProxyService,
+                            StudentQuestionAssignmentRepository sqaRepository) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
@@ -39,6 +43,7 @@ public class ExamAdminService {
         this.auditLogService = auditLogService;
         this.entityManager = entityManager;
         this.aiProxyService = aiProxyService;
+        this.sqaRepository = sqaRepository;
     }
 
     @Transactional
@@ -492,6 +497,8 @@ public class ExamAdminService {
                 .setParameter("examId", examId).executeUpdate();
         entityManager.createNativeQuery("DELETE FROM exam_attempts WHERE exam_id = :examId")
                 .setParameter("examId", examId).executeUpdate();
+        entityManager.createNativeQuery("DELETE FROM student_question_assignments WHERE exam_id = :examId")
+                .setParameter("examId", examId).executeUpdate();
         entityManager.createNativeQuery("DELETE FROM exam_assignments WHERE exam_id = :examId")
                 .setParameter("examId", examId).executeUpdate();
         entityManager.createNativeQuery("DELETE FROM exam_questions WHERE exam_id = :examId")
@@ -617,5 +624,149 @@ public class ExamAdminService {
         } catch (Exception ignored) {
             return pConfig;
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Random per-student question assignment
+    // -------------------------------------------------------------------------
+
+    /**
+     * Randomly assigns {@code questionsPerStudent} questions from the exam's question
+     * bank to each assigned student.  Existing assignments are overwritten.
+     *
+     * @return the full report so the frontend can display it immediately after assigning
+     */
+    @Transactional
+    public QuestionAssignmentReportResponse assignQuestionsRandomly(
+            Long examId, int questionsPerStudent, String adminEmail) {
+
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+
+        List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+        if (bank.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "No questions found for exam ID " + examId + ". Generate or add questions first.");
+        }
+        if (questionsPerStudent <= 0 || questionsPerStudent > bank.size()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "questionsPerStudent must be between 1 and the total question count (" + bank.size() + ").");
+        }
+
+        List<ExamAssignment> enrolled = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
+        if (enrolled.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "No students are assigned to exam ID " + examId + ". Assign students first.");
+        }
+
+        // Clear previous random assignments for this exam
+        sqaRepository.deleteByExamId(examId);
+
+        List<StudentQuestionAssignmentEntry> entries = new ArrayList<>();
+        Random rng = new Random();
+
+        for (ExamAssignment enrollment : enrolled) {
+            // Shuffle a copy and take the first N
+            List<ExamQuestion> shuffled = new ArrayList<>(bank);
+            Collections.shuffle(shuffled, rng);
+            List<ExamQuestion> chosen = shuffled.subList(0, questionsPerStudent);
+
+            List<Long> chosenIds = chosen.stream().map(ExamQuestion::getId).toList();
+            String idsJson;
+            try {
+                idsJson = MAPPER.writeValueAsString(chosenIds);
+            } catch (Exception e) {
+                idsJson = chosenIds.toString();
+            }
+
+            StudentQuestionAssignment sqa = StudentQuestionAssignment.builder()
+                    .exam(exam)
+                    .studentEmail(enrollment.getStudentEmail())
+                    .questionIds(idsJson)
+                    .questionsPerStudent(questionsPerStudent)
+                    .build();
+            sqaRepository.save(sqa);
+
+            List<AssignedQuestionSummary> summaries = chosen.stream()
+                    .map(q -> new AssignedQuestionSummary(
+                            q.getId(),
+                            q.getDisplayOrder(),
+                            q.getQuestionType(),
+                            truncate(q.getQuestionText(), 120),
+                            q.getProblemTitle()
+                    ))
+                    .toList();
+
+            entries.add(new StudentQuestionAssignmentEntry(
+                    enrollment.getStudentEmail(), summaries, sqa.getAssignedAt()));
+        }
+
+        auditLogService.logAdmin(
+                adminEmail != null ? adminEmail : "admin",
+                "QUESTIONS_RANDOMLY_ASSIGNED",
+                "Assigned " + questionsPerStudent + " random question(s) to " + enrolled.size()
+                        + " student(s) for exam '" + exam.getName() + "' (ID: " + examId + ")"
+        );
+
+        return new QuestionAssignmentReportResponse(
+                examId, exam.getName(), bank.size(), questionsPerStudent,
+                enrolled.size(), entries);
+    }
+
+    /**
+     * Returns the existing question-assignment report for an exam (read-only).
+     */
+    @Transactional(readOnly = true)
+    public QuestionAssignmentReportResponse getQuestionAssignmentReport(
+            Long examId, String adminEmail) {
+
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+
+        List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+        Map<Long, ExamQuestion> byId = new HashMap<>();
+        bank.forEach(q -> byId.put(q.getId(), q));
+
+        List<StudentQuestionAssignment> sqas =
+                sqaRepository.findByExamIdOrderByStudentEmailAsc(examId);
+
+        int qps = sqas.isEmpty() ? 0 : sqas.get(0).getQuestionsPerStudent();
+
+        List<StudentQuestionAssignmentEntry> entries = new ArrayList<>();
+        for (StudentQuestionAssignment sqa : sqas) {
+            List<Long> ids;
+            try {
+                ids = MAPPER.readValue(sqa.getQuestionIds(),
+                        new TypeReference<List<Long>>() {});
+            } catch (Exception e) {
+                ids = List.of();
+            }
+
+            List<AssignedQuestionSummary> summaries = ids.stream()
+                    .map(qid -> {
+                        ExamQuestion q = byId.get(qid);
+                        if (q == null) return null;
+                        return new AssignedQuestionSummary(
+                                q.getId(),
+                                q.getDisplayOrder(),
+                                q.getQuestionType(),
+                                truncate(q.getQuestionText(), 120),
+                                q.getProblemTitle()
+                        );
+                    })
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            entries.add(new StudentQuestionAssignmentEntry(
+                    sqa.getStudentEmail(), summaries, sqa.getAssignedAt()));
+        }
+
+        return new QuestionAssignmentReportResponse(
+                examId, exam.getName(), bank.size(), qps, entries.size(), entries);
+    }
+
+    private static String truncate(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "…";
     }
 }

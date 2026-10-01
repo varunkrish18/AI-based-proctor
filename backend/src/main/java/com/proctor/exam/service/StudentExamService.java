@@ -28,6 +28,7 @@ public class StudentExamService {
     private final TrustedTimeService trustedTimeService;
     private final ExamQuestionTestCaseRepository testCaseRepository;
     private final CodeExecutionService codeExecutionService;
+    private final StudentQuestionAssignmentRepository sqaRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public StudentExamService(ExamRepository examRepository,
@@ -40,7 +41,8 @@ public class StudentExamService {
                                ProctoringSessionService proctoringSessionService,
                                TrustedTimeService trustedTimeService,
                                ExamQuestionTestCaseRepository testCaseRepository,
-                               CodeExecutionService codeExecutionService) {
+                               CodeExecutionService codeExecutionService,
+                               StudentQuestionAssignmentRepository sqaRepository) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
@@ -52,6 +54,7 @@ public class StudentExamService {
         this.trustedTimeService = trustedTimeService;
         this.testCaseRepository = testCaseRepository;
         this.codeExecutionService = codeExecutionService;
+        this.sqaRepository = sqaRepository;
     }
 
     /**
@@ -156,15 +159,32 @@ public class StudentExamService {
             if (nextAttemptNumber > exam.getMaxAttempts()) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Maximum attempts reached for this exam.");
             }
-            List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
-            List<ExamQuestion> selected = new ArrayList<>(bank);
-            if (Boolean.TRUE.equals(exam.getRandomizeQuestions())) {
-                Collections.shuffle(selected);
-            }
-            int take = Math.min(exam.getNumQuestions(), selected.size());
-            selected = selected.subList(0, take);
 
-            orderedQuestionIds = selected.stream().map(ExamQuestion::getId).toList();
+            // --- Prefer pre-assigned questions if admin has set up random assignment ---
+            Optional<com.proctor.exam.entity.StudentQuestionAssignment> sqaOpt =
+                    sqaRepository.findByExamIdAndStudentEmailIgnoreCase(examId, studentEmail);
+
+            if (sqaOpt.isPresent()) {
+                // Use the admin-assigned subset
+                com.proctor.exam.entity.StudentQuestionAssignment sqa = sqaOpt.get();
+                try {
+                    orderedQuestionIds = objectMapper.readValue(
+                            sqa.getQuestionIds(),
+                            new com.fasterxml.jackson.core.type.TypeReference<List<Long>>() {});
+                } catch (Exception e) {
+                    orderedQuestionIds = List.of();
+                }
+            } else {
+                // Fall back to fresh random selection from the full bank
+                List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+                List<ExamQuestion> selected = new ArrayList<>(bank);
+                if (Boolean.TRUE.equals(exam.getRandomizeQuestions())) {
+                    Collections.shuffle(selected);
+                }
+                int take = Math.min(exam.getNumQuestions(), selected.size());
+                selected = selected.subList(0, take);
+                orderedQuestionIds = selected.stream().map(ExamQuestion::getId).toList();
+            }
 
             attempt = ExamAttempt.builder()
                     .exam(exam)
