@@ -71,6 +71,66 @@ export default function CodingAssessment() {
     return () => clearInterval(interval);
   }, [timerActive]);
 
+  // Window-level restricted key blocking: Windows, Ctrl, Tab, Function keys (F1-F12), Alt
+  useEffect(() => {
+    const blockGlobalRestrictedKeys = (e: KeyboardEvent) => {
+      const isWindowsKey =
+        e.key === "Meta" ||
+        e.key === "OS" ||
+        e.metaKey ||
+        e.code === "MetaLeft" ||
+        e.code === "MetaRight" ||
+        e.code === "OSLeft" ||
+        e.code === "OSRight" ||
+        e.keyCode === 91 ||
+        e.keyCode === 92;
+
+      const isCtrlKey =
+        e.key === "Control" ||
+        e.ctrlKey ||
+        e.code === "ControlLeft" ||
+        e.code === "ControlRight" ||
+        e.keyCode === 17;
+
+      const isAltKey =
+        e.key === "Alt" ||
+        e.altKey ||
+        e.code === "AltLeft" ||
+        e.code === "AltRight" ||
+        e.keyCode === 18;
+
+      const isTabKey =
+        e.key === "Tab" ||
+        e.code === "Tab" ||
+        e.keyCode === 9 ||
+        e.which === 9;
+
+      const isFunctionKey =
+        (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
+        (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code)) ||
+        (e.keyCode >= 112 && e.keyCode <= 123);
+
+      if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return false;
+      }
+    };
+
+    window.addEventListener("keydown", blockGlobalRestrictedKeys, { capture: true, passive: false });
+    window.addEventListener("keyup", blockGlobalRestrictedKeys, { capture: true, passive: false });
+    document.addEventListener("keydown", blockGlobalRestrictedKeys, { capture: true, passive: false });
+    document.addEventListener("keyup", blockGlobalRestrictedKeys, { capture: true, passive: false });
+
+    return () => {
+      window.removeEventListener("keydown", blockGlobalRestrictedKeys, { capture: true });
+      window.removeEventListener("keyup", blockGlobalRestrictedKeys, { capture: true });
+      document.removeEventListener("keydown", blockGlobalRestrictedKeys, { capture: true });
+      document.removeEventListener("keyup", blockGlobalRestrictedKeys, { capture: true });
+    };
+  }, []);
+
   const formatTime = (totalSec: number) => {
     const mins = Math.floor(totalSec / 60);
     const secs = totalSec % 60;
@@ -78,16 +138,46 @@ export default function CodingAssessment() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Tab") {
+    const isWindowsKey =
+      e.key === "Meta" ||
+      e.key === "OS" ||
+      e.metaKey ||
+      e.code === "MetaLeft" ||
+      e.code === "MetaRight" ||
+      e.code === "OSLeft" ||
+      e.code === "OSRight" ||
+      e.keyCode === 91 ||
+      e.keyCode === 92;
+
+    const isCtrlKey =
+      e.key === "Control" ||
+      e.ctrlKey ||
+      e.code === "ControlLeft" ||
+      e.code === "ControlRight" ||
+      e.keyCode === 17;
+
+    const isAltKey =
+      e.key === "Alt" ||
+      e.altKey ||
+      e.code === "AltLeft" ||
+      e.code === "AltRight" ||
+      e.keyCode === 18;
+
+    const isTabKey =
+      e.key === "Tab" ||
+      e.code === "Tab" ||
+      e.keyCode === 9 ||
+      e.which === 9;
+
+    const isFunctionKey =
+      (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
+      (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code)) ||
+      (e.keyCode >= 112 && e.keyCode <= 123);
+
+    if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
       e.preventDefault();
-      const target = e.currentTarget;
-      const start = target.selectionStart;
-      const end = target.selectionEnd;
-      const newCode = code.substring(0, start) + "    " + code.substring(end);
-      setCode(newCode);
-      setTimeout(() => {
-        target.selectionStart = target.selectionEnd = start + 4;
-      }, 0);
+      e.stopPropagation();
+      return;
     }
   };
 

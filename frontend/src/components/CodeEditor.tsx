@@ -102,9 +102,23 @@ export default function CodeEditor({
   onRunCode,
   readOnly = false,
 }: CodeEditorProps) {
-  const [language, setLanguage] = useState(initialLanguage);
+  // Resolve effective initial language adhering to allowedLanguages
+  const computeValidLanguage = (langCandidate?: string) => {
+    if (langCandidate && allowedLanguages.includes(langCandidate)) {
+      return langCandidate;
+    }
+    if (initialCode && initialCode.includes("#include") && allowedLanguages.includes("c")) {
+      return "c";
+    }
+    if (initialCode && initialCode.includes("public class") && allowedLanguages.includes("java")) {
+      return "java";
+    }
+    return allowedLanguages[0] || "c";
+  };
+
+  const [language, setLanguage] = useState(() => computeValidLanguage(initialLanguage));
   const [code, setCode] = useState(
-    initialCode || getTemplateForLanguage(initialLanguage)
+    initialCode || getTemplateForLanguage(computeValidLanguage(initialLanguage))
   );
 
   // Bottom drawer state
@@ -126,6 +140,14 @@ export default function CodeEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode]);
+
+  useEffect(() => {
+    const validLang = computeValidLanguage(initialLanguage);
+    if (validLang !== language) {
+      setLanguage(validLang);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLanguage, allowedLanguages.join(",")]);
 
   function handleLanguageChange(newLang: string) {
     setLanguage(newLang);
@@ -149,28 +171,48 @@ export default function CodeEditor({
     onCodeChange?.(newCode, language);
   }
 
-  // Handle Tab key inside textarea
+  // Handle key restrictions inside editor: Windows, Ctrl, Tab, and Function keys are disabled
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Tab") {
+    const isWindowsKey =
+      e.key === "Meta" ||
+      e.key === "OS" ||
+      e.metaKey ||
+      e.code === "MetaLeft" ||
+      e.code === "MetaRight" ||
+      e.code === "OSLeft" ||
+      e.code === "OSRight" ||
+      e.keyCode === 91 ||
+      e.keyCode === 92;
+
+    const isCtrlKey =
+      e.key === "Control" ||
+      e.ctrlKey ||
+      e.code === "ControlLeft" ||
+      e.code === "ControlRight" ||
+      e.keyCode === 17;
+
+    const isAltKey =
+      e.key === "Alt" ||
+      e.altKey ||
+      e.code === "AltLeft" ||
+      e.code === "AltRight" ||
+      e.keyCode === 18;
+
+    const isTabKey =
+      e.key === "Tab" ||
+      e.code === "Tab" ||
+      e.keyCode === 9 ||
+      e.which === 9;
+
+    const isFunctionKey =
+      (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
+      (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code)) ||
+      (e.keyCode >= 112 && e.keyCode <= 123);
+
+    if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
       e.preventDefault();
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const spaces = "    "; // 4 spaces
-
-      const updated = code.substring(0, start) + spaces + code.substring(end);
-      setCode(updated);
-      onCodeChange?.(updated, language);
-
-      // Re-position cursor after inserted spaces
-      setTimeout(() => {
-        textarea.selectionStart = textarea.selectionEnd = start + spaces.length;
-      }, 0);
-    } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      handleRun();
+      e.stopPropagation();
+      return;
     }
   }
 
@@ -256,11 +298,24 @@ export default function CodeEditor({
                 <>
                   <span>▶</span>
                   <span>Run Code</span>
-                  <span className="hidden sm:inline text-[10px] text-emerald-200 font-mono opacity-80">(Ctrl+Enter)</span>
                 </>
               )}
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Security notice bar: Restricted Keys Disabled */}
+      <div className="bg-slate-900/90 border-b border-slate-800/80 px-3 py-1 flex items-center justify-between text-[11px] text-slate-400 select-none">
+        <div className="flex items-center gap-1.5 text-amber-400 font-medium">
+          <span>🔒</span>
+          <span>Security Lock Active: Windows, Ctrl, Tab &amp; Function Keys (F1-F12) are disabled.</span>
+        </div>
+        <div className="hidden md:flex items-center gap-2 text-slate-400 text-[10px]">
+          <span className="px-1.5 py-0.5 rounded bg-slate-800 font-mono">Win ✕</span>
+          <span className="px-1.5 py-0.5 rounded bg-slate-800 font-mono">Ctrl ✕</span>
+          <span className="px-1.5 py-0.5 rounded bg-slate-800 font-mono">Tab ✕</span>
+          <span className="px-1.5 py-0.5 rounded bg-slate-800 font-mono">F1-F12 ✕</span>
         </div>
       </div>
 
@@ -279,6 +334,10 @@ export default function CodeEditor({
           value={code}
           onChange={(e) => handleCodeInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={(e) => e.preventDefault()}
+          onCopy={(e) => e.preventDefault()}
+          onCut={(e) => e.preventDefault()}
+          onContextMenu={(e) => e.preventDefault()}
           readOnly={readOnly}
           spellCheck={false}
           autoCapitalize="off"

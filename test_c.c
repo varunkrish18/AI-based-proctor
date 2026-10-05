@@ -1,2 +1,6 @@
-#include <stdio.h>  
-int main() { printf(\" Hello from "C!\); return 0; }  
+#include <stdio.h>
+
+int main() {
+    printf("Hello from C!\n");
+    return 0;
+}

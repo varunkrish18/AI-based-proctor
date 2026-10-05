@@ -61,6 +61,12 @@ public class AdminExamController {
         return examAdminService.addQuestion(examId, request, auth != null ? auth.getName() : "admin");
     }
 
+    @PostMapping("/{examId}/questions/bulk")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<ExamQuestion> addQuestionsBulk(@PathVariable Long examId, @Valid @RequestBody List<QuestionRequest> requests, Authentication auth) {
+        return examAdminService.addQuestionsBulk(examId, requests, auth != null ? auth.getName() : "admin");
+    }
+
     @GetMapping("/{examId}/questions")
     public List<ExamQuestion> listQuestions(@PathVariable Long examId, Authentication auth) {
         return examAdminService.listQuestions(examId, auth != null ? auth.getName() : null);

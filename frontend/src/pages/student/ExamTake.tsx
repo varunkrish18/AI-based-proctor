@@ -1753,18 +1753,97 @@ export default function ExamTake() {
   const questions: StudentQuestion[] = useMemo(() => session?.questions ?? [], [session]);
   const q = questions[current];
 
-  // Requirement 1: Disable the complete keyboard when is MCQs including Windows keys and all special keys
+  // Requirement: Disable keyboard entirely on MCQ questions, and disable Windows, Ctrl, Tab, and Function keys on Coding questions
   useEffect(() => {
-    if (!session || !q || q.questionType === "CODING") {
+    if (!session || !q) return;
+
+    if (q.questionType === "CODING") {
+      // Modern Chromium System Keyboard Lock for Windows key, Tab, and Function keys in fullscreen
       try {
-        if ("keyboard" in navigator && (navigator as any).keyboard?.unlock) {
-          (navigator as any).keyboard.unlock();
+        if ("keyboard" in navigator && (navigator as any).keyboard?.lock) {
+          (navigator as any).keyboard.lock([
+            "MetaLeft", "MetaRight", "Tab", "AltLeft", "AltRight", "ControlLeft", "ControlRight",
+            "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"
+          ]).catch(() => {});
         }
       } catch {}
-      return;
+
+      const blockCodingRestrictedKeys = (e: KeyboardEvent) => {
+        const isWindowsKey =
+          e.key === "Meta" ||
+          e.key === "OS" ||
+          e.metaKey ||
+          e.code === "MetaLeft" ||
+          e.code === "MetaRight" ||
+          e.code === "OSLeft" ||
+          e.code === "OSRight" ||
+          e.keyCode === 91 ||
+          e.keyCode === 92;
+
+        const isCtrlKey =
+          e.key === "Control" ||
+          e.ctrlKey ||
+          e.code === "ControlLeft" ||
+          e.code === "ControlRight" ||
+          e.keyCode === 17;
+
+        const isAltKey =
+          e.key === "Alt" ||
+          e.altKey ||
+          e.code === "AltLeft" ||
+          e.code === "AltRight" ||
+          e.keyCode === 18;
+
+        const isTabKey =
+          e.key === "Tab" ||
+          e.code === "Tab" ||
+          e.keyCode === 9 ||
+          e.which === 9;
+
+        const isFunctionKey =
+          (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
+          (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code)) ||
+          (e.keyCode >= 112 && e.keyCode <= 123);
+
+        if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          logEvent("CODING_RESTRICTED_KEY_BLOCKED", undefined, {
+            key: e.key,
+            code: e.code,
+            isWindowsKey,
+            isCtrlKey,
+            isTabKey,
+            isFunctionKey,
+          });
+          return false;
+        }
+      };
+
+      window.addEventListener("keydown", blockCodingRestrictedKeys, { capture: true, passive: false });
+      window.addEventListener("keyup", blockCodingRestrictedKeys, { capture: true, passive: false });
+      window.addEventListener("keypress", blockCodingRestrictedKeys, { capture: true, passive: false });
+      document.addEventListener("keydown", blockCodingRestrictedKeys, { capture: true, passive: false });
+      document.addEventListener("keyup", blockCodingRestrictedKeys, { capture: true, passive: false });
+      document.addEventListener("keypress", blockCodingRestrictedKeys, { capture: true, passive: false });
+
+      return () => {
+        window.removeEventListener("keydown", blockCodingRestrictedKeys, { capture: true });
+        window.removeEventListener("keyup", blockCodingRestrictedKeys, { capture: true });
+        window.removeEventListener("keypress", blockCodingRestrictedKeys, { capture: true });
+        document.removeEventListener("keydown", blockCodingRestrictedKeys, { capture: true });
+        document.removeEventListener("keyup", blockCodingRestrictedKeys, { capture: true });
+        document.removeEventListener("keypress", blockCodingRestrictedKeys, { capture: true });
+        try {
+          if ("keyboard" in navigator && (navigator as any).keyboard?.unlock) {
+            (navigator as any).keyboard.unlock();
+          }
+        } catch {}
+      };
     }
 
-    // Try modern Chromium System Keyboard Lock for system keys (Windows key, Alt+Tab, Escape)
+    // MCQ Questions: Complete keyboard lock
     try {
       if ("keyboard" in navigator && (navigator as any).keyboard?.lock) {
         (navigator as any).keyboard.lock().catch(() => {});
@@ -1799,7 +1878,7 @@ export default function ExamTake() {
         }
       } catch {}
     };
-  }, [session, q]);
+  }, [session, q, logEvent]);
 
   async function selectOption(questionId: number, optionIndex: number) {
     setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
@@ -2486,8 +2565,8 @@ export default function ExamTake() {
                     <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
                       💻 CODING
                     </span>
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1" title="Physical keyboard is fully active for code typing and shortcuts.">
-                      <span>⌨️</span> Keyboard Enabled
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1" title="Windows, Ctrl, Tab, and Function keys (F1-F12) are restricted during coding.">
+                      <span>🔒</span> Win, Ctrl, Tab & F-keys Disabled
                     </span>
                     {q.marks !== undefined && (
                       <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
@@ -2559,18 +2638,28 @@ export default function ExamTake() {
 
             {/* Right: Code Editor & Test Runner */}
             <div className="lg:col-span-7 h-[720px]">
-              <CodeEditor
-                initialCode={codingAnswers[q.questionId]?.code || q.codeTemplate}
-                initialLanguage={codingAnswers[q.questionId]?.language || "python"}
-                allowedLanguages={
-                  q.allowedLanguages
-                    ? q.allowedLanguages.split(",").map((s) => s.trim().toLowerCase())
-                    : ["python", "javascript"]
-                }
-                sampleTestCases={q.sampleTestCases || []}
-                onCodeChange={(newCode, newLang) => updateCodingAnswer(q.questionId, newCode, newLang)}
-                onRunCode={(c, l, customIn) => handleRunCode(q.questionId, c, l, customIn)}
-              />
+              {(() => {
+                const parsedAllowed = q.allowedLanguages
+                  ? q.allowedLanguages.split(",").map((s) => s.trim().toLowerCase())
+                  : ["c", "python", "java"];
+                const effectiveInitialLang =
+                  codingAnswers[q.questionId]?.language ||
+                  (q.codeTemplate?.includes("#include") && parsedAllowed.includes("c") ? "c" : null) ||
+                  (q.codeTemplate?.includes("public class") && parsedAllowed.includes("java") ? "java" : null) ||
+                  (parsedAllowed.includes("c") && !parsedAllowed.includes("python") ? "c" : parsedAllowed[0]) ||
+                  "c";
+
+                return (
+                  <CodeEditor
+                    initialCode={codingAnswers[q.questionId]?.code || q.codeTemplate}
+                    initialLanguage={effectiveInitialLang}
+                    allowedLanguages={parsedAllowed}
+                    sampleTestCases={q.sampleTestCases || []}
+                    onCodeChange={(newCode, newLang) => updateCodingAnswer(q.questionId, newCode, newLang)}
+                    onRunCode={(c, l, customIn) => handleRunCode(q.questionId, c, l, customIn)}
+                  />
+                );
+              })()}
             </div>
           </div>
         ) : (

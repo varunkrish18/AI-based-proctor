@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
+import { checkIsMobileDevice } from "../../utils/deviceDetector";
 
 type CheckStatus = "pending" | "checking" | "ok" | "fail" | "not_required";
 
@@ -21,6 +22,12 @@ interface ExamRequirements {
 }
 
 const initialChecks: CheckItem[] = [
+  {
+    key: "device",
+    label: "Desktop / Laptop hardware check",
+    status: "pending",
+    fixHint: "Mobile devices and tablets are strictly prohibited, even in desktop mode. Use a Laptop or Desktop PC.",
+  },
   {
     key: "browser",
     label: "Browser compatibility",
@@ -131,6 +138,14 @@ export default function SystemCheck() {
     setRunning(true);
     setExpandedFix(null);
     setChecks((prev) => prev.map((c) => ({ ...c, status: "checking" as CheckStatus, detail: undefined })));
+
+    // 0. Hardware device check (Prevent mobile / tablets even in desktop mode)
+    const mobileCheck = checkIsMobileDevice();
+    if (mobileCheck.isMobile) {
+      update("device", "fail", `Mobile / tablet prohibited: ${mobileCheck.reason || "Touch mobile device"}`);
+    } else {
+      update("device", "ok", "Desktop / Laptop computer verified");
+    }
 
     // 1. Browser API compatibility
     update("browser", "ok", "Supported browser environment");

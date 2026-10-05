@@ -59,7 +59,7 @@ public class ExamQuestion {
 
     @Column(name = "allowed_languages")
     @Builder.Default
-    private String allowedLanguages = "python,javascript";
+    private String allowedLanguages = "c,python,java";
 
     @Column(name = "constraints", columnDefinition = "TEXT")
     private String constraints;

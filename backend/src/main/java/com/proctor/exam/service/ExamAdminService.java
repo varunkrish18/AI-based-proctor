@@ -273,6 +273,30 @@ public class ExamAdminService {
     }
 
     @Transactional
+    public List<ExamQuestion> addQuestionsBulk(Long examId, List<QuestionRequest> requests, String adminEmail) {
+        if (requests == null || requests.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "No questions provided in bulk upload.");
+        }
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+
+        long currentCount = questionRepository.countByExamId(examId);
+        int totalNeeded = (int) currentCount + requests.size();
+        if (totalNeeded > exam.getNumQuestions()) {
+            exam.setNumQuestions(totalNeeded);
+            examRepository.save(exam);
+        }
+
+        List<ExamQuestion> created = new ArrayList<>();
+        for (QuestionRequest req : requests) {
+            created.add(addQuestion(examId, req, adminEmail));
+        }
+        auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "QUESTIONS_BULK_UPLOAD",
+                "Bulk uploaded " + created.size() + " questions to exam ID " + examId);
+        return created;
+    }
+
+    @Transactional
     public ExamQuestion addQuestion(Long examId, QuestionRequest req) {
         return addQuestion(examId, req, "admin");
     }

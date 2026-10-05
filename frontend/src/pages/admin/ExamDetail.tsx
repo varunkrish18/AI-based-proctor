@@ -338,8 +338,18 @@ if __name__ == '__main__':
 
   // Test Run in Admin
   const [testingCode, setTestingCode] = useState(false);
+  const [testRunLanguage, setTestRunLanguage] = useState<string>("c");
   const [testRunResult, setTestRunResult] = useState<RunCodeResponse | null>(null);
   const [testRunError, setTestRunError] = useState<string | null>(null);
+
+  // Bulk Questions Upload state (.xlsx, .xls, .csv)
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+  const [bulkParsing, setBulkParsing] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
+  const [parsedBulkQuestions, setParsedBulkQuestions] = useState<any[]>([]);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -538,6 +548,7 @@ if __name__ == '__main__':
     solve()
 `,
     }));
+    setTestRunLanguage("python");
   }
 
   function loadCTemplate() {
@@ -558,6 +569,7 @@ int main() {
 }
 `,
     }));
+    setTestRunLanguage("c");
   }
 
   function loadJavaTemplate() {
@@ -579,6 +591,7 @@ public class Solution {
 }
 `,
     }));
+    setTestRunLanguage("java");
   }
 
   async function handleAdminTestRun() {
@@ -590,11 +603,16 @@ public class Solution {
     setTestRunError(null);
     setTestRunResult(null);
     try {
+      const detectedLang =
+        testRunLanguage ||
+        (codingForm.codeTemplate.includes("#include") ? "c" :
+         codingForm.codeTemplate.includes("public class") ? "java" : "python");
+
       const res = await api.post<RunCodeResponse>(
         "/api/admin/exams/questions/test-run",
         {
           code: codingForm.codeTemplate,
-          language: "python",
+          language: detectedLang,
           testCases: codingForm.testCases,
         },
         "admin"
@@ -604,6 +622,263 @@ public class Solution {
       setTestRunError(err instanceof Error ? err.message : "Test run failed.");
     } finally {
       setTestingCode(false);
+    }
+  }
+
+  function downloadSampleQuestionsExcel() {
+    const sampleRows = [
+      {
+        "Question Type": "MCQ",
+        "Question Text": "What is the time complexity of searching in a balanced Binary Search Tree?",
+        "Option A": "O(1)",
+        "Option B": "O(log n)",
+        "Option C": "O(n)",
+        "Option D": "O(n log n)",
+        "Correct Answer": "B",
+        "Marks": 1,
+        "Problem Title": "",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "",
+        "Sample Output": "",
+        "Sample Explanation": "",
+      },
+      {
+        "Question Type": "MCQ",
+        "Question Text": "Which function dynamically allocates memory in the C programming language?",
+        "Option A": "calloc()",
+        "Option B": "malloc()",
+        "Option C": "realloc()",
+        "Option D": "All of the above",
+        "Correct Answer": "D",
+        "Marks": 1,
+        "Problem Title": "",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "",
+        "Sample Output": "",
+        "Sample Explanation": "",
+      },
+      {
+        "Question Type": "CODING",
+        "Question Text": "Write a C program to read two integers from standard input and print their sum.",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": 5,
+        "Problem Title": "Sum of Two Numbers (C / Python)",
+        "Constraints": "-10^5 <= a, b <= 10^5\nTime Limit: 2.0s\nMemory Limit: 128MB",
+        "Allowed Languages": "c,python,java",
+        "Code Template": "#include <stdio.h>\n\nint main() {\n    int a, b;\n    if (scanf(\"%d %d\", &a, &b) == 2) {\n        printf(\"%d\\n\", a + b);\n    }\n    return 0;\n}",
+        "Sample Input": "3 7",
+        "Sample Output": "10",
+        "Sample Explanation": "3 + 7 = 10",
+      },
+      {
+        "Question Type": "CODING",
+        "Question Text": "Given an integer N, print all numbers from 1 to N separated by spaces.",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": 10,
+        "Problem Title": "Print 1 to N",
+        "Constraints": "1 <= N <= 100",
+        "Allowed Languages": "c,python,java",
+        "Code Template": "import sys\n\ndef solve():\n    n = int(sys.stdin.read().strip())\n    print(' '.join(str(i) for i in range(1, n + 1)))\n\nif __name__ == '__main__':\n    solve()",
+        "Sample Input": "5",
+        "Sample Output": "1 2 3 4 5",
+        "Sample Explanation": "Prints 1 through 5",
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(sampleRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Questions");
+    XLSX.writeFile(wb, "bulk_questions_sample_template.xlsx");
+  }
+
+  function downloadSampleQuestionsCsv() {
+    const sampleRows = [
+      {
+        "Question Type": "MCQ",
+        "Question Text": "What is the time complexity of searching in a balanced Binary Search Tree?",
+        "Option A": "O(1)",
+        "Option B": "O(log n)",
+        "Option C": "O(n)",
+        "Option D": "O(n log n)",
+        "Correct Answer": "B",
+        "Marks": 1,
+        "Problem Title": "",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "",
+        "Sample Output": "",
+        "Sample Explanation": "",
+      },
+      {
+        "Question Type": "CODING",
+        "Question Text": "Write a C program to read two integers and print their sum.",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": 5,
+        "Problem Title": "Sum of Two Numbers",
+        "Constraints": "-10^5 <= a, b <= 10^5",
+        "Allowed Languages": "c,python,java",
+        "Code Template": "#include <stdio.h>\nint main() {\n    int a, b;\n    if (scanf(\"%d %d\", &a, &b) == 2) printf(\"%d\\n\", a + b);\n    return 0;\n}",
+        "Sample Input": "4 6",
+        "Sample Output": "10",
+        "Sample Explanation": "4 + 6 = 10",
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(sampleRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Questions");
+    XLSX.writeFile(wb, "bulk_questions_sample_template.csv", { bookType: "csv" });
+  }
+
+  async function handleBulkFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkFile(file);
+    setBulkError(null);
+    setBulkSuccessMsg(null);
+    setBulkParsing(true);
+    setParsedBulkQuestions([]);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) throw new Error("The uploaded file has no sheets.");
+      const sheet = workbook.Sheets[firstSheetName];
+      const rawRows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+      if (rawRows.length === 0) {
+        throw new Error("No data rows found in the uploaded file.");
+      }
+
+      const parsed: any[] = [];
+      for (let i = 0; i < rawRows.length; i++) {
+        const row = rawRows[i];
+        const norm: Record<string, string> = {};
+        for (const [k, v] of Object.entries(row)) {
+          const keyNorm = k.toLowerCase().trim().replace(/[\s_-]+/g, "");
+          norm[keyNorm] = String(v ?? "").trim();
+        }
+
+        const qTypeRaw = (norm["questiontype"] || norm["type"] || "").toUpperCase();
+        const qText = norm["questiontext"] || norm["question"] || norm["statement"] || norm["problemstatement"] || "";
+        if (!qText) continue;
+
+        const marks = Number(norm["marks"] || norm["score"] || norm["points"]) || (qTypeRaw.includes("CODE") ? 5 : 1);
+        const isCoding = qTypeRaw.includes("CODE") || Boolean(norm["codetemplate"] || norm["template"] || norm["sampleinput"]);
+
+        if (isCoding) {
+          const problemTitle = norm["problemtitle"] || norm["title"] || qText.slice(0, 50);
+          const constraints = norm["constraints"] || "Time Limit: 5.0 seconds\nMemory Limit: 256 MB";
+          const allowedLanguages = norm["allowedlanguages"] || norm["languages"] || "c,python,java";
+          const codeTemplate = norm["codetemplate"] || norm["template"] || norm["startercode"] || `#include <stdio.h>\n\nint main() {\n    return 0;\n}`;
+          
+          const sampleIn = norm["sampleinput"] || norm["input"] || "";
+          const sampleOut = norm["sampleoutput"] || norm["output"] || "";
+          const sampleExpl = norm["sampleexplanation"] || norm["explanation"] || "";
+
+          const testCases = [];
+          if (sampleIn || sampleOut) {
+            testCases.push({
+              input: sampleIn,
+              expectedOutput: sampleOut,
+              isHidden: false,
+              explanation: sampleExpl,
+              displayOrder: 0,
+            });
+          } else {
+            testCases.push({
+              input: "1",
+              expectedOutput: "1",
+              isHidden: false,
+              explanation: "Default sample verification",
+              displayOrder: 0,
+            });
+          }
+
+          parsed.push({
+            questionType: "CODING",
+            problemTitle,
+            questionText: qText,
+            marks,
+            constraints,
+            allowedLanguages,
+            codeTemplate,
+            testCases,
+          });
+        } else {
+          // MCQ
+          const optionA = norm["optiona"] || norm["a"] || "";
+          const optionB = norm["optionb"] || norm["b"] || "";
+          const optionC = norm["optionc"] || norm["c"] || "";
+          const optionD = norm["optiond"] || norm["d"] || "";
+
+          let correctIdx = 0;
+          const ansRaw = (norm["correctanswer"] || norm["answer"] || norm["correct"] || "").toUpperCase();
+          if (ansRaw === "A" || ansRaw === "0") correctIdx = 0;
+          else if (ansRaw === "B" || ansRaw === "1") correctIdx = 1;
+          else if (ansRaw === "C" || ansRaw === "2") correctIdx = 2;
+          else if (ansRaw === "D" || ansRaw === "3") correctIdx = 3;
+          else if (ansRaw === "4") correctIdx = 3;
+
+          parsed.push({
+            questionType: "MCQ",
+            questionText: qText,
+            optionA: optionA || "Option A",
+            optionB: optionB || "Option B",
+            optionC: optionC || "Option C",
+            optionD: optionD || "Option D",
+            correctAnswer: correctIdx,
+            marks,
+          });
+        }
+      }
+
+      if (parsed.length === 0) {
+        throw new Error("No valid questions could be parsed from the file. Please check column headers.");
+      }
+
+      setParsedBulkQuestions(parsed);
+      setBulkSuccessMsg(`Parsed ${parsed.length} questions (${parsed.filter(p => p.questionType === 'MCQ').length} MCQ, ${parsed.filter(p => p.questionType === 'CODING').length} Coding). Review preview below and click 'Confirm & Import'.`);
+    } catch (err: any) {
+      setBulkError(err instanceof Error ? err.message : "Failed to parse questions file.");
+    } finally {
+      setBulkParsing(false);
+    }
+  }
+
+  async function handleBulkUploadSubmit() {
+    if (parsedBulkQuestions.length === 0) return;
+    setBulkSubmitting(true);
+    setBulkError(null);
+    try {
+      await api.post(`/api/admin/exams/${exam.id}/questions/bulk`, parsedBulkQuestions, "admin");
+      setShowBulkUploadModal(false);
+      setParsedBulkQuestions([]);
+      setBulkFile(null);
+      onAdded();
+      alert(`Successfully added ${parsedBulkQuestions.length} questions to exam!`);
+    } catch (err: any) {
+      setBulkError(err instanceof Error ? err.message : "Bulk upload failed.");
+    } finally {
+      setBulkSubmitting(false);
     }
   }
 
@@ -981,14 +1256,31 @@ public class Solution {
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4 h-fit shadow-xs">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center gap-2 flex-wrap">
             <div>
               <h3 className="font-bold text-slate-900 text-sm">Add Question</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Select question format: Multiple Choice or LeetCode Coding</p>
+              <p className="text-xs text-slate-500 mt-0.5">Select question format or bulk import from spreadsheet</p>
             </div>
-            <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
-              Question {questions.length + 1} of {exam.numQuestions}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBulkUploadModal(true);
+                  setBulkError(null);
+                  setBulkSuccessMsg(null);
+                  setParsedBulkQuestions([]);
+                  setBulkFile(null);
+                }}
+                className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="Bulk import questions from Excel (.xlsx, .xls) or CSV (.csv)"
+              >
+                <span>📊</span>
+                <span>Bulk Upload (Excel / CSV)</span>
+              </button>
+              <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
+                Question {questions.length + 1} of {exam.numQuestions}
+              </span>
+            </div>
           </div>
 
           {/* Type Selector Tabs */}
@@ -1313,14 +1605,26 @@ public class Solution {
                     <span className="text-xs font-semibold text-slate-800">Sandbox Verification</span>
                     <p className="text-[11px] text-slate-500">Test execute template solution against all test cases</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAdminTestRun}
-                    disabled={testingCode || codingForm.testCases.length === 0}
-                    className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {testingCode ? "⏳ Running..." : "▶ Test Run"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={testRunLanguage}
+                      onChange={(e) => setTestRunLanguage(e.target.value)}
+                      className="bg-white border border-slate-300 rounded px-2 py-1 text-xs font-semibold text-slate-700 cursor-pointer shadow-2xs"
+                      title="Select compiler / runtime for test execution"
+                    >
+                      <option value="c">C (GCC)</option>
+                      <option value="python">Python 3</option>
+                      <option value="java">Java 21</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAdminTestRun}
+                      disabled={testingCode || codingForm.testCases.length === 0}
+                      className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {testingCode ? "⏳ Running..." : "▶ Test Run"}
+                    </button>
+                  </div>
                 </div>
 
                 {testRunError && (
@@ -1727,6 +2031,204 @@ public class Solution {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Upload Questions Modal (.xlsx, .xls, .csv) */}
+      {showBulkUploadModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto font-sans">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 space-y-4 border border-slate-200 max-h-[92vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <span>📊</span> Bulk Upload Questions (Excel &amp; CSV)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Upload multiple Multiple Choice (MCQ) and Coding questions at once from an Excel workbook (.xlsx, .xls) or CSV spreadsheet.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBulkUploadModal(false);
+                  setParsedBulkQuestions([]);
+                  setBulkFile(null);
+                  setBulkError(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Template Download Section */}
+            <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div>
+                <div className="font-semibold text-blue-900 flex items-center gap-1.5">
+                  <span>📥</span> Download sample format templates
+                </div>
+                <p className="text-blue-700 text-[11px] mt-0.5">
+                  Pre-configured headers with sample MCQ &amp; LeetCode Coding questions ready to fill in.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={downloadSampleQuestionsExcel}
+                  className="bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>📗</span> Download Excel (.xlsx)
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadSampleQuestionsCsv}
+                  className="bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>📄</span> Download CSV (.csv)
+                </button>
+              </div>
+            </div>
+
+            {/* File Dropzone / Selector */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-700">
+                Select or Drop Question File (.xlsx, .xls, .csv)
+              </label>
+              <div className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-6 text-center bg-slate-50/50 hover:bg-emerald-50/20 transition-all relative">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleBulkFileSelect}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <div className="space-y-1.5 pointer-events-none">
+                  <div className="text-3xl">📂</div>
+                  <div className="text-xs font-semibold text-slate-700">
+                    {bulkFile ? bulkFile.name : "Click to browse or drag & drop questions file here"}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Supports Microsoft Excel (.xlsx, .xls) and Comma-Separated Values (.csv)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Parsing State & Errors */}
+            {bulkParsing && (
+              <div className="p-3 text-xs bg-slate-100 text-slate-600 rounded-lg animate-pulse flex items-center gap-2">
+                <span>⏳</span> Reading and validating questions spreadsheet…
+              </div>
+            )}
+
+            {bulkError && (
+              <div className="p-3 text-xs bg-rose-50 border border-rose-200 text-rose-700 rounded-lg">
+                ⚠️ {bulkError}
+              </div>
+            )}
+
+            {bulkSuccessMsg && (
+              <div className="p-3 text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg font-medium">
+                ✓ {bulkSuccessMsg}
+              </div>
+            )}
+
+            {/* Questions Preview Table */}
+            {parsedBulkQuestions.length > 0 && (
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-800">
+                    Parsed Questions Preview ({parsedBulkQuestions.length} total)
+                  </span>
+                  <div className="flex items-center gap-3 text-slate-500 text-[11px]">
+                    <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">
+                      {parsedBulkQuestions.filter(q => q.questionType === "MCQ").length} MCQ
+                    </span>
+                    <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-semibold">
+                      {parsedBulkQuestions.filter(q => q.questionType === "CODING").length} Coding
+                    </span>
+                  </div>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-700 font-semibold sticky top-0 border-b border-slate-200">
+                      <tr>
+                        <th className="p-2.5 w-12 text-center">#</th>
+                        <th className="p-2.5 w-20">Type</th>
+                        <th className="p-2.5">Question / Problem Title</th>
+                        <th className="p-2.5 w-24">Marks</th>
+                        <th className="p-2.5 w-32">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {parsedBulkQuestions.slice(0, 50).map((pq, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/70">
+                          <td className="p-2.5 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                          <td className="p-2.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              pq.questionType === "CODING"
+                                ? "bg-indigo-100 text-indigo-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}>
+                              {pq.questionType}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-slate-800 font-medium max-w-xs truncate">
+                            {pq.questionType === "CODING" ? pq.problemTitle : pq.questionText}
+                          </td>
+                          <td className="p-2.5 font-mono text-slate-600">{pq.marks} pts</td>
+                          <td className="p-2.5 text-slate-500 text-[11px]">
+                            {pq.questionType === "CODING"
+                              ? `${pq.testCases?.length || 0} Testcase(s)`
+                              : `Ans: ${String.fromCharCode(65 + (pq.correctAnswer || 0))}`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {parsedBulkQuestions.length > 50 && (
+                  <p className="text-[11px] text-slate-400 text-center">
+                    Showing first 50 of {parsedBulkQuestions.length} questions. All will be imported.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBulkUploadModal(false);
+                  setParsedBulkQuestions([]);
+                  setBulkFile(null);
+                  setBulkError(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkUploadSubmit}
+                disabled={bulkSubmitting || parsedBulkQuestions.length === 0}
+                className="px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
+              >
+                {bulkSubmitting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Importing Questions…</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✓</span>
+                    <span>Confirm &amp; Import ({parsedBulkQuestions.length}) Questions</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
