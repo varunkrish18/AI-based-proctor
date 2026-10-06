@@ -393,6 +393,7 @@ public class CodeExecutionService {
                     throw new RuntimeException("COMPILATION_ERROR: " + e.getMessage());
                 }
 
+                exeFile.toFile().setExecutable(true, false);
                 return List.of(exeFile.toAbsolutePath().toString());
             }
             case "python":
