@@ -1757,12 +1757,14 @@ export default function ExamTake() {
   useEffect(() => {
     if (!session || !q) return;
 
-    if (q.questionType === "CODING") {
+    const isCodingQuestion = String(q.questionType || "").trim().toUpperCase() === "CODING";
+
+    if (isCodingQuestion) {
       // Modern Chromium System Keyboard Lock for Windows key, Tab, and Function keys in fullscreen
       try {
         if ("keyboard" in navigator && (navigator as any).keyboard?.lock) {
           (navigator as any).keyboard.lock([
-            "MetaLeft", "MetaRight", "Tab", "AltLeft", "AltRight", "ControlLeft", "ControlRight",
+            "MetaLeft", "MetaRight", "AltLeft", "AltRight", "ControlLeft", "ControlRight",
             "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"
           ]).catch(() => {});
         }
@@ -1800,10 +1802,24 @@ export default function ExamTake() {
           e.keyCode === 9 ||
           e.which === 9;
 
+        // Function keys F1-F12 strictly detected by key and code, NEVER keyCode on printable characters
         const isFunctionKey =
           (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
-          (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code)) ||
-          (e.keyCode >= 112 && e.keyCode <= 123);
+          (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code));
+
+        // If Tab is pressed inside an editable element (e.g. CodeEditor textarea),
+        // let the editor handle it for code indentation rather than blocking it globally.
+        const targetElement = e.target as HTMLElement | null;
+        const isInsideEditable = Boolean(
+          targetElement &&
+          (targetElement.tagName === "TEXTAREA" ||
+           targetElement.tagName === "INPUT" ||
+           targetElement.isContentEditable)
+        );
+
+        if (isTabKey && isInsideEditable) {
+          return;
+        }
 
         if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
           e.preventDefault();
@@ -1821,20 +1837,13 @@ export default function ExamTake() {
         }
       };
 
+      // Only attach keydown handler (never keypress or keyup, which would intercept ASCII characters)
       window.addEventListener("keydown", blockCodingRestrictedKeys, { capture: true, passive: false });
-      window.addEventListener("keyup", blockCodingRestrictedKeys, { capture: true, passive: false });
-      window.addEventListener("keypress", blockCodingRestrictedKeys, { capture: true, passive: false });
       document.addEventListener("keydown", blockCodingRestrictedKeys, { capture: true, passive: false });
-      document.addEventListener("keyup", blockCodingRestrictedKeys, { capture: true, passive: false });
-      document.addEventListener("keypress", blockCodingRestrictedKeys, { capture: true, passive: false });
 
       return () => {
         window.removeEventListener("keydown", blockCodingRestrictedKeys, { capture: true });
-        window.removeEventListener("keyup", blockCodingRestrictedKeys, { capture: true });
-        window.removeEventListener("keypress", blockCodingRestrictedKeys, { capture: true });
         document.removeEventListener("keydown", blockCodingRestrictedKeys, { capture: true });
-        document.removeEventListener("keyup", blockCodingRestrictedKeys, { capture: true });
-        document.removeEventListener("keypress", blockCodingRestrictedKeys, { capture: true });
         try {
           if ("keyboard" in navigator && (navigator as any).keyboard?.unlock) {
             (navigator as any).keyboard.unlock();
@@ -2554,8 +2563,8 @@ export default function ExamTake() {
         </div>
       )}
 
-      <div className={`${q.questionType === "CODING" ? "max-w-7xl" : "max-w-2xl"} mx-auto px-4 py-6`}>
-        {q.questionType === "CODING" ? (
+      <div className={`${String(q.questionType).toUpperCase() === "CODING" ? "max-w-7xl" : "max-w-2xl"} mx-auto px-4 py-6`}>
+        {String(q.questionType).toUpperCase() === "CODING" ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
             {/* Left: Problem Details & Examples */}
             <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col space-y-4 max-h-[720px] overflow-y-auto">
@@ -2745,8 +2754,9 @@ export default function ExamTake() {
         {/* Question palette grid */}
         <div className="grid grid-cols-8 sm:grid-cols-12 gap-2">
           {questions.map((qq, idx) => {
+            const isCoding = String(qq.questionType || "").trim().toUpperCase() === "CODING";
             const isAnswered =
-              qq.questionType === "CODING"
+              isCoding
                 ? Boolean(codingAnswers[qq.questionId]?.code?.trim())
                 : answers[qq.questionId] !== undefined;
 
@@ -2763,9 +2773,9 @@ export default function ExamTake() {
                     ? "border-purple-300 bg-purple-50 text-purple-700"
                     : "border-slate-200 text-slate-500 hover:bg-slate-100"
                 }`}
-                title={`${qq.questionType === "CODING" ? "Coding: " : "MCQ: "}${qq.problemTitle || `Question ${idx + 1}`}`}
+                title={`${isCoding ? "Coding: " : "MCQ: "}${qq.problemTitle || `Question ${idx + 1}`}`}
               >
-                {qq.questionType === "CODING" && (
+                {isCoding && (
                   <span className="absolute top-0.5 right-0.5 text-[8px] leading-none">💻</span>
                 )}
                 {idx + 1}

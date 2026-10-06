@@ -171,7 +171,7 @@ export default function CodeEditor({
     onCodeChange?.(newCode, language);
   }
 
-  // Handle key restrictions inside editor: Windows, Ctrl, Tab, and Function keys are disabled
+  // Handle key restrictions inside editor: Windows, Ctrl, and Function keys are disabled. Tab indents by 4 spaces.
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     const isWindowsKey =
       e.key === "Meta" ||
@@ -206,10 +206,28 @@ export default function CodeEditor({
 
     const isFunctionKey =
       (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
-      (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code)) ||
-      (e.keyCode >= 112 && e.keyCode <= 123);
+      (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code));
 
-    if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
+    // Support Tab indentation inside the code editor
+    if (isTabKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const textarea = textareaRef.current;
+      if (textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const indent = "    ";
+        const newCode = code.substring(0, start) + indent + code.substring(end);
+        setCode(newCode);
+        onCodeChange?.(newCode, language);
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + indent.length;
+        });
+      }
+      return;
+    }
+
+    if (isWindowsKey || isCtrlKey || isAltKey || isFunctionKey) {
       e.preventDefault();
       e.stopPropagation();
       return;

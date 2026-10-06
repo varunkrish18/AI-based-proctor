@@ -107,8 +107,19 @@ export default function CodingAssessment() {
 
       const isFunctionKey =
         (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
-        (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code)) ||
-        (e.keyCode >= 112 && e.keyCode <= 123);
+        (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code));
+
+      const targetElement = e.target as HTMLElement | null;
+      const isInsideEditable = Boolean(
+        targetElement &&
+        (targetElement.tagName === "TEXTAREA" ||
+         targetElement.tagName === "INPUT" ||
+         targetElement.isContentEditable)
+      );
+
+      if (isTabKey && isInsideEditable) {
+        return;
+      }
 
       if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
         e.preventDefault();
@@ -119,15 +130,11 @@ export default function CodingAssessment() {
     };
 
     window.addEventListener("keydown", blockGlobalRestrictedKeys, { capture: true, passive: false });
-    window.addEventListener("keyup", blockGlobalRestrictedKeys, { capture: true, passive: false });
     document.addEventListener("keydown", blockGlobalRestrictedKeys, { capture: true, passive: false });
-    document.addEventListener("keyup", blockGlobalRestrictedKeys, { capture: true, passive: false });
 
     return () => {
       window.removeEventListener("keydown", blockGlobalRestrictedKeys, { capture: true });
-      window.removeEventListener("keyup", blockGlobalRestrictedKeys, { capture: true });
       document.removeEventListener("keydown", blockGlobalRestrictedKeys, { capture: true });
-      document.removeEventListener("keyup", blockGlobalRestrictedKeys, { capture: true });
     };
   }, []);
 
@@ -171,10 +178,26 @@ export default function CodingAssessment() {
 
     const isFunctionKey =
       (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
-      (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code)) ||
-      (e.keyCode >= 112 && e.keyCode <= 123);
+      (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code));
 
-    if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
+    if (isTabKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const textarea = editorRef.current;
+      if (textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const indent = "    ";
+        const newCode = code.substring(0, start) + indent + code.substring(end);
+        setCode(newCode);
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + indent.length;
+        });
+      }
+      return;
+    }
+
+    if (isWindowsKey || isCtrlKey || isAltKey || isFunctionKey) {
       e.preventDefault();
       e.stopPropagation();
       return;
