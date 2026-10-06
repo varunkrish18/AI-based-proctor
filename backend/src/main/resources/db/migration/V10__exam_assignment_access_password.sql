@@ -5,3 +5,4 @@ ALTER TABLE exam_assignments ADD COLUMN IF NOT EXISTS access_password VARCHAR(64
 UPDATE exam_assignments
 SET access_password = UPPER(SUBSTRING(MD5(RANDOM()::TEXT), 1, 8))
 WHERE access_password IS NULL;
+

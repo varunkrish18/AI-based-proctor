@@ -5,6 +5,7 @@ import com.proctor.exam.entity.ExamAttempt;
 import com.proctor.exam.exception.ApiException;
 import com.proctor.exam.repository.ExamAttemptRepository;
 import com.proctor.exam.service.*;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -77,8 +78,8 @@ public class AdminProctoringController {
             @RequestParam(required = false) String eventType,
             @RequestParam(required = false) String severity,
             @RequestParam(required = false) String studentEmail,
-            @RequestParam(required = false) Instant from,
-            @RequestParam(required = false) Instant to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
         return eventService.getAttemptsWithEventSummary(examId, studentEmail, severity, eventType, from, to);
     }
 

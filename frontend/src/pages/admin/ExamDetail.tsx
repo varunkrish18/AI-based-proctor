@@ -2804,6 +2804,78 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
   );
 }
 
+type DateFilterType = "ALL" | "TODAY" | "YESTERDAY" | "LAST_7_DAYS" | "CUSTOM";
+
+function getDateBounds(
+  filter: DateFilterType,
+  customFrom?: string,
+  customTo?: string
+): { from?: string; to?: string } {
+  const now = new Date();
+  if (filter === "TODAY") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }
+  if (filter === "YESTERDAY") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }
+  if (filter === "LAST_7_DAYS") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return { from: start.toISOString(), to: end.toISOString() };
+  }
+  if (filter === "CUSTOM") {
+    let fromIso: string | undefined;
+    let toIso: string | undefined;
+    if (customFrom) {
+      const s = new Date(customFrom + "T00:00:00");
+      if (!isNaN(s.getTime())) fromIso = s.toISOString();
+    }
+    if (customTo) {
+      const e = new Date(customTo + "T23:59:59.999");
+      if (!isNaN(e.getTime())) toIso = e.toISOString();
+    }
+    return { from: fromIso, to: toIso };
+  }
+  return {};
+}
+
+function formatAttemptTime(isoString?: string | null): { relative: string; date: string; time: string } {
+  if (!isoString) return { relative: "", date: "—", time: "" };
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return { relative: "", date: String(isoString), time: "" };
+
+    const now = new Date();
+    const isToday =
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
+
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const isYesterday =
+      d.getDate() === yesterday.getDate() &&
+      d.getMonth() === yesterday.getMonth() &&
+      d.getFullYear() === yesterday.getFullYear();
+
+    const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const dateStr = d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+
+    if (isToday) {
+      return { relative: "Today", date: dateStr, time: timeStr };
+    }
+    if (isYesterday) {
+      return { relative: "Yesterday", date: dateStr, time: timeStr };
+    }
+    return { relative: "", date: dateStr, time: timeStr };
+  } catch {
+    return { relative: "", date: String(isoString), time: "" };
+  }
+}
+
 function ResultsTab({ examId }: { examId: number }) {
   const [attempts, setAttempts] = useState<AdminAttemptSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2823,6 +2895,9 @@ function ResultsTab({ examId }: { examId: number }) {
   const [studentEmailFilter, setStudentEmailFilter] = useState<string>("");
   const [attemptSeverityFilter, setAttemptSeverityFilter] = useState<string>("");
   const [attemptEventTypeFilter, setAttemptEventTypeFilter] = useState<string>("");
+  const [dateFilter, setDateFilter] = useState<DateFilterType>("ALL");
+  const [customFromDate, setCustomFromDate] = useState<string>("");
+  const [customToDate, setCustomToDate] = useState<string>("");
   const [exportingId, setExportingId] = useState<number | null>(null);
   const [exportingCumulative, setExportingCumulative] = useState<boolean>(false);
   const [quickScore, setQuickScore] = useState<string>("");
@@ -2873,12 +2948,24 @@ function ResultsTab({ examId }: { examId: number }) {
     }
   }
 
-  function loadAttempts(email = studentEmailFilter, sev = attemptSeverityFilter, evt = attemptEventTypeFilter) {
+  function loadAttempts(
+    email = studentEmailFilter,
+    sev = attemptSeverityFilter,
+    evt = attemptEventTypeFilter,
+    dFilter = dateFilter,
+    cFrom = customFromDate,
+    cTo = customToDate
+  ) {
     setLoading(true);
     const params = new URLSearchParams();
     if (email.trim()) params.append("studentEmail", email.trim());
     if (sev) params.append("severity", sev);
     if (evt) params.append("eventType", evt);
+
+    const { from, to } = getDateBounds(dFilter, cFrom, cTo);
+    if (from) params.append("from", from);
+    if (to) params.append("to", to);
+
     const query = params.toString() ? `?${params.toString()}` : "";
 
     api
@@ -2891,6 +2978,13 @@ function ResultsTab({ examId }: { examId: number }) {
       .finally(() => setLoading(false));
   }
 
+  function handleQuickDateSelect(d: DateFilterType) {
+    setDateFilter(d);
+    if (d !== "CUSTOM") {
+      loadAttempts(studentEmailFilter, attemptSeverityFilter, attemptEventTypeFilter, d, customFromDate, customToDate);
+    }
+  }
+
   function handleFilterSubmit(e: React.FormEvent) {
     e.preventDefault();
     loadAttempts();
@@ -2900,7 +2994,10 @@ function ResultsTab({ examId }: { examId: number }) {
     setStudentEmailFilter("");
     setAttemptSeverityFilter("");
     setAttemptEventTypeFilter("");
-    loadAttempts("", "", "");
+    setDateFilter("ALL");
+    setCustomFromDate("");
+    setCustomToDate("");
+    loadAttempts("", "", "", "ALL", "", "");
   }
 
   async function handleExport(attemptId: number, format: "pdf" | "csv" | "excel") {
@@ -2996,72 +3093,190 @@ function ResultsTab({ examId }: { examId: number }) {
       </div>
 
       {/* Filter & Search Toolbar */}
-      <form onSubmit={handleFilterSubmit} className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[200px]">
-          <input
-            type="text"
-            placeholder="Filter by student email…"
-            value={studentEmailFilter}
-            onChange={(e) => setStudentEmailFilter(e.target.value)}
-            className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <select
-            value={attemptSeverityFilter}
-            onChange={(e) => setAttemptSeverityFilter(e.target.value)}
-            className="text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Severities</option>
-            <option value="CRITICAL">CRITICAL</option>
-            <option value="HIGH">HIGH</option>
-            <option value="MEDIUM">MEDIUM</option>
-            <option value="LOW">LOW</option>
-            <option value="INFO">INFO</option>
-          </select>
-        </div>
-        <div>
-          <select
-            value={attemptEventTypeFilter}
-            onChange={(e) => setAttemptEventTypeFilter(e.target.value)}
-            className="text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Signal Types</option>
-            <option value="FACE_NOT_VISIBLE">FACE_NOT_VISIBLE</option>
-            <option value="MULTIPLE_FACES">MULTIPLE_FACES</option>
-            <option value="LOOKING_LEFT">LOOKING_LEFT</option>
-            <option value="LOOKING_RIGHT">LOOKING_RIGHT</option>
-            <option value="LOOKING_UP">LOOKING_UP</option>
-            <option value="LOOKING_DOWN">LOOKING_DOWN</option>
-            <option value="HEAD_TURNED">HEAD_TURNED</option>
-            <option value="TAB_SWITCH">TAB_SWITCH</option>
-            <option value="FULLSCREEN_EXIT">FULLSCREEN_EXIT</option>
-            <option value="WINDOW_BLUR">WINDOW_BLUR</option>
-            <option value="LOCATION_MISMATCH">LOCATION_MISMATCH</option>
-          </select>
-        </div>
-        <button
-          type="submit"
-          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
-        >
-          Filter
-        </button>
-        {(studentEmailFilter || attemptSeverityFilter || attemptEventTypeFilter) && (
+      <form onSubmit={handleFilterSubmit} className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[200px]">
+            <input
+              type="text"
+              placeholder="Filter by student email…"
+              value={studentEmailFilter}
+              onChange={(e) => setStudentEmailFilter(e.target.value)}
+              className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <select
+              value={attemptSeverityFilter}
+              onChange={(e) => setAttemptSeverityFilter(e.target.value)}
+              className="text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Severities</option>
+              <option value="CRITICAL">CRITICAL</option>
+              <option value="HIGH">HIGH</option>
+              <option value="MEDIUM">MEDIUM</option>
+              <option value="LOW">LOW</option>
+              <option value="INFO">INFO</option>
+            </select>
+          </div>
+          <div>
+            <select
+              value={attemptEventTypeFilter}
+              onChange={(e) => setAttemptEventTypeFilter(e.target.value)}
+              className="text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Signal Types</option>
+              <option value="FACE_NOT_VISIBLE">FACE_NOT_VISIBLE</option>
+              <option value="MULTIPLE_FACES">MULTIPLE_FACES</option>
+              <option value="LOOKING_LEFT">LOOKING_LEFT</option>
+              <option value="LOOKING_RIGHT">LOOKING_RIGHT</option>
+              <option value="LOOKING_UP">LOOKING_UP</option>
+              <option value="LOOKING_DOWN">LOOKING_DOWN</option>
+              <option value="HEAD_TURNED">HEAD_TURNED</option>
+              <option value="TAB_SWITCH">TAB_SWITCH</option>
+              <option value="FULLSCREEN_EXIT">FULLSCREEN_EXIT</option>
+              <option value="WINDOW_BLUR">WINDOW_BLUR</option>
+              <option value="LOCATION_MISMATCH">LOCATION_MISMATCH</option>
+            </select>
+          </div>
+          <div>
+            <select
+              value={dateFilter}
+              onChange={(e) => {
+                const val = e.target.value as DateFilterType;
+                setDateFilter(val);
+                if (val !== "CUSTOM") {
+                  loadAttempts(studentEmailFilter, attemptSeverityFilter, attemptEventTypeFilter, val, customFromDate, customToDate);
+                }
+              }}
+              className="text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+            >
+              <option value="ALL">📅 All Dates</option>
+              <option value="TODAY">📅 Today</option>
+              <option value="YESTERDAY">📅 Yesterday</option>
+              <option value="LAST_7_DAYS">📅 Last 7 Days</option>
+              <option value="CUSTOM">📅 Custom Range…</option>
+            </select>
+          </div>
           <button
-            type="button"
-            onClick={handleClearFilter}
-            className="border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-medium px-3 py-2 rounded-lg transition-colors cursor-pointer"
+            type="submit"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
           >
-            Clear
+            Filter
           </button>
-        )}
+          {(studentEmailFilter || attemptSeverityFilter || attemptEventTypeFilter || dateFilter !== "ALL" || customFromDate || customToDate) && (
+            <button
+              type="button"
+              onClick={handleClearFilter}
+              className="border border-slate-300 hover:bg-slate-50 text-slate-600 text-xs font-medium px-3 py-2 rounded-lg transition-colors cursor-pointer"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Quick Date Pills & Custom Range Inputs */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-500 font-medium mr-1 flex items-center gap-1">
+              <span>🕒</span>
+              <span>Filter Date:</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => handleQuickDateSelect("ALL")}
+              className={`px-2.5 py-1 rounded-md font-medium text-xs transition-colors cursor-pointer border ${
+                dateFilter === "ALL"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-2xs font-bold"
+                  : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              All Time
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDateSelect("TODAY")}
+              className={`px-2.5 py-1 rounded-md font-medium text-xs transition-colors cursor-pointer border ${
+                dateFilter === "TODAY"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-2xs font-bold"
+                  : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              🌟 Today
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDateSelect("YESTERDAY")}
+              className={`px-2.5 py-1 rounded-md font-medium text-xs transition-colors cursor-pointer border ${
+                dateFilter === "YESTERDAY"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-2xs font-bold"
+                  : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              ⏪ Yesterday
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDateSelect("LAST_7_DAYS")}
+              className={`px-2.5 py-1 rounded-md font-medium text-xs transition-colors cursor-pointer border ${
+                dateFilter === "LAST_7_DAYS"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-2xs font-bold"
+                  : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              Last 7 Days
+            </button>
+          </div>
+
+          {dateFilter === "CUSTOM" && (
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">From:</span>
+              <input
+                type="date"
+                value={customFromDate}
+                onChange={(e) => setCustomFromDate(e.target.value)}
+                className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+              />
+              <span className="text-slate-500">To:</span>
+              <input
+                type="date"
+                value={customToDate}
+                onChange={(e) => setCustomToDate(e.target.value)}
+                className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+              />
+              <button
+                type="button"
+                onClick={() => loadAttempts()}
+                className="bg-blue-600 text-white text-xs px-2.5 py-1 rounded font-medium hover:bg-blue-700 cursor-pointer"
+              >
+                Apply
+              </button>
+            </div>
+          )}
+        </div>
       </form>
 
       {/* Attempts Table */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-xs">
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap justify-between items-center gap-3 bg-slate-50/50">
           <div className="flex items-center gap-3">
-            <h3 className="font-semibold text-slate-800 text-sm">Student Attempts ({attempts.length})</h3>
+            <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+              <span>Student Attempts ({attempts.length})</span>
+              {dateFilter === "TODAY" && (
+                <span className="text-xs font-semibold text-blue-700 bg-blue-100 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                  🌟 Today
+                </span>
+              )}
+              {dateFilter === "YESTERDAY" && (
+                <span className="text-xs font-semibold text-purple-700 bg-purple-100 border border-purple-200 px-2.5 py-0.5 rounded-full">
+                  ⏪ Yesterday
+                </span>
+              )}
+              {dateFilter === "LAST_7_DAYS" && (
+                <span className="text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                  Last 7 Days
+                </span>
+              )}
+            </h3>
             <button
               onClick={() => loadAttempts()}
               className="text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
@@ -3084,6 +3299,7 @@ function ResultsTab({ examId }: { examId: number }) {
               <tr>
                 <th className="px-4 py-3 whitespace-nowrap font-semibold">Student</th>
                 <th className="px-4 py-3 whitespace-nowrap font-semibold">Attempt</th>
+                <th className="px-4 py-3 whitespace-nowrap font-semibold">Started</th>
                 <th className="px-4 py-3 whitespace-nowrap font-semibold">Status</th>
                 <th className="px-4 py-3 whitespace-nowrap font-semibold">Score</th>
                 <th className="px-4 py-3 whitespace-nowrap font-semibold">Risk Score</th>
@@ -3103,10 +3319,31 @@ function ResultsTab({ examId }: { examId: number }) {
                     ? "bg-amber-100 text-amber-800 border-amber-200"
                     : "bg-emerald-100 text-emerald-800 border-emerald-200";
 
+                const dateInfo = formatAttemptTime(a.startTime);
+
                 return (
                   <tr key={a.attemptId} className="hover:bg-slate-50/70 transition-colors">
                     <td className="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">{a.studentEmail}</td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">#{a.attemptNumber}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-600">
+                      <div className="flex flex-col">
+                        <span className="flex items-center gap-1 font-medium text-slate-800">
+                          {dateInfo.relative ? (
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                dateInfo.relative === "Today"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : "bg-purple-100 text-purple-700"
+                              }`}
+                            >
+                              {dateInfo.relative}
+                            </span>
+                          ) : null}
+                          <span>{dateInfo.date}</span>
+                        </span>
+                        <span className="text-[11px] text-slate-400">{dateInfo.time}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span
                         className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
@@ -3233,8 +3470,16 @@ function ResultsTab({ examId }: { examId: number }) {
               })}
               {attempts.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
-                    No attempts recorded for this exam yet.
+                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                    No attempts found matching the selected filters
+                    {dateFilter === "TODAY"
+                      ? " for today"
+                      : dateFilter === "YESTERDAY"
+                      ? " for yesterday"
+                      : dateFilter === "LAST_7_DAYS"
+                      ? " in the last 7 days"
+                      : ""}
+                    .
                   </td>
                 </tr>
               )}
