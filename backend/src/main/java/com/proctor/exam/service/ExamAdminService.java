@@ -27,6 +27,7 @@ public class ExamAdminService {
     private final jakarta.persistence.EntityManager entityManager;
     private final AiProxyService aiProxyService;
     private final StudentQuestionAssignmentRepository sqaRepository;
+    private final ExamAttemptRepository examAttemptRepository;
 
     public ExamAdminService(ExamRepository examRepository,
                             ExamQuestionRepository questionRepository,
@@ -35,7 +36,8 @@ public class ExamAdminService {
                             AuditLogService auditLogService,
                             jakarta.persistence.EntityManager entityManager,
                             AiProxyService aiProxyService,
-                            StudentQuestionAssignmentRepository sqaRepository) {
+                            StudentQuestionAssignmentRepository sqaRepository,
+                            ExamAttemptRepository examAttemptRepository) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
@@ -44,6 +46,7 @@ public class ExamAdminService {
         this.entityManager = entityManager;
         this.aiProxyService = aiProxyService;
         this.sqaRepository = sqaRepository;
+        this.examAttemptRepository = examAttemptRepository;
     }
 
     @Transactional
@@ -663,6 +666,12 @@ public class ExamAdminService {
     @Transactional
     public QuestionAssignmentReportResponse assignQuestionsRandomly(
             Long examId, int questionsPerStudent, String adminEmail) {
+        return assignQuestionsRandomly(examId, questionsPerStudent, null, adminEmail);
+    }
+
+    @Transactional
+    public QuestionAssignmentReportResponse assignQuestionsRandomly(
+            Long examId, int questionsPerStudent, Integer studentCount, String adminEmail) {
 
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
@@ -677,19 +686,64 @@ public class ExamAdminService {
                     "questionsPerStudent must be between 1 and the total question count (" + bank.size() + ").");
         }
 
-        List<ExamAssignment> enrolled = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
-        if (enrolled.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "No students are assigned to exam ID " + examId + ". Assign students first.");
+        List<ExamAssignment> rawEnrolled = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
+        // Deduplicate enrolled by student email
+        Map<String, ExamAssignment> enrolledMap = new LinkedHashMap<>();
+        for (ExamAssignment a : rawEnrolled) {
+            if (a.getStudentEmail() != null && !a.getStudentEmail().isBlank()) {
+                enrolledMap.putIfAbsent(a.getStudentEmail().trim().toLowerCase(), a);
+            }
+        }
+        List<ExamAssignment> enrolled = new ArrayList<>(enrolledMap.values());
+
+        // If a specific number of students is requested, adjust enrolled students list or auto-provision slots
+        if (studentCount != null && studentCount > 0) {
+            if (enrolled.size() < studentCount) {
+                int needed = studentCount - enrolled.size();
+                for (int i = 1; i <= needed; i++) {
+                    int candNum = enrolled.size() + 1;
+                    String autoEmail = "candidate" + candNum + "_exam" + examId + "@student.campus-notes.in";
+                    while (assignmentRepository.findByExamIdAndStudentEmailIgnoreCase(examId, autoEmail).isPresent()
+                            || enrolledMap.containsKey(autoEmail.toLowerCase())) {
+                        candNum++;
+                        autoEmail = "candidate" + candNum + "_exam" + examId + "@student.campus-notes.in";
+                    }
+                    String pwd = generateRandomPassword(8);
+                    ExamAssignment assignment = ExamAssignment.builder()
+                            .exam(exam)
+                            .studentEmail(autoEmail)
+                            .accessPassword(pwd)
+                            .build();
+                    assignment = assignmentRepository.save(assignment);
+                    enrolledMap.put(autoEmail.toLowerCase(), assignment);
+                    enrolled.add(assignment);
+                }
+            } else if (enrolled.size() > studentCount) {
+                enrolled = new ArrayList<>(enrolled.subList(0, studentCount));
+            }
         }
 
-        // Clear previous random assignments for this exam
-        sqaRepository.deleteByExamId(examId);
+        if (enrolled.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "No students are assigned to exam ID " + examId + ". Assign students first or specify a student count to auto-assign.");
+        }
+
+        // Clear previous random assignments for this exam and flush immediately
+        entityManager.createNativeQuery("DELETE FROM student_question_assignments WHERE exam_id = :examId")
+                .setParameter("examId", examId).executeUpdate();
+        entityManager.flush();
 
         List<StudentQuestionAssignmentEntry> entries = new ArrayList<>();
         Random rng = new Random();
 
         for (ExamAssignment enrollment : enrolled) {
+            String pwd = enrollment.getAccessPassword();
+            if (pwd == null || pwd.isBlank()) {
+                pwd = generateRandomPassword(8);
+                enrollment.setAccessPassword(pwd);
+                assignmentRepository.save(enrollment);
+            }
+
             // Shuffle a copy and take the first N
             List<ExamQuestion> shuffled = new ArrayList<>(bank);
             Collections.shuffle(shuffled, rng);
@@ -717,12 +771,13 @@ public class ExamAdminService {
                             q.getDisplayOrder(),
                             q.getQuestionType(),
                             truncate(q.getQuestionText(), 120),
-                            q.getProblemTitle()
+                            q.getProblemTitle(),
+                            q.getMarks() != null ? q.getMarks() : BigDecimal.ONE
                     ))
                     .toList();
 
             entries.add(new StudentQuestionAssignmentEntry(
-                    enrollment.getStudentEmail(), summaries, sqa.getAssignedAt()));
+                    enrollment.getStudentEmail(), pwd, summaries, sqa.getAssignedAt()));
         }
 
         auditLogService.logAdmin(
@@ -754,6 +809,14 @@ public class ExamAdminService {
         List<StudentQuestionAssignment> sqas =
                 sqaRepository.findByExamIdOrderByStudentEmailAsc(examId);
 
+        Map<String, String> passwordsByEmail = new HashMap<>();
+        assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId)
+                .forEach(a -> {
+                    if (a.getStudentEmail() != null) {
+                        passwordsByEmail.put(a.getStudentEmail().toLowerCase(), a.getAccessPassword());
+                    }
+                });
+
         int qps = sqas.isEmpty() ? 0 : sqas.get(0).getQuestionsPerStudent();
 
         List<StudentQuestionAssignmentEntry> entries = new ArrayList<>();
@@ -775,18 +838,83 @@ public class ExamAdminService {
                                 q.getDisplayOrder(),
                                 q.getQuestionType(),
                                 truncate(q.getQuestionText(), 120),
-                                q.getProblemTitle()
+                                q.getProblemTitle(),
+                                q.getMarks() != null ? q.getMarks() : BigDecimal.ONE
                         );
                     })
                     .filter(Objects::nonNull)
                     .toList();
 
+            String pwd = passwordsByEmail.get(sqa.getStudentEmail().toLowerCase());
             entries.add(new StudentQuestionAssignmentEntry(
-                    sqa.getStudentEmail(), summaries, sqa.getAssignedAt()));
+                    sqa.getStudentEmail(), pwd, summaries, sqa.getAssignedAt()));
         }
 
         return new QuestionAssignmentReportResponse(
                 examId, exam.getName(), bank.size(), qps, entries.size(), entries);
+    }
+
+    /**
+     * Immediately concludes / terminates an active exam for all candidates.
+     */
+    @Transactional
+    public Exam terminateExamImmediately(Long examId, String adminEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+
+        Instant now = Instant.now();
+        exam.setStatus("CLOSED");
+        exam.setEndAt(now);
+        examRepository.save(exam);
+
+        List<ExamAttempt> inProgress = examAttemptRepository.findByExamIdAndStatus(examId, "IN_PROGRESS");
+        for (ExamAttempt attempt : inProgress) {
+            attempt.setStatus("EXPIRED");
+            attempt.setEndTime(now);
+            examAttemptRepository.save(attempt);
+        }
+
+        auditLogService.logAdmin(
+                adminEmail != null ? adminEmail : "admin",
+                "EXAM_TERMINATED_BY_EXAMINER",
+                "Examiner concluded exam ID " + examId + " immediately (" + inProgress.size() + " in-progress attempts expired)."
+        );
+
+        return exam;
+    }
+
+    /**
+     * Live-adjusts the timing of an exam: add minutes, set new endAt, or change duration.
+     */
+    @Transactional
+    public Exam adjustExamTiming(Long examId, Integer addMinutes, Instant newEndAt, Integer newDurationMinutes, String adminEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+
+        if (addMinutes != null && addMinutes != 0) {
+            int newDur = Math.max(1, exam.getDurationMinutes() + addMinutes);
+            exam.setDurationMinutes(newDur);
+            if (exam.getEndAt() != null) {
+                exam.setEndAt(exam.getEndAt().plus(addMinutes, java.time.temporal.ChronoUnit.MINUTES));
+            }
+        } else if (newEndAt != null) {
+            exam.setEndAt(newEndAt);
+            if (newDurationMinutes != null && newDurationMinutes > 0) {
+                exam.setDurationMinutes(newDurationMinutes);
+            }
+        } else if (newDurationMinutes != null && newDurationMinutes > 0) {
+            exam.setDurationMinutes(newDurationMinutes);
+        }
+
+        examRepository.save(exam);
+
+        auditLogService.logAdmin(
+                adminEmail != null ? adminEmail : "admin",
+                "EXAM_TIMING_ADJUSTED",
+                "Examiner adjusted timing for exam ID " + examId + ": duration=" + exam.getDurationMinutes() + " mins, endAt=" + exam.getEndAt()
+        );
+
+        return exam;
     }
 
     private static String truncate(String text, int maxLen) {

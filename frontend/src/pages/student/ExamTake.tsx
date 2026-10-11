@@ -91,6 +91,8 @@ export default function ExamTake() {
   const [screenStatus, setScreenStatus] = useState<string>("UNKNOWN");
   const [fullscreenExited, setFullscreenExited] = useState<boolean>(false);
   const [pendingFullscreen, setPendingFullscreen] = useState<boolean>(false);
+  const [isWindowBlurred, setIsWindowBlurred] = useState<boolean>(false);
+  const [sidePanelDetected, setSidePanelDetected] = useState<boolean>(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiFrameAnalysisResponse | null>(null);
   const [cameraMinimized, setCameraMinimized] = useState<boolean>(false);
   const [entireScreenMissing, setEntireScreenMissing] = useState<boolean>(false);
@@ -1650,7 +1652,32 @@ export default function ExamTake() {
 
   const lastAttentionLossTime = useRef<number | null>(null);
 
-  // Fullscreen, tab visibility, and application-window focus tracking.
+  // Helper to verify screen integrity against Chrome Side Panel (Ask Gemini) and Split-Screen
+  const checkScreenIntegrity = useCallback(() => {
+    const isFullscreen = Boolean(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement
+    );
+
+    // Chrome Side Panel (e.g. Ask Gemini, Google Search) or split-screen docks to the right/left
+    // shrinking innerWidth relative to screen availWidth.
+    const screenWidth = window.screen.availWidth || window.screen.width;
+    const widthRatio = window.innerWidth / screenWidth;
+    const hasSidePanel = widthRatio < 0.88;
+    setSidePanelDetected(hasSidePanel);
+
+    if (!isFullscreen && Date.now() - examStartTimeRef.current > 1500) {
+      if (!submittedRef.current) {
+        setFullscreenExited(true);
+      }
+    } else if (isFullscreen) {
+      setFullscreenExited(false);
+    }
+  }, []);
+
+  // Fullscreen, tab visibility, side-panel and application-window focus tracking.
   useEffect(() => {
     if (!session || !screenGatePassed) return;
 
@@ -1693,10 +1720,12 @@ export default function ExamTake() {
         }
       } else {
         setFullscreenExited(false);
+        checkScreenIntegrity();
       }
     }
 
     function beginAttentionLoss(source: "visibility_hidden" | "window_blur") {
+      setIsWindowBlurred(true);
       setWarning("Warning: please remain on the examination page.");
       if (lastAttentionLossTime.current === null) {
         lastAttentionLossTime.current = Date.now();
@@ -1712,6 +1741,7 @@ export default function ExamTake() {
     }
 
     function endAttentionLoss() {
+      setIsWindowBlurred(false);
       if (lastAttentionLossTime.current !== null) {
         const dur = (Date.now() - lastAttentionLossTime.current) / 1000;
         lastAttentionLossTime.current = null;
@@ -1722,18 +1752,29 @@ export default function ExamTake() {
 
     function onVisibilityChange() {
       if (document.hidden) {
+        setIsWindowBlurred(true);
         beginAttentionLoss("visibility_hidden");
       } else if (document.hasFocus()) {
+        setIsWindowBlurred(false);
         endAttentionLoss();
+        checkScreenIntegrity();
       }
     }
 
     function onWindowBlur() {
+      setIsWindowBlurred(true);
       beginAttentionLoss("window_blur");
+      checkScreenIntegrity();
     }
 
     function onWindowFocus() {
+      setIsWindowBlurred(false);
       endAttentionLoss();
+      checkScreenIntegrity();
+    }
+
+    function onWindowResize() {
+      checkScreenIntegrity();
     }
 
     document.addEventListener("fullscreenchange", onFullscreenChange);
@@ -1743,6 +1784,9 @@ export default function ExamTake() {
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("blur", onWindowBlur);
     window.addEventListener("focus", onWindowFocus);
+    window.addEventListener("resize", onWindowResize);
+
+    const integrityInterval = setInterval(checkScreenIntegrity, 1000);
 
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
@@ -1752,9 +1796,63 @@ export default function ExamTake() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("focus", onWindowFocus);
+      window.removeEventListener("resize", onWindowResize);
+      clearInterval(integrityInterval);
       stopAllMediaStreams();
     };
-  }, [session, screenGatePassed, logEvent, flushNow, stopAllMediaStreams, issueWarningStrike, handleSubmit]);
+  }, [session, screenGatePassed, logEvent, flushNow, stopAllMediaStreams, issueWarningStrike, handleSubmit, checkScreenIntegrity]);
+
+  // Real-time synchronization with server: reflects examiner time additions & instant termination without refresh
+  useEffect(() => {
+    if (!session || !screenGatePassed || submittedRef.current) return;
+
+    let syncTimer: any = null;
+
+    const performLiveSync = async () => {
+      if (submittedRef.current) return;
+      try {
+        const syncRes = await api.get<{
+          examId: number;
+          attemptId: number;
+          examStatus: string;
+          isTerminated: boolean;
+          remainingSeconds: number;
+          durationMinutes: number;
+          endAt: string | null;
+          message: string | null;
+        }>(`/api/student/exams/${examId}/live-sync?attemptId=${session.attemptId}`, "student");
+
+        if (syncRes.isTerminated) {
+          const terminationReason = syncRes.message || "Examination has been concluded by the examiner.";
+          handleSubmit(terminationReason);
+          return;
+        }
+
+        setRemainingSeconds((prev) => {
+          if (Math.abs(syncRes.remainingSeconds - prev) > 8) {
+            const diffMin = Math.round((syncRes.remainingSeconds - prev) / 60);
+            if (diffMin !== 0) {
+              setWarning(
+                `⏱️ Exam duration was updated by examiner (${diffMin > 0 ? `+${diffMin}` : diffMin} min).`
+              );
+              setTimeout(() => setWarning(null), 6000);
+            }
+            return syncRes.remainingSeconds;
+          }
+          return prev;
+        });
+      } catch {
+        // Silently ignore background polling blips
+      }
+    };
+
+    performLiveSync();
+    syncTimer = setInterval(performLiveSync, 4000);
+
+    return () => {
+      if (syncTimer) clearInterval(syncTimer);
+    };
+  }, [session, screenGatePassed, examId, handleSubmit]);
 
 
   const questions: StudentQuestion[] = useMemo(() => session?.questions ?? [], [session]);
@@ -2215,6 +2313,76 @@ export default function ExamTake() {
         </div>
       )}
 
+      {/* Side-Panel / Gemini Blocker Overlay */}
+      {sidePanelDetected && !submittedRef.current && (
+        <div className="fixed inset-0 z-[120] bg-slate-950/98 backdrop-blur-2xl flex items-center justify-center p-6 text-center animate-in fade-in duration-200">
+          <div className="bg-slate-900 border-2 border-amber-500 rounded-2xl max-w-lg w-full p-8 shadow-2xl space-y-4">
+            <div className="w-16 h-16 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-bounce">
+              ⚠️
+            </div>
+            <h2 className="text-xl font-bold text-white">Browser Side-Panel / Split-Screen Detected</h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              A browser side-panel (such as <strong>Chrome &apos;Ask Gemini&apos;</strong>, Google Search panel, or split-screen) is open on your screen.
+            </p>
+            <div className="bg-amber-950/60 border border-amber-700/80 rounded-xl p-3.5 text-amber-200 text-xs font-semibold text-left space-y-1.5">
+              <p className="font-bold text-amber-300">Examination Policy Notice:</p>
+              <ul className="list-disc list-inside space-y-1 text-slate-300">
+                <li>All exam questions and editors are hidden while a side panel is active.</li>
+                <li>Close the <strong>Ask Gemini</strong> panel at the top-right of Chrome.</li>
+                <li>Ensure the browser window is maximized and occupies the full display.</li>
+              </ul>
+            </div>
+            <button
+              onClick={async () => {
+                try {
+                  if (document.documentElement.requestFullscreen) {
+                    await document.documentElement.requestFullscreen();
+                  }
+                } catch {}
+                checkScreenIntegrity();
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl transition shadow-lg cursor-pointer text-sm"
+            >
+              ⤢ Re-enter Fullscreen &amp; Verify Screen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Window Defocus Obfuscation Shield */}
+      {isWindowBlurred && !sidePanelDetected && !fullscreenExited && !submittedRef.current && (
+        <div
+          onClick={() => {
+            window.focus();
+            setIsWindowBlurred(false);
+          }}
+          className="fixed inset-0 z-[110] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6 text-center animate-in fade-in duration-150 cursor-pointer"
+        >
+          <div className="bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-4">
+            <div className="w-16 h-16 bg-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-pulse">
+              🔒
+            </div>
+            <h2 className="text-xl font-bold text-white">Examination Window Unfocused</h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Examination questions are hidden because your active focus moved to another application or window.
+            </p>
+            <div className="bg-rose-950/60 border border-rose-800 text-rose-300 text-xs p-3 rounded-lg font-semibold">
+              Click anywhere on this screen to restore focus and continue your examination.
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.focus();
+                setIsWindowBlurred(false);
+              }}
+              className="w-full bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg text-sm cursor-pointer"
+            >
+              Click to Resume Exam Focus
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Explicit 3-Strike Proctoring Warning Modal */}
       {activeWarningModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -2606,7 +2774,13 @@ export default function ExamTake() {
         </div>
       )}
 
-      <div className={`${String(q.questionType).toUpperCase() === "CODING" ? "max-w-7xl" : "max-w-2xl"} mx-auto px-4 py-6`}>
+      <div
+        className={`${String(q.questionType).toUpperCase() === "CODING" ? "max-w-7xl" : "max-w-2xl"} mx-auto px-4 py-6 transition-all duration-200 ${
+          (isWindowBlurred || sidePanelDetected || fullscreenExited) && !submittedRef.current
+            ? "filter blur-2xl pointer-events-none select-none opacity-10"
+            : ""
+        }`}
+      >
         {String(q.questionType).toUpperCase() === "CODING" ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
             {/* Left: Problem Details & Examples */}

@@ -31,6 +31,49 @@ export default function ExamDetail() {
   const [error, setError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [timingAdjusting, setTimingAdjusting] = useState(false);
+  const [showTerminateModal, setShowTerminateModal] = useState(false);
+  const [liveTimingToast, setLiveTimingToast] = useState<string | null>(null);
+
+  async function handleAdjustTime(mins: number) {
+    if (!exam) return;
+    setTimingAdjusting(true);
+    try {
+      const updated = await api.post<Exam>(
+        `/api/admin/exams/${exam.id}/adjust-timing`,
+        { addMinutes: mins },
+        "admin"
+      );
+      setExam(updated);
+      setLiveTimingToast(`⏱️ Exam duration extended (+${mins} mins)! Active student screens will reflect this immediately without refresh.`);
+      setTimeout(() => setLiveTimingToast(null), 6000);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to adjust exam timing.");
+    } finally {
+      setTimingAdjusting(false);
+    }
+  }
+
+  async function handleTerminateNow() {
+    if (!exam) return;
+    setTimingAdjusting(true);
+    try {
+      const updated = await api.post<Exam>(
+        `/api/admin/exams/${exam.id}/terminate-now`,
+        undefined,
+        "admin"
+      );
+      setExam(updated);
+      setShowTerminateModal(false);
+      setLiveTimingToast("🛑 Exam concluded immediately! All active student sessions are now terminating automatically without refresh.");
+      setTimeout(() => setLiveTimingToast(null), 6000);
+      reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to terminate exam.");
+    } finally {
+      setTimingAdjusting(false);
+    }
+  }
 
   function handleTabChange(nextTab: Tab) {
     setTab(nextTab);
@@ -164,6 +207,88 @@ export default function ExamDetail() {
         </div>
       </div>
 
+      {/* Live Timing / Concluded notification toast */}
+      {liveTimingToast && (
+        <div className="mb-4 bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span>✨</span>
+            <span>{liveTimingToast}</span>
+          </div>
+          <button onClick={() => setLiveTimingToast(null)} className="text-emerald-700 hover:text-emerald-950 font-bold cursor-pointer">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Live Examiner Real-Time Timing & Termination Controls Bar */}
+      <div className="mb-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-900/60 rounded-2xl p-4 sm:p-5 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="relative flex h-3.5 w-3.5 shrink-0">
+            {exam.status === "CLOSED" ? (
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-500"></span>
+            ) : (
+              <>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
+              </>
+            )}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+                Live Proctoring &amp; Timing Sync
+              </span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                exam.status === "CLOSED"
+                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                  : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+              }`}>
+                {exam.status === "CLOSED" ? "Concluded / Closed" : "Live & Active"}
+              </span>
+            </div>
+            <div className="text-xs sm:text-sm font-medium text-slate-300 mt-0.5">
+              Duration: <span className="text-white font-bold">{exam.durationMinutes} mins</span> &middot; Scheduled End:{" "}
+              <span className="text-white font-mono font-semibold">
+                {exam.endAt ? new Date(exam.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : "N/A"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {exam.status !== "CLOSED" ? (
+            <>
+              <div className="flex items-center gap-1.5 bg-slate-800/90 p-1.5 rounded-xl border border-slate-700/80">
+                <span className="text-xs text-slate-300 font-semibold px-1.5">⏱️ Extend Time:</span>
+                {[5, 10, 15, 30].map((mins) => (
+                  <button
+                    key={mins}
+                    disabled={timingAdjusting}
+                    onClick={() => handleAdjustTime(mins)}
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white transition shadow-xs cursor-pointer disabled:opacity-50"
+                    title={`Instantly add ${mins} minutes to exam timer for all candidates`}
+                  >
+                    +{mins}m
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setShowTerminateModal(true)}
+                disabled={timingAdjusting}
+                className="bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <span>⏹️</span> End Exam Now
+              </button>
+            </>
+          ) : (
+            <span className="text-xs text-rose-300 bg-rose-950/40 border border-rose-800/60 px-3 py-1.5 rounded-lg font-medium">
+              Exam has ended. Student attempts are closed.
+            </span>
+          )}
+        </div>
+      </div>
+
       <div className="flex gap-1 mb-6 border-b border-slate-200">
         {[
           { id: "questions", label: "Questions" },
@@ -254,6 +379,45 @@ export default function ExamDetail() {
                 ) : (
                   "Yes, Delete Exam"
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Terminate Exam Now Confirmation Modal */}
+      {showTerminateModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-rose-200">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-2xl font-bold">
+                🛑
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">End Exam Immediately?</h3>
+                <p className="text-xs text-slate-500">Conclude exam for all candidates right now</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-700 bg-rose-50 border border-rose-200 p-3.5 rounded-xl leading-relaxed">
+              ⚠️ All currently active student exam sessions will be <strong>immediately submitted and terminated without needing a page refresh</strong>.
+              New students will not be allowed to start.
+            </p>
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowTerminateModal(false)}
+                disabled={timingAdjusting}
+                className="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleTerminateNow}
+                disabled={timingAdjusting}
+                className="px-4 py-2 text-xs font-bold rounded-lg bg-rose-600 text-white hover:bg-rose-700 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {timingAdjusting ? "Concluding Exam..." : "Yes, End Exam Immediately"}
               </button>
             </div>
           </div>
@@ -4430,10 +4594,12 @@ interface AssignedQuestionSummary {
   questionType: string;
   questionText: string;
   problemTitle: string | null;
+  marks?: number;
 }
 
 interface StudentAssignmentEntry {
   studentEmail: string;
+  accessPassword?: string | null;
   questions: AssignedQuestionSummary[];
   assignedAt: string;
 }
@@ -4457,6 +4623,7 @@ function QuestionAssignTab({
   questionCount: number;
 }) {
   const [qps, setQps] = useState<number>(2);
+  const [studentCount, setStudentCount] = useState<number | "">("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<QuestionAssignmentReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -4486,9 +4653,13 @@ function QuestionAssignTab({
     setLoading(true);
     setError(null);
     try {
+      const payload: { questionsPerStudent: number; studentCount?: number } = { questionsPerStudent: qps };
+      if (typeof studentCount === "number" && studentCount > 0) {
+        payload.studentCount = studentCount;
+      }
       const result = await api.post<QuestionAssignmentReport>(
         `/api/admin/exams/${examId}/assign-questions-randomly`,
-        { questionsPerStudent: qps },
+        payload,
         "admin"
       );
       setReport(result);
@@ -4499,16 +4670,193 @@ function QuestionAssignTab({
     }
   }
 
+  function exportPDF() {
+    if (!report || report.assignments.length === 0) return;
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Popup blocked! Please allow popups for this site to generate and print the PDF report.");
+      return;
+    }
+
+    const pagesHtml = report.assignments.map((entry, idx) => {
+      const qRows = entry.questions.map((q, qIndex) => `
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 10px 12px; font-weight: bold; text-align: center; width: 45px; color: #1e293b;">${qIndex + 1}</td>
+          <td style="padding: 10px 12px; width: 95px;">
+            <span style="display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; ${
+              q.questionType === 'CODING'
+                ? 'background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe;'
+                : 'background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;'
+            }">
+              ${q.questionType}
+            </span>
+          </td>
+          <td style="padding: 10px 12px;">
+            <div style="font-weight: 700; color: #0f172a; margin-bottom: 3px; font-size: 13px;">
+              ${q.problemTitle ? q.problemTitle.replace(/</g, "&lt;").replace(/>/g, "&gt;") : `Question #${q.displayOrder || qIndex + 1}`}
+            </div>
+            <div style="font-size: 12px; color: #475569; line-height: 1.45;">
+              ${(q.questionText ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;")}
+            </div>
+          </td>
+          <td style="padding: 10px 12px; text-align: center; width: 60px; font-weight: 700; color: #1e293b;">
+            ${q.marks ?? 1}
+          </td>
+        </tr>
+      `).join("");
+
+      return `
+        <div class="candidate-page">
+          <div>
+            <!-- Header -->
+            <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start;">
+              <div>
+                <div style="font-size: 19px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">AI EXAM & PROCTORING PORTAL</div>
+                <div style="font-size: 13px; font-weight: 700; color: #2563eb; margin-top: 2px;">CANDIDATE QUESTION PAPER ASSIGNMENT REPORT</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Exam: <strong>${examName}</strong> (ID: ${examId})</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="display: inline-block; background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 6px;">
+                  Candidate ${idx + 1} of ${report.assignments.length}
+                </div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Assigned: ${new Date(entry.assignedAt).toLocaleString()}</div>
+              </div>
+            </div>
+
+            <!-- Candidate Details Card -->
+            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 18px; margin-bottom: 18px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <tr>
+                  <td style="width: 50%; padding-bottom: 8px;">
+                    <span style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase;">Candidate Email</span><br/>
+                    <strong style="color: #0f172a; font-size: 15px;">${entry.studentEmail}</strong>
+                  </td>
+                  <td style="width: 50%; padding-bottom: 8px;">
+                    <span style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase;">Exam Access Password</span><br/>
+                    <strong style="color: #0f172a; font-size: 15px; font-family: monospace; letter-spacing: 1px;">${entry.accessPassword || "Auto Login / Verified"}</strong>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 6px;">
+                    <span style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase;">Total Questions Assigned</span><br/>
+                    <strong style="color: #2563eb; font-size: 14px;">${entry.questions.length} Randomly Assigned Questions</strong>
+                  </td>
+                  <td style="padding-top: 6px;">
+                    <span style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase;">Paper Authenticity</span><br/>
+                    <span style="color: #16a34a; font-weight: 700; font-size: 12px;">✓ Unique Question Randomization Confirmed</span>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Questions Table -->
+            <div style="margin-bottom: 15px;">
+              <div style="font-size: 12px; font-weight: 800; color: #334155; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                Assigned Examination Questions (1 Page Report):
+              </div>
+              <table style="width: 100%; border-collapse: collapse; font-size: 12.5px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
+                <thead>
+                  <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1; text-align: left; font-size: 11px; color: #475569; text-transform: uppercase;">
+                    <th style="padding: 9px 12px; text-align: center;">#</th>
+                    <th style="padding: 9px 12px;">Type</th>
+                    <th style="padding: 9px 12px;">Question / Problem Details</th>
+                    <th style="padding: 9px 12px; text-align: center;">Marks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${qRows}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Footer (One page per student) -->
+          <div style="border-top: 1px solid #e2e8f0; padding-top: 10px; margin-top: auto; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8;">
+            <div>Confidential Examination Material • Dedicated Student Paper • Unauthorized copying prohibited</div>
+            <div>Candidate: <strong>${entry.studentEmail}</strong> • Page 1 of 1</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Question_Assignment_Report_${examName.replace(/[^a-zA-Z0-9]/g, "_")}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 12mm 15mm;
+            }
+            * {
+              box-sizing: border-box;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              color: #1e293b;
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .candidate-page {
+              page-break-after: always;
+              break-after: page;
+              page-break-inside: avoid;
+              break-inside: avoid;
+              min-height: 96vh;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              padding: 10px 0;
+            }
+            @media screen {
+              body {
+                background: #e2e8f0;
+                padding: 20px;
+              }
+              .candidate-page {
+                background: white;
+                max-width: 800px;
+                margin: 0 auto 30px auto;
+                padding: 30px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                border-radius: 8px;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${pagesHtml}
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+              }, 400);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(fullHtml);
+    printWindow.document.close();
+  }
+
   function exportCSV() {
     if (!report) return;
     const rows: string[] = [
-      "Student Email,Question #,Question ID,Type,Preview,Problem Title,Assigned At",
+      "Student Email,Access Password,Question #,Question ID,Type,Preview,Problem Title,Marks,Assigned At",
     ];
     for (const entry of report.assignments) {
       for (const [i, q] of entry.questions.entries()) {
         const preview = (q.questionText ?? "").replace(/"/g, '""').substring(0, 80);
         rows.push(
-          `"${entry.studentEmail}",${i + 1},${q.questionId},"${q.questionType}","${preview}","${q.problemTitle ?? ""}","${entry.assignedAt}"`
+          `"${entry.studentEmail}","${entry.accessPassword || ""}",${i + 1},${q.questionId},"${q.questionType}","${preview}","${q.problemTitle ?? ""}",${q.marks ?? 1},"${entry.assignedAt}"`
         );
       }
     }
@@ -4547,16 +4895,22 @@ function QuestionAssignTab({
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              📋 Random Question Assignment
+              📋 Random Question Assignment &amp; 1-Page PDF Reports
             </h2>
             <p className="text-sm text-slate-500 mt-1 max-w-xl">
-              Randomly map a fixed number of questions from the question bank to each
-              assigned student. Each student gets a unique, randomised subset.
-              Re-running overwrites any previous assignment.
+              Randomly map a fixed number of questions from the question bank to enrolled students or specify
+              the exact number of students to assign (with automatic credential generation).
+              Generates a dedicated PDF report with exactly 1 candidate per page.
             </p>
           </div>
           {report && (
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={exportPDF}
+                className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-xs transition cursor-pointer"
+              >
+                📄 Print / Save PDF (1 Page Per Student)
+              </button>
               <button
                 onClick={exportCSV}
                 className="flex items-center gap-1.5 text-xs border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer"
@@ -4595,10 +4949,33 @@ function QuestionAssignTab({
             </div>
           </div>
 
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">
+              Number of students (optional)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="student-count-input"
+                type="number"
+                min={1}
+                placeholder="All assigned"
+                value={studentCount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setStudentCount(val === "" ? "" : Math.max(1, parseInt(val, 10) || 1));
+                }}
+                className="w-32 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <span className="text-xs text-slate-400">
+                (blank = all enrolled)
+              </span>
+            </div>
+          </div>
+
           <button
             onClick={handleAssign}
             disabled={loading || questionCount === 0}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2 rounded-lg transition cursor-pointer flex items-center gap-2"
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2 rounded-lg transition cursor-pointer flex items-center gap-2 shadow-xs"
           >
             {loading ? (
               <>
@@ -4609,7 +4986,7 @@ function QuestionAssignTab({
                 Assigning…
               </>
             ) : (
-              "🎲 Assign Randomly"
+              "🎲 Assign Random Questions"
             )}
           </button>
 

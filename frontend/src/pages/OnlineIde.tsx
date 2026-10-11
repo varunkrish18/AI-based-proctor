@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { RunCodeResponse } from "../types";
+import { handleSmartEditorKeyDown } from "../utils/editorIndentation";
 
 interface LanguagePreset {
   id: string;
@@ -140,6 +141,7 @@ export default function OnlineIde() {
   const [copied, setCopied] = useState<boolean>(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
 
   const activeLangConfig = LANGUAGES.find((l) => l.id === selectedLang) || LANGUAGES[0];
 
@@ -317,10 +319,23 @@ export default function OnlineIde() {
             </div>
           </div>
 
+          {/* Smart Indentation Helper Bar */}
+          <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-1 text-[11px] text-slate-400 flex items-center justify-between select-none">
+            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+              <span>⚡</span> Smart Indent: Enter auto-indents • Tab &amp; Shift+Tab indents 4 spaces • Auto-pairs brackets
+            </span>
+            <span className="font-mono text-slate-400">
+              {lineCount} lines • {code.length} chars
+            </span>
+          </div>
+
           {/* Code Textarea & Gutter */}
           <div className="flex-1 flex overflow-hidden relative min-h-[420px] lg:min-h-[600px] font-mono text-xs">
             {/* Gutter */}
-            <div className="w-12 bg-slate-925 select-none text-slate-600 text-right pr-3 pt-3 leading-5 border-r border-slate-800/60 shrink-0">
+            <div 
+              ref={gutterRef}
+              className="w-12 bg-slate-925 select-none text-slate-600 text-right pr-3 pt-3 leading-5 border-r border-slate-800/60 shrink-0 overflow-hidden"
+            >
               {lineNumbers.map((n) => (
                 <div key={n}>{n}</div>
               ))}
@@ -332,20 +347,23 @@ export default function OnlineIde() {
               value={code}
               onChange={(e) => setCode(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Tab") {
-                  e.preventDefault();
-                  const start = e.currentTarget.selectionStart;
-                  const end = e.currentTarget.selectionEnd;
-                  setCode(code.substring(0, start) + "    " + code.substring(end));
-                  setTimeout(() => {
-                    if (textareaRef.current) {
-                      textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 4;
-                    }
-                  }, 0);
+                handleSmartEditorKeyDown(e, {
+                  code,
+                  setCode,
+                  textarea: textareaRef.current,
+                  indentSize: 4,
+                });
+              }}
+              onScroll={(e) => {
+                if (gutterRef.current) {
+                  gutterRef.current.scrollTop = e.currentTarget.scrollTop;
                 }
               }}
               spellCheck={false}
-              className="flex-1 w-full bg-slate-950 text-slate-100 p-3 leading-5 outline-none resize-none font-mono selection:bg-blue-600 selection:text-white"
+              autoCapitalize="off"
+              autoComplete="off"
+              autoCorrect="off"
+              className="flex-1 w-full bg-slate-950 text-slate-100 p-3 leading-5 outline-none resize-none font-mono selection:bg-blue-600 selection:text-white tab-size-4"
             />
           </div>
         </div>

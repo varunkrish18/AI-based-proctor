@@ -202,9 +202,16 @@ public class CodeExecutionService {
 
             if (exitCode != 0) {
                 String errorMsg = !stderr.isBlank() ? stderr.trim() : "Process exited with non-zero exit code: " + exitCode;
-                // If local toolchain missing/failed, attempt online execution engine
-                if (errorMsg.contains("is not recognized") || errorMsg.contains("not found") || errorMsg.contains("Cannot run program")) {
-                    log.info("Process indicated missing local toolchain ('{}'). Falling back to online engine.", errorMsg);
+                // If local toolchain missing/failed, or JRE lacking compiler module (JEP 330 InternalError)
+                if (errorMsg.contains("is not recognized") ||
+                        errorMsg.contains("not found") ||
+                        errorMsg.contains("Cannot run program") ||
+                        errorMsg.contains("Module jdk.compiler not in boot Layer") ||
+                        errorMsg.contains("jdk.compiler") ||
+                        errorMsg.contains("A JNI error has occurred") ||
+                        errorMsg.contains("check your installation and try again") ||
+                        errorMsg.contains("InternalError")) {
+                    log.info("Process indicated missing/incomplete local toolchain ('{}'). Falling back to online engine.", errorMsg);
                     return executeViaOnlineEngine(caseIndex, code, lang, input, expectedOutput);
                 }
                 String status = errorMsg.contains("SyntaxError") || errorMsg.contains("error:") ? "COMPILATION_ERROR" : "RUNTIME_ERROR";
@@ -250,23 +257,25 @@ public class CodeExecutionService {
         }
     }
 
-    private static final String PISTON_API_URL = "https://emkc.org/api/v2/piston/execute";
+    private static final String WANDBOX_API_URL = "https://wandbox.org/api/compile.json";
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
 
     private TestCaseExecutionResult executeViaOnlineEngine(int caseIndex, String code, String language,
                                                            String input, String expectedOutput) {
         long startTime = System.currentTimeMillis();
         try {
-            String normLang = mapLanguageForOnlineEngine(language);
-            String fileName = "solution." + getFileExtension(normLang);
-            if ("java".equals(normLang)) {
-                fileName = extractJavaClassName(code) + ".java";
+            String normLang = language != null ? language.toLowerCase().trim() : "python";
+            String compiler = mapCompilerForWandbox(normLang);
+
+            String processedCode = code;
+            if ("java".equals(normLang) || compiler.contains("openjdk")) {
+                // Wandbox compiles source in 'prog.java'. A top-level 'public class' causes javac error.
+                processedCode = processedCode.replaceAll("public\\s+(final\\s+)?class\\s+", "class ");
             }
 
             Map<String, Object> payload = Map.of(
-                    "language", normLang,
-                    "version", "*",
-                    "files", List.of(Map.of("name", fileName, "content", code)),
+                    "compiler", compiler,
+                    "code", processedCode,
                     "stdin", input != null ? input : ""
             );
 
@@ -277,9 +286,9 @@ public class CodeExecutionService {
                     .build();
 
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create(PISTON_API_URL))
+                    .uri(java.net.URI.create(WANDBOX_API_URL))
                     .header("Content-Type", "application/json")
-                    .timeout(java.time.Duration.ofSeconds(10))
+                    .timeout(java.time.Duration.ofSeconds(15))
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
 
@@ -294,33 +303,31 @@ public class CodeExecutionService {
             }
 
             com.fasterxml.jackson.databind.JsonNode root = MAPPER.readTree(response.body());
-            com.fasterxml.jackson.databind.JsonNode runNode = root.path("run");
-            com.fasterxml.jackson.databind.JsonNode compileNode = root.path("compile");
+            String statusStr = root.path("status").asText("0");
+            String compilerErr = root.path("compiler_error").asText("");
+            String compilerOut = root.path("compiler_output").asText("");
+            String progOut = root.path("program_output").asText("");
+            String progErr = root.path("program_error").asText("");
 
-            int compileExit = compileNode.path("code").asInt(0);
-            String compileErr = compileNode.path("stderr").asText("");
-            String compileOut = compileNode.path("stdout").asText("");
-
-            if (compileExit != 0 || (!compileErr.isBlank() && !compileNode.isMissingNode())) {
-                String errMsg = !compileErr.isBlank() ? compileErr : compileOut;
+            // Check compilation error
+            if (!"0".equals(statusStr) && (!compilerErr.isBlank() || !compilerOut.isBlank()) && progOut.isEmpty()) {
+                String errMsg = !compilerErr.isBlank() ? compilerErr : compilerOut;
                 return new TestCaseExecutionResult(
                         caseIndex, input, expectedOutput, "", false,
                         "COMPILATION_ERROR", elapsed, errMsg.trim()
                 );
             }
 
-            int runExit = runNode.path("code").asInt(0);
-            String stdout = runNode.path("stdout").asText("").trim();
-            String stderr = runNode.path("stderr").asText("").trim();
-
-            if (runExit != 0) {
+            // Check runtime error
+            if (!"0".equals(statusStr)) {
+                String errMsg = !progErr.isBlank() ? progErr : (!compilerErr.isBlank() ? compilerErr : "Process exited with status " + statusStr);
                 return new TestCaseExecutionResult(
-                        caseIndex, input, expectedOutput, stdout, false,
-                        "RUNTIME_ERROR", elapsed, !stderr.isBlank() ? stderr : "Process exited with code " + runExit
+                        caseIndex, input, expectedOutput, progOut.trim(), false,
+                        "RUNTIME_ERROR", elapsed, errMsg.trim()
                 );
             }
 
-            String actualTrimmed = stdout.replace("\r\n", "\n").trim();
+            String actualTrimmed = progOut.replace("\r\n", "\n").trim();
             String expectedTrimmed = expectedOutput != null ? expectedOutput.replace("\r\n", "\n").trim() : "";
             boolean passed = expectedTrimmed.isEmpty() || actualTrimmed.equals(expectedTrimmed);
             String status = passed ? "ACCEPTED" : "WRONG_ANSWER";
@@ -340,14 +347,14 @@ public class CodeExecutionService {
         }
     }
 
-    private String mapLanguageForOnlineEngine(String lang) {
+    private String mapCompilerForWandbox(String lang) {
         String lower = lang != null ? lang.toLowerCase().trim() : "python";
         return switch (lower) {
-            case "java" -> "java";
-            case "c", "gcc", "clang" -> "c";
-            case "cpp", "c++", "g++" -> "cpp";
-            case "js", "javascript", "node" -> "javascript";
-            default -> "python";
+            case "java" -> "openjdk-jdk-21+35";
+            case "c", "gcc", "clang" -> "gcc-13.2.0-c";
+            case "cpp", "c++", "g++" -> "gcc-13.2.0";
+            case "js", "javascript", "node" -> "nodejs-20.17.0";
+            default -> "cpython-3.12.7";
         };
     }
 
@@ -397,6 +404,37 @@ public class CodeExecutionService {
         }
 
         return exeName;
+    }
+
+    private synchronized String findJavacExecutable() {
+        boolean isWin = System.getProperty("os.name", "").toLowerCase().contains("win");
+        String exeName = isWin ? "javac.exe" : "javac";
+
+        String javaHome = System.getProperty("java.home");
+        if (javaHome != null && !javaHome.isBlank()) {
+            Path p = Paths.get(javaHome, "bin", exeName);
+            if (Files.exists(p)) {
+                return p.toAbsolutePath().toString();
+            }
+        }
+
+        String envJavaHome = System.getenv("JAVA_HOME");
+        if (envJavaHome != null && !envJavaHome.isBlank()) {
+            Path p = Paths.get(envJavaHome, "bin", exeName);
+            if (Files.exists(p)) {
+                return p.toAbsolutePath().toString();
+            }
+        }
+
+        try {
+            Process p = new ProcessBuilder(exeName, "-version").start();
+            if (p.waitFor(2, TimeUnit.SECONDS) && p.exitValue() == 0) {
+                return exeName;
+            }
+        } catch (Exception ignored) {
+        }
+
+        return null;
     }
 
     private static volatile String cachedCCompilerPath = null;
@@ -601,10 +639,48 @@ public class CodeExecutionService {
             }
             case "java": {
                 String className = extractJavaClassName(code);
-                Path file = dir.resolve(className + ".java");
-                Files.writeString(file, code, StandardCharsets.UTF_8);
+                Path sourceFile = dir.resolve(className + ".java");
+                Files.writeString(sourceFile, code, StandardCharsets.UTF_8);
+
+                String javac = findJavacExecutable();
+                if (javac == null) {
+                    log.info("Local javac compiler not found (JRE only); falling back to online execution engine.");
+                    return null;
+                }
+
+                ProcessBuilder compilePb = new ProcessBuilder(javac, "-encoding", "UTF-8", sourceFile.toAbsolutePath().toString());
+                compilePb.directory(dir.toFile());
+                Process compileProc;
+                try {
+                    compileProc = compilePb.start();
+                } catch (IOException ex) {
+                    log.warn("Cannot start javac {}: {}", javac, ex.getMessage());
+                    return null;
+                }
+
+                Future<String> compileErr = captureStreamAsync(compileProc.getErrorStream());
+                Future<String> compileOut = captureStreamAsync(compileProc.getInputStream());
+                try {
+                    boolean compiled = compileProc.waitFor(12, TimeUnit.SECONDS);
+                    if (!compiled || compileProc.exitValue() != 0) {
+                        String err = compileErr.get(2, TimeUnit.SECONDS);
+                        if (err.isBlank()) err = compileOut.get(1, TimeUnit.SECONDS);
+                        if (err.contains("Module jdk.compiler not in boot Layer") ||
+                                err.contains("A JNI error has occurred") ||
+                                err.contains("jdk.compiler") ||
+                                err.contains("check your installation and try again") ||
+                                err.contains("InternalError")) {
+                            log.info("Javac launcher failed with module error ('{}'); falling back to online execution engine.", err.trim());
+                            return null;
+                        }
+                        throw new RuntimeException("COMPILATION_ERROR: " + (!err.isBlank() ? err.trim() : "Java compilation failed"));
+                    }
+                } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                    throw new RuntimeException("COMPILATION_ERROR: " + e.getMessage());
+                }
+
                 String javaExe = findJavaExecutable();
-                return List.of(javaExe, file.toAbsolutePath().toString());
+                return List.of(javaExe, "-cp", dir.toAbsolutePath().toString(), className);
             }
             default:
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported programming language: " + language);

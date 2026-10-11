@@ -395,4 +395,60 @@ public class StudentExamService {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to decode question order.");
         }
     }
+
+    /**
+     * Real-time heartbeat/sync check during student examination.
+     * Accurately reflects examiner time additions and immediate termination without page refresh.
+     */
+    @Transactional(readOnly = true)
+    public ExamLiveSyncResponse getLiveSync(Long examId, Long attemptId, String studentEmail) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found."));
+
+        ExamAttempt attempt = attemptRepository.findByIdAndStudentEmailIgnoreCase(attemptId, studentEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+
+        Instant now = Instant.now();
+
+        boolean isExamClosed = "CLOSED".equalsIgnoreCase(exam.getStatus());
+        boolean isAttemptDone = !"IN_PROGRESS".equalsIgnoreCase(attempt.getStatus());
+        boolean isPastExamEnd = exam.getEndAt() != null && now.isAfter(exam.getEndAt());
+
+        if (isExamClosed || isAttemptDone || isPastExamEnd) {
+            String msg = isExamClosed
+                    ? "The examiner has concluded this examination."
+                    : (isPastExamEnd ? "Exam scheduled duration has concluded." : "Exam attempt status: " + attempt.getStatus());
+            return new ExamLiveSyncResponse(
+                    examId,
+                    attemptId,
+                    exam.getStatus(),
+                    true,
+                    0L,
+                    exam.getDurationMinutes(),
+                    exam.getEndAt(),
+                    msg
+            );
+        }
+
+        // Live remaining seconds
+        long attemptElapsedSeconds = Math.max(0, java.time.temporal.ChronoUnit.SECONDS.between(attempt.getStartTime(), now));
+        long attemptRemaining = Math.max(0, ((long) exam.getDurationMinutes() * 60) - attemptElapsedSeconds);
+
+        long examRemaining = exam.getEndAt() != null
+                ? Math.max(0, java.time.temporal.ChronoUnit.SECONDS.between(now, exam.getEndAt()))
+                : attemptRemaining;
+
+        long effectiveRemaining = Math.min(attemptRemaining, examRemaining);
+
+        return new ExamLiveSyncResponse(
+                examId,
+                attemptId,
+                exam.getStatus(),
+                effectiveRemaining <= 0,
+                effectiveRemaining,
+                exam.getDurationMinutes(),
+                exam.getEndAt(),
+                null
+        );
+    }
 }

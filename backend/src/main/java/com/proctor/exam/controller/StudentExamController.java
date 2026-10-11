@@ -51,6 +51,16 @@ public class StudentExamController {
         return studentExamService.runCode(attemptId, auth.getName(), request);
     }
 
+    @GetMapping("/exams/{examId}/live-sync")
+    public ExamLiveSyncResponse liveSync(
+            @PathVariable Long examId,
+            @RequestParam Long attemptId,
+            Authentication auth,
+            HttpServletRequest request) {
+        requireMatchingExam(examId, request);
+        return studentExamService.getLiveSync(examId, attemptId, auth.getName());
+    }
+
     @PostMapping("/attempts/{attemptId}/submit")
     public AttemptResultResponse submit(@PathVariable Long attemptId, Authentication auth) {
         return studentExamService.submit(attemptId, auth.getName());

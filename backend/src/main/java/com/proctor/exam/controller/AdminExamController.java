@@ -139,23 +139,31 @@ public class AdminExamController {
 
     /**
      * Randomly assigns a fixed number of questions from the exam's question bank
-     * to each enrolled student.  Overwrites any prior assignment for this exam.
+     * to enrolled students or a specified number of students (auto-provisioned if needed).
+     * Overwrites any prior assignment for this exam.
      *
-     * Body: { "questionsPerStudent": 2 }
+     * Body: { "questionsPerStudent": 2, "studentCount": 10 }
      */
     @PostMapping("/{examId}/assign-questions-randomly")
     public com.proctor.exam.dto.QuestionAssignmentReportResponse assignQuestionsRandomly(
             @PathVariable Long examId,
-            @RequestBody Map<String, Integer> body,
+            @RequestBody Map<String, Object> body,
             Authentication auth) {
-        int qps = Optional.ofNullable(body.get("questionsPerStudent")).orElse(0);
+        int qps = 0;
+        if (body.get("questionsPerStudent") instanceof Number n) {
+            qps = n.intValue();
+        }
         if (qps <= 0) {
             throw new com.proctor.exam.exception.ApiException(
                     org.springframework.http.HttpStatus.BAD_REQUEST,
                     "questionsPerStudent must be a positive integer.");
         }
+        Integer studentCount = null;
+        if (body.get("studentCount") instanceof Number n && n.intValue() > 0) {
+            studentCount = n.intValue();
+        }
         return examAdminService.assignQuestionsRandomly(
-                examId, qps, auth != null ? auth.getName() : "admin");
+                examId, qps, studentCount, auth != null ? auth.getName() : "admin");
     }
 
     /**
@@ -168,5 +176,44 @@ public class AdminExamController {
             Authentication auth) {
         return examAdminService.getQuestionAssignmentReport(
                 examId, auth != null ? auth.getName() : "admin");
+    }
+
+    /**
+     * Instantly terminates/ends an exam for all active candidates.
+     */
+    @PostMapping("/{examId}/terminate-now")
+    public Exam terminateExamImmediately(
+            @PathVariable Long examId,
+            Authentication auth) {
+        return examAdminService.terminateExamImmediately(
+                examId, auth != null ? auth.getName() : "admin");
+    }
+
+    /**
+     * Adjusts the exam timing dynamically (add minutes or change end date/duration).
+     * Body: { "addMinutes": 10, "newEndAt": "2026-10-11T20:00:00Z", "newDurationMinutes": 90 }
+     */
+    @PostMapping("/{examId}/adjust-timing")
+    public Exam adjustExamTiming(
+            @PathVariable Long examId,
+            @RequestBody Map<String, Object> body,
+            Authentication auth) {
+        Integer addMinutes = null;
+        if (body.get("addMinutes") instanceof Number n) {
+            addMinutes = n.intValue();
+        }
+        Integer newDurationMinutes = null;
+        if (body.get("newDurationMinutes") instanceof Number n) {
+            newDurationMinutes = n.intValue();
+        }
+        java.time.Instant newEndAt = null;
+        if (body.get("newEndAt") instanceof String s && !s.isBlank()) {
+            try {
+                newEndAt = java.time.Instant.parse(s);
+            } catch (Exception ignored) {}
+        }
+
+        return examAdminService.adjustExamTiming(
+                examId, addMinutes, newEndAt, newDurationMinutes, auth != null ? auth.getName() : "admin");
     }
 }

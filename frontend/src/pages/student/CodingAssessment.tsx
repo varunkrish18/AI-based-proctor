@@ -5,6 +5,7 @@ import {
   type Question, type CodeExecutionResponse 
 } from "../../api/assessmentApi";
 import { getAdminUserRole } from "../../api/client";
+import { handleSmartEditorKeyDown } from "../../utils/editorIndentation";
 
 export default function CodingAssessment() {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -29,6 +30,7 @@ export default function CodingAssessment() {
   const [searchTerm, setSearchTerm] = useState<string>("");
 
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
   const userRole = getAdminUserRole() || "STAFF";
 
   // Load questions on mount
@@ -170,36 +172,24 @@ export default function CodingAssessment() {
       e.code === "AltRight" ||
       e.keyCode === 18;
 
-    const isTabKey =
-      e.key === "Tab" ||
-      e.code === "Tab" ||
-      e.keyCode === 9 ||
-      e.which === 9;
-
     const isFunctionKey =
       (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
       (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code));
 
-    if (isTabKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      const textarea = editorRef.current;
-      if (textarea) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const indent = "    ";
-        const newCode = code.substring(0, start) + indent + code.substring(end);
-        setCode(newCode);
-        requestAnimationFrame(() => {
-          textarea.selectionStart = textarea.selectionEnd = start + indent.length;
-        });
-      }
-      return;
-    }
-
     if (isWindowsKey || isCtrlKey || isAltKey || isFunctionKey) {
       e.preventDefault();
       e.stopPropagation();
+      return;
+    }
+
+    const handled = handleSmartEditorKeyDown(e, {
+      code,
+      setCode,
+      textarea: editorRef.current,
+      indentSize: 4,
+    });
+
+    if (handled) {
       return;
     }
   };
@@ -554,20 +544,41 @@ export default function CodingAssessment() {
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
                 <span className="ml-2 font-mono text-slate-600 font-semibold">solution.py (Python 3)</span>
               </div>
-              <div className="text-[11px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200 font-semibold">
-                ⚡ No stdin input required • Return output directly
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 font-semibold hidden sm:inline">
+                  ⚡ Smart Indent Active
+                </span>
+                <div className="text-[11px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200 font-semibold">
+                  ⚡ Return output directly
+                </div>
               </div>
             </div>
 
-            {/* Code Editor Textarea */}
-            <div className="flex-1 relative p-3 bg-white">
+            {/* Code Editor Textarea with Line Numbers Gutter */}
+            <div className="flex-1 relative flex overflow-hidden bg-slate-900 border-b border-slate-200">
+              <div
+                ref={gutterRef}
+                className="w-12 py-3 bg-slate-950/80 border-r border-slate-800 text-right pr-3 select-none text-slate-500 font-mono text-xs leading-6 overflow-hidden shrink-0"
+              >
+                {Array.from({ length: Math.max(code.split("\n").length, 1) }, (_, i) => i + 1).map((num) => (
+                  <div key={num}>{num}</div>
+                ))}
+              </div>
               <textarea
                 ref={editorRef}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onScroll={(e) => {
+                  if (gutterRef.current) {
+                    gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+                  }
+                }}
                 spellCheck={false}
-                className="w-full h-full bg-slate-900 text-emerald-400 font-mono text-sm leading-relaxed p-4 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none shadow-inner"
+                autoCapitalize="off"
+                autoComplete="off"
+                autoCorrect="off"
+                className="flex-1 w-full bg-transparent text-emerald-300 font-mono text-xs leading-6 p-3 outline-none resize-none selection:bg-blue-600/50 selection:text-white tab-size-4"
                 placeholder="# Write your clean solution function here..."
               />
             </div>

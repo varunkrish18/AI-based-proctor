@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { TestCase, RunCodeResponse, TestCaseExecutionResult } from "../types";
+import { handleSmartEditorKeyDown } from "../utils/editorIndentation";
 
 export interface CodeEditorProps {
   initialCode?: string;
@@ -22,6 +23,24 @@ int main() {
     while (fgets(buffer, sizeof(buffer), stdin)) {
         // Process input and output solution
         printf("%s", buffer);
+    }
+    return 0;
+}
+`;
+
+const DEFAULT_CPP_TEMPLATE = `#include <iostream>
+#include <string>
+#include <vector>
+
+using namespace std;
+
+int main() {
+    // LeetCode-style problem solution
+    // Read input from stdin
+    string line;
+    while (getline(cin, line)) {
+        // Process input and output solution
+        cout << line << endl;
     }
     return 0;
 }
@@ -79,6 +98,10 @@ function getTemplateForLanguage(lang: string): string {
     case "gcc":
     case "clang":
       return DEFAULT_C_TEMPLATE;
+    case "cpp":
+    case "c++":
+    case "g++":
+      return DEFAULT_CPP_TEMPLATE;
     case "java":
       return DEFAULT_JAVA_TEMPLATE;
     case "javascript":
@@ -96,24 +119,32 @@ function getTemplateForLanguage(lang: string): string {
 export default function CodeEditor({
   initialCode,
   initialLanguage = "python",
-  allowedLanguages = ["c", "python", "java"],
+  allowedLanguages = ["c", "cpp", "python", "java", "javascript"],
   sampleTestCases = [],
   onCodeChange,
   onRunCode,
   readOnly = false,
 }: CodeEditorProps) {
+  // Normalize allowed languages
+  const safeAllowed = allowedLanguages && allowedLanguages.length > 0 
+    ? allowedLanguages 
+    : ["c", "cpp", "python", "java", "javascript"];
+
   // Resolve effective initial language adhering to allowedLanguages
   const computeValidLanguage = (langCandidate?: string) => {
-    if (langCandidate && allowedLanguages.includes(langCandidate)) {
+    if (langCandidate && safeAllowed.includes(langCandidate)) {
       return langCandidate;
     }
-    if (initialCode && initialCode.includes("#include") && allowedLanguages.includes("c")) {
+    if (initialCode && initialCode.includes("#include <iostream>") && safeAllowed.includes("cpp")) {
+      return "cpp";
+    }
+    if (initialCode && initialCode.includes("#include") && safeAllowed.includes("c")) {
       return "c";
     }
-    if (initialCode && initialCode.includes("public class") && allowedLanguages.includes("java")) {
+    if (initialCode && initialCode.includes("public class") && safeAllowed.includes("java")) {
       return "java";
     }
-    return allowedLanguages[0] || "c";
+    return safeAllowed[0] || "python";
   };
 
   const [language, setLanguage] = useState(() => computeValidLanguage(initialLanguage));
@@ -132,8 +163,10 @@ export default function CodeEditor({
   const [runResult, setRunResult] = useState<RunCodeResponse | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialCode !== undefined && initialCode !== code) {
@@ -148,7 +181,7 @@ export default function CodeEditor({
       setLanguage(validLang);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialLanguage, allowedLanguages.join(",")]);
+  }, [initialLanguage, safeAllowed.join(",")]);
 
   function handleLanguageChange(newLang: string) {
     setLanguage(newLang);
@@ -157,6 +190,7 @@ export default function CodeEditor({
       !code ||
       code === DEFAULT_PYTHON_TEMPLATE ||
       code === DEFAULT_C_TEMPLATE ||
+      code === DEFAULT_CPP_TEMPLATE ||
       code === DEFAULT_JAVA_TEMPLATE ||
       code === DEFAULT_JS_TEMPLATE;
     if (isDefault) {
@@ -172,7 +206,7 @@ export default function CodeEditor({
     onCodeChange?.(newCode, language);
   }
 
-  // Handle key restrictions inside editor: Windows, Ctrl, and Function keys are disabled. Tab indents by 4 spaces.
+  // Handle key restrictions and professional online editor smart indentation
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     const isWindowsKey =
       e.key === "Meta" ||
@@ -199,38 +233,27 @@ export default function CodeEditor({
       e.code === "AltRight" ||
       e.keyCode === 18;
 
-    const isTabKey =
-      e.key === "Tab" ||
-      e.code === "Tab" ||
-      e.keyCode === 9 ||
-      e.which === 9;
-
     const isFunctionKey =
       (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
       (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code));
 
-    // Support Tab indentation inside the code editor
-    if (isTabKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      const textarea = textareaRef.current;
-      if (textarea) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const indent = "    ";
-        const newCode = code.substring(0, start) + indent + code.substring(end);
-        setCode(newCode);
-        onCodeChange?.(newCode, language);
-        requestAnimationFrame(() => {
-          textarea.selectionStart = textarea.selectionEnd = start + indent.length;
-        });
-      }
-      return;
-    }
-
+    // Block non-editing restricted keys (Windows, Ctrl, Alt, F1-F12) to protect exam integrity
     if (isWindowsKey || isCtrlKey || isAltKey || isFunctionKey) {
       e.preventDefault();
       e.stopPropagation();
+      return;
+    }
+
+    // Process Smart Indentation, Tab/Shift-Tab, Auto-Brackets, Backspace
+    const handled = handleSmartEditorKeyDown(e, {
+      code,
+      setCode,
+      textarea: textareaRef.current,
+      onCodeChange: (newC) => onCodeChange?.(newC, language),
+      indentSize: 4,
+    });
+
+    if (handled) {
       return;
     }
   }
@@ -240,6 +263,14 @@ export default function CodeEditor({
     setCode(template);
     onCodeChange?.(template, language);
     setShowResetConfirm(false);
+  }
+
+  function handleCopy() {
+    if (!code) return;
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   }
 
   async function handleRun() {
@@ -258,6 +289,13 @@ export default function CodeEditor({
     }
   }
 
+  // Synchronize scroll between gutter and textarea
+  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (gutterRef.current) {
+      gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
+
   // Line count for gutter
   const lineCount = code.split("\n").length;
   const lineNumbers = Array.from({ length: Math.max(lineCount, 1) }, (_, i) => i + 1);
@@ -265,30 +303,46 @@ export default function CodeEditor({
   return (
     <div className="flex flex-col h-full bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl text-slate-100 font-sans">
       {/* Top IDE Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-800 select-none">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-800 select-none flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>LeetIDE</span>
+            <span className="font-bold tracking-wide">Cloud Online Compiler</span>
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium hidden sm:inline">
+              ⚡ Instant Sandbox
+            </span>
           </div>
 
           <div className="h-4 w-px bg-slate-700 mx-1" />
 
           {/* Language selector */}
-          <select
-            value={language}
-            onChange={(e) => handleLanguageChange(e.target.value)}
-            disabled={readOnly}
-            className="bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-medium rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition-colors"
-          >
-            {allowedLanguages.includes("c") && <option value="c">C (GCC)</option>}
-            {allowedLanguages.includes("python") && <option value="python">Python 3</option>}
-            {allowedLanguages.includes("java") && <option value="java">Java 21</option>}
-            {allowedLanguages.includes("javascript") && <option value="javascript">JavaScript (Node.js)</option>}
-          </select>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-400 font-medium">Language:</span>
+            <select
+              value={language}
+              onChange={(e) => handleLanguageChange(e.target.value)}
+              disabled={readOnly}
+              className="bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer transition-colors"
+            >
+              {safeAllowed.includes("c") && <option value="c">C (GCC 11+)</option>}
+              {safeAllowed.includes("cpp") && <option value="cpp">C++ (G++ 11+)</option>}
+              {safeAllowed.includes("java") && <option value="java">Java 21 (OpenJDK)</option>}
+              {safeAllowed.includes("python") && <option value="python">Python 3.12</option>}
+              {safeAllowed.includes("javascript") && <option value="javascript">JavaScript (Node.js)</option>}
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-750 transition cursor-pointer"
+            title="Copy code to clipboard"
+          >
+            {copied ? "✓ Copied" : "📋 Copy"}
+          </button>
+
           {!readOnly && (
             showResetConfirm ? (
               <div className="flex items-center gap-1.5 bg-amber-950/90 border border-amber-600/70 rounded-lg px-2.5 py-1 text-xs animate-in fade-in duration-150">
@@ -303,7 +357,7 @@ export default function CodeEditor({
                 <button
                   type="button"
                   onClick={() => setShowResetConfirm(false)}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium px-2 py-0.5 rounded text-[11px] cursor-pointer transition"
+                  className="bg-slate-800 hover:bg-slate-750 text-slate-300 font-medium px-2 py-0.5 rounded text-[11px] cursor-pointer transition"
                 >
                   Cancel
                 </button>
@@ -325,7 +379,7 @@ export default function CodeEditor({
               type="button"
               onClick={handleRun}
               disabled={running || readOnly}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-sm transition-all cursor-pointer"
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 py-1.5 rounded-lg shadow-sm transition-all cursor-pointer"
             >
               {running ? (
                 <>
@@ -343,35 +397,45 @@ export default function CodeEditor({
         </div>
       </div>
 
-      {/* Security notice bar: Restricted Keys Disabled */}
-      <div className="bg-slate-900/90 border-b border-slate-800/80 px-3 py-1 flex items-center justify-between text-[11px] text-slate-400 select-none">
-        <div className="flex items-center gap-1.5 text-amber-400 font-medium">
-          <span>🔒</span>
-          <span>Security Lock Active: Windows, Ctrl, Tab &amp; Function Keys (F1-F12) are disabled.</span>
+      {/* Editor Helper Bar: Smart Indentation & Restricted Keys Notice */}
+      <div className="bg-slate-900/90 border-b border-slate-800/80 px-3 py-1 flex items-center justify-between text-[11px] text-slate-400 select-none flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-emerald-400 font-semibold flex items-center gap-1">
+            <span>⚡</span> Smart Indent:
+          </span>
+          <span className="text-slate-300">
+            Enter auto-indents • Tab &amp; Shift+Tab indents 4 spaces • Auto-pairs () [] &#123;&#125;
+          </span>
         </div>
-        <div className="hidden md:flex items-center gap-2 text-slate-400 text-[10px]">
-          <span className="px-1.5 py-0.5 rounded bg-slate-800 font-mono">Win ✕</span>
-          <span className="px-1.5 py-0.5 rounded bg-slate-800 font-mono">Ctrl ✕</span>
-          <span className="px-1.5 py-0.5 rounded bg-slate-800 font-mono">Tab ✕</span>
-          <span className="px-1.5 py-0.5 rounded bg-slate-800 font-mono">F1-F12 ✕</span>
+        <div className="flex items-center gap-2 text-slate-500 text-[10px]">
+          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-400/90 font-mono" title="Exam security lock">
+            🔒 Exam Lock: Win/Ctrl/Alt/F-keys Disabled
+          </span>
+          <span className="font-mono text-slate-400">
+            {lineCount} lines • {code.length} chars
+          </span>
         </div>
       </div>
 
-      {/* Code Editor Body with Line Numbers */}
-      <div className="relative flex-1 flex overflow-hidden min-h-[280px]">
+      {/* Code Editor Body with Synchronized Line Numbers Gutter */}
+      <div className="relative flex-1 flex overflow-hidden min-h-[300px]">
         {/* Line Numbers Gutter */}
-        <div className="w-12 py-3 bg-slate-950/70 border-r border-slate-800/80 text-right pr-3 select-none text-slate-600 font-mono text-xs leading-6 overflow-hidden">
+        <div 
+          ref={gutterRef}
+          className="w-12 py-3 bg-slate-950/80 border-r border-slate-800/80 text-right pr-3 select-none text-slate-600 font-mono text-xs leading-6 overflow-hidden shrink-0"
+        >
           {lineNumbers.map((num) => (
             <div key={num}>{num}</div>
           ))}
         </div>
 
-        {/* Textarea Code Input */}
+        {/* Textarea Code Input with Smart Indentation */}
         <textarea
           ref={textareaRef}
           value={code}
           onChange={(e) => handleCodeInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onScroll={handleScroll}
           onPaste={(e) => e.preventDefault()}
           onCopy={(e) => e.preventDefault()}
           onCut={(e) => e.preventDefault()}
@@ -381,13 +445,13 @@ export default function CodeEditor({
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="flex-1 p-3 bg-transparent text-emerald-300 font-mono text-xs leading-6 resize-none focus:outline-none overflow-auto selection:bg-blue-600/40 tab-size-4"
-          placeholder="# Write your solution here..."
+          className="flex-1 p-3 bg-slate-950 text-slate-100 font-mono text-xs leading-6 resize-none focus:outline-none overflow-auto selection:bg-blue-600/50 selection:text-white tab-size-4"
+          placeholder="// Write your clean solution function here..."
         />
       </div>
 
       {/* Bottom Panel: Testcases & Execution Results */}
-      <div className="border-t border-slate-800 bg-slate-900/90 flex flex-col max-h-[300px]">
+      <div className="border-t border-slate-800 bg-slate-900/90 flex flex-col max-h-[320px]">
         {/* Bottom Drawer Tabs */}
         <div className="flex items-center justify-between px-3 border-b border-slate-800 bg-slate-900">
           <div className="flex items-center gap-1">
@@ -411,7 +475,7 @@ export default function CodeEditor({
                   : "border-transparent text-slate-400 hover:text-slate-200"
               }`}
             >
-              <span>Test Result</span>
+              <span>Execution Result</span>
               {runResult && (
                 <span
                   className={`w-2 h-2 rounded-full ${
@@ -430,7 +494,7 @@ export default function CodeEditor({
                 onChange={(e) => setUseCustomInput(e.target.checked)}
                 className="rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-0 w-3 h-3"
               />
-              <span>Custom Input</span>
+              <span>Custom Stdin Input</span>
             </label>
           )}
         </div>
@@ -507,7 +571,7 @@ export default function CodeEditor({
               {running ? (
                 <div className="flex items-center justify-center py-8 gap-3 text-slate-400">
                   <span className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                  <span>Executing code against test cases...</span>
+                  <span>Compiling &amp; executing code against test cases in cloud sandbox...</span>
                 </div>
               ) : runError ? (
                 <div className="bg-rose-950/40 border border-rose-800/80 rounded-lg p-3 text-rose-300">
@@ -540,7 +604,7 @@ export default function CodeEditor({
                         ({runResult.passedCases}/{runResult.totalCases} test cases passed)
                       </span>
                     </div>
-                    <span className="text-xs text-slate-500 font-mono">
+                    <span className="text-xs text-slate-400 font-mono">
                       Runtime: {runResult.executionTimeMs} ms
                     </span>
                   </div>

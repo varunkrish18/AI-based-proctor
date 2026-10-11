@@ -21,6 +21,8 @@ public interface ExamAttemptRepository extends JpaRepository<ExamAttempt, Long>,
 
     List<ExamAttempt> findByExamId(Long examId);
 
+    List<ExamAttempt> findByExamIdAndStatus(Long examId, String status);
+
     long countByStatus(String status);
 
     long countByFlaggedForReviewTrue();
