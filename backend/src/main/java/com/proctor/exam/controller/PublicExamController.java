@@ -22,13 +22,16 @@ public class PublicExamController {
     private final ExamRepository examRepository;
     private final StudentExamService studentExamService;
     private final TrustedTimeService trustedTimeService;
+    private final com.proctor.exam.service.CodeExecutionService codeExecutionService;
 
     public PublicExamController(ExamRepository examRepository,
                                 StudentExamService studentExamService,
-                                TrustedTimeService trustedTimeService) {
+                                TrustedTimeService trustedTimeService,
+                                com.proctor.exam.service.CodeExecutionService codeExecutionService) {
         this.examRepository = examRepository;
         this.studentExamService = studentExamService;
         this.trustedTimeService = trustedTimeService;
+        this.codeExecutionService = codeExecutionService;
     }
 
     @GetMapping("/time")
@@ -77,5 +80,10 @@ public class PublicExamController {
     @PostMapping("/{examId}/verify-student")
     public VerifyStudentResponse verifyStudent(@PathVariable Long examId, @Valid @RequestBody VerifyStudentRequest request) {
         return studentExamService.verifyStudent(examId, request.email(), request.password());
+    }
+
+    @PostMapping("/run-code")
+    public com.proctor.exam.dto.RunCodeResponse runOnlineIdeCode(@Valid @RequestBody com.proctor.exam.dto.OnlineIdeRunRequest request) {
+        return codeExecutionService.runAdhocCode(request.code(), request.language(), request.input());
     }
 }

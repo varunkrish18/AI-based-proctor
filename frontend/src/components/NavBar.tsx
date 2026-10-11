@@ -47,6 +47,9 @@ export default function NavBar() {
           <NavLink to="/about" className={linkClass}>
             About
           </NavLink>
+          <NavLink to="/ide" className={linkClass}>
+            💻 Online IDE
+          </NavLink>
 
           {/* Coding Lab & Assessment Reports - strictly restricted to Admin and Examiner */}
           {isStaff && (

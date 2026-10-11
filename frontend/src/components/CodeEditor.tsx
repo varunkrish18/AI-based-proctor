@@ -131,6 +131,7 @@ export default function CodeEditor({
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<RunCodeResponse | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -234,12 +235,11 @@ export default function CodeEditor({
     }
   }
 
-  function handleResetTemplate() {
-    if (window.confirm("Reset code to default starter template? Current changes will be overwritten.")) {
-      const template = getTemplateForLanguage(language);
-      setCode(template);
-      onCodeChange?.(template, language);
-    }
+  function handleConfirmReset() {
+    const template = getTemplateForLanguage(language);
+    setCode(template);
+    onCodeChange?.(template, language);
+    setShowResetConfirm(false);
   }
 
   async function handleRun() {
@@ -290,14 +290,34 @@ export default function CodeEditor({
 
         <div className="flex items-center gap-2">
           {!readOnly && (
-            <button
-              type="button"
-              onClick={handleResetTemplate}
-              title="Reset code to starter template"
-              className="text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800 px-2.5 py-1 rounded-md transition-colors cursor-pointer"
-            >
-              ↺ Reset
-            </button>
+            showResetConfirm ? (
+              <div className="flex items-center gap-1.5 bg-amber-950/90 border border-amber-600/70 rounded-lg px-2.5 py-1 text-xs animate-in fade-in duration-150">
+                <span className="text-amber-300 font-semibold text-[11px]">Reset code to starter?</span>
+                <button
+                  type="button"
+                  onClick={handleConfirmReset}
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold px-2 py-0.5 rounded text-[11px] cursor-pointer transition shadow-sm"
+                >
+                  Yes, Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirm(false)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium px-2 py-0.5 rounded text-[11px] cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(true)}
+                title="Reset code to starter template"
+                className="text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800 px-2.5 py-1 rounded-md transition-colors cursor-pointer"
+              >
+                ↺ Reset
+              </button>
+            )
           )}
 
           {onRunCode && (

@@ -1663,7 +1663,6 @@ export default function ExamTake() {
       );
 
       if (!isFullscreen) {
-        // If candidate exits fullscreen at any point during the exam, TERMINATE immediately!
         // Allow a 1.5-second grace period from exam start time to avoid initial transition race condition
         if (Date.now() - examStartTimeRef.current < 1500) {
           return;
@@ -1674,16 +1673,24 @@ export default function ExamTake() {
         setFullscreenExited(true);
         fullscreenViolationCount.current += 1;
 
+        const strikes = fullscreenViolationCount.current;
         logEvent("FULLSCREEN_EXIT", undefined, {
-          count: fullscreenViolationCount.current,
-          action: "EXAM_TERMINATED",
+          count: strikes,
+          action: strikes >= 3 ? "EXAM_TERMINATED" : "WARNING_ISSUED",
           reason: "Candidate exited fullscreen mode",
         });
         flushNow();
 
-        handleSubmit(
-          "Exam Terminated: You exited fullscreen mode during the examination. Fullscreen is strictly mandatory at all times."
-        );
+        if (strikes >= 3) {
+          handleSubmit(
+            "Exam Terminated: Maximum fullscreen violations exceeded (3 strikes). Fullscreen is strictly mandatory at all times."
+          );
+        } else {
+          issueWarningStrike(
+            `Fullscreen Exited (Strike ${strikes}/3)`,
+            "You exited fullscreen mode. Fullscreen is strictly mandatory. Please click 'Re-enter Fullscreen' immediately."
+          );
+        }
       } else {
         setFullscreenExited(false);
       }
@@ -2172,6 +2179,42 @@ export default function ExamTake() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Fullscreen Recovery Overlay */}
+      {fullscreenExited && !submittedRef.current && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-6 text-center animate-in fade-in duration-200">
+          <div className="bg-slate-900 border-2 border-red-500 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-4">
+            <div className="w-16 h-16 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-pulse">
+              ⚠️
+            </div>
+            <h2 className="text-xl font-bold text-white">Fullscreen Mode Required</h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              You exited fullscreen mode. Proctoring policy requires the examination to remain in fullscreen at all times.
+            </p>
+            <div className="bg-red-950/60 border border-red-800/80 rounded-lg p-3 text-red-300 text-xs font-semibold">
+              Warning Strike {Math.min(fullscreenViolationCount.current, 3)} of 3
+              {fullscreenViolationCount.current >= 3 ? " — Examination Terminating" : " — Re-enter immediately"}
+            </div>
+            {fullscreenViolationCount.current < 3 && (
+              <button
+                onClick={async () => {
+                  try {
+                    if (document.documentElement.requestFullscreen) {
+                      await document.documentElement.requestFullscreen();
+                    }
+                    setFullscreenExited(false);
+                  } catch (e) {
+                    console.warn("Fullscreen request error:", e);
+                  }
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg cursor-pointer text-sm"
+              >
+                ⤢ Re-enter Fullscreen Mode
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Explicit 3-Strike Proctoring Warning Modal */}
       {activeWarningModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">

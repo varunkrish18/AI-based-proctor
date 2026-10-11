@@ -129,6 +129,17 @@ public class CodeExecutionService {
         return new RunCodeResponse(overallStatus, cases.size(), passed, totalTime, results);
     }
 
+    /**
+     * Executes ad-hoc code without requiring a saved exam question ID (used by the Online IDE).
+     */
+    public RunCodeResponse runAdhocCode(String code, String language, String customInput) {
+        if (code == null || code.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Code cannot be empty.");
+        }
+        TestCaseExecutionResult res = executeSingleCase(1, code, language, customInput != null ? customInput : "", "");
+        return new RunCodeResponse(res.status(), 1, res.passed() ? 1 : 0, res.executionTimeMs(), List.of(res));
+    }
+
     private TestCaseExecutionResult executeSingleCase(int caseIndex, String code, String rawLanguage,
                                                       String input, String expectedOutput) {
         String lang = rawLanguage != null ? rawLanguage.trim().toLowerCase() : "python";
@@ -139,11 +150,22 @@ public class CodeExecutionService {
             tempDir = createExecutionTempDir();
             List<String> command = buildCommand(lang, code, tempDir);
 
+            if (command == null || command.isEmpty()) {
+                log.info("Local compiler command unavailable for {}; falling back to cloud online execution engine", lang);
+                return executeViaOnlineEngine(caseIndex, code, lang, input, expectedOutput);
+            }
+
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(tempDir.toFile());
             injectCompilerPath(pb);
 
-            Process process = pb.start();
+            Process process;
+            try {
+                process = pb.start();
+            } catch (IOException ioEx) {
+                log.warn("Local execution command failed ({}); falling back to online execution engine: {}", command, ioEx.getMessage());
+                return executeViaOnlineEngine(caseIndex, code, lang, input, expectedOutput);
+            }
 
             // Feed input via stdin asynchronously
             try (OutputStream os = process.getOutputStream()) {
@@ -180,7 +202,12 @@ public class CodeExecutionService {
 
             if (exitCode != 0) {
                 String errorMsg = !stderr.isBlank() ? stderr.trim() : "Process exited with non-zero exit code: " + exitCode;
-                String status = errorMsg.contains("SyntaxError") ? "COMPILATION_ERROR" : "RUNTIME_ERROR";
+                // If local toolchain missing/failed, attempt online execution engine
+                if (errorMsg.contains("is not recognized") || errorMsg.contains("not found") || errorMsg.contains("Cannot run program")) {
+                    log.info("Process indicated missing local toolchain ('{}'). Falling back to online engine.", errorMsg);
+                    return executeViaOnlineEngine(caseIndex, code, lang, input, expectedOutput);
+                }
+                String status = errorMsg.contains("SyntaxError") || errorMsg.contains("error:") ? "COMPILATION_ERROR" : "RUNTIME_ERROR";
                 return new TestCaseExecutionResult(
                         caseIndex, input, expectedOutput, stdout != null ? stdout.trim() : "",
                         false, status, elapsed, errorMsg
@@ -204,19 +231,172 @@ public class CodeExecutionService {
 
         } catch (Exception e) {
             long elapsed = System.currentTimeMillis() - startTime;
-            log.error("Execution error for case {}: {}", caseIndex, e.getMessage());
-            String msg = e.getMessage() != null ? e.getMessage() : "Unknown execution error";
-            String status = msg.contains("COMPILATION_ERROR") ? "COMPILATION_ERROR" : "RUNTIME_ERROR";
-            String cleanMsg = msg.replace("COMPILATION_ERROR: ", "");
-            return new TestCaseExecutionResult(
-                    caseIndex, input, expectedOutput, "", false,
-                    status, elapsed, cleanMsg
-            );
+            log.error("Local execution error for case {}: {}. Attempting online execution engine fallback.", caseIndex, e.getMessage());
+            try {
+                return executeViaOnlineEngine(caseIndex, code, lang, input, expectedOutput);
+            } catch (Exception onlineEx) {
+                String msg = e.getMessage() != null ? e.getMessage() : "Unknown execution error";
+                String status = msg.contains("COMPILATION_ERROR") ? "COMPILATION_ERROR" : "RUNTIME_ERROR";
+                String cleanMsg = msg.replace("COMPILATION_ERROR: ", "");
+                return new TestCaseExecutionResult(
+                        caseIndex, input, expectedOutput, "", false,
+                        status, elapsed, cleanMsg
+                );
+            }
         } finally {
             if (tempDir != null) {
                 deleteRecursivelyQuietly(tempDir);
             }
         }
+    }
+
+    private static final String PISTON_API_URL = "https://emkc.org/api/v2/piston/execute";
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    private TestCaseExecutionResult executeViaOnlineEngine(int caseIndex, String code, String language,
+                                                           String input, String expectedOutput) {
+        long startTime = System.currentTimeMillis();
+        try {
+            String normLang = mapLanguageForOnlineEngine(language);
+            String fileName = "solution." + getFileExtension(normLang);
+            if ("java".equals(normLang)) {
+                fileName = extractJavaClassName(code) + ".java";
+            }
+
+            Map<String, Object> payload = Map.of(
+                    "language", normLang,
+                    "version", "*",
+                    "files", List.of(Map.of("name", fileName, "content", code)),
+                    "stdin", input != null ? input : ""
+            );
+
+            String requestBody = MAPPER.writeValueAsString(payload);
+
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(6))
+                    .build();
+
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(PISTON_API_URL))
+                    .header("Content-Type", "application/json")
+                    .timeout(java.time.Duration.ofSeconds(10))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                    .build();
+
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            long elapsed = System.currentTimeMillis() - startTime;
+
+            if (response.statusCode() != 200) {
+                return new TestCaseExecutionResult(
+                        caseIndex, input, expectedOutput, "", false,
+                        "RUNTIME_ERROR", elapsed, "Online execution service returned HTTP " + response.statusCode()
+                );
+            }
+
+            com.fasterxml.jackson.databind.JsonNode root = MAPPER.readTree(response.body());
+            com.fasterxml.jackson.databind.JsonNode runNode = root.path("run");
+            com.fasterxml.jackson.databind.JsonNode compileNode = root.path("compile");
+
+            int compileExit = compileNode.path("code").asInt(0);
+            String compileErr = compileNode.path("stderr").asText("");
+            String compileOut = compileNode.path("stdout").asText("");
+
+            if (compileExit != 0 || (!compileErr.isBlank() && !compileNode.isMissingNode())) {
+                String errMsg = !compileErr.isBlank() ? compileErr : compileOut;
+                return new TestCaseExecutionResult(
+                        caseIndex, input, expectedOutput, "", false,
+                        "COMPILATION_ERROR", elapsed, errMsg.trim()
+                );
+            }
+
+            int runExit = runNode.path("code").asInt(0);
+            String stdout = runNode.path("stdout").asText("").trim();
+            String stderr = runNode.path("stderr").asText("").trim();
+
+            if (runExit != 0) {
+                return new TestCaseExecutionResult(
+                        caseIndex, input, expectedOutput, stdout, false,
+                        "RUNTIME_ERROR", elapsed, !stderr.isBlank() ? stderr : "Process exited with code " + runExit
+                );
+            }
+
+            String actualTrimmed = stdout.replace("\r\n", "\n").trim();
+            String expectedTrimmed = expectedOutput != null ? expectedOutput.replace("\r\n", "\n").trim() : "";
+            boolean passed = expectedTrimmed.isEmpty() || actualTrimmed.equals(expectedTrimmed);
+            String status = passed ? "ACCEPTED" : "WRONG_ANSWER";
+
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, actualTrimmed, passed,
+                    status, elapsed, null
+            );
+
+        } catch (Exception e) {
+            long elapsed = System.currentTimeMillis() - startTime;
+            log.error("Online execution fallback error: {}", e.getMessage());
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "Online execution error: " + e.getMessage()
+            );
+        }
+    }
+
+    private String mapLanguageForOnlineEngine(String lang) {
+        String lower = lang != null ? lang.toLowerCase().trim() : "python";
+        return switch (lower) {
+            case "java" -> "java";
+            case "c", "gcc", "clang" -> "c";
+            case "cpp", "c++", "g++" -> "cpp";
+            case "js", "javascript", "node" -> "javascript";
+            default -> "python";
+        };
+    }
+
+    private String getFileExtension(String normLang) {
+        return switch (normLang) {
+            case "java" -> "java";
+            case "c" -> "c";
+            case "cpp" -> "cpp";
+            case "javascript" -> "js";
+            default -> "py";
+        };
+    }
+
+    private String extractJavaClassName(String code) {
+        if (code == null) return "Solution";
+        var matcher = java.util.regex.Pattern.compile("public\\s+(?:final\\s+)?class\\s+([A-Za-z0-9_]+)").matcher(code);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        var classMatcher = java.util.regex.Pattern.compile("class\\s+([A-Za-z0-9_]+)").matcher(code);
+        if (classMatcher.find()) {
+            return classMatcher.group(1);
+        }
+        return "Solution";
+    }
+
+    private synchronized String findJavaExecutable() {
+        boolean isWin = System.getProperty("os.name", "").toLowerCase().contains("win");
+        String exeName = isWin ? "java.exe" : "java";
+
+        // 1. Current running JVM (Guaranteed since Spring Boot is running on Java!)
+        String javaHome = System.getProperty("java.home");
+        if (javaHome != null && !javaHome.isBlank()) {
+            Path p = Paths.get(javaHome, "bin", exeName);
+            if (Files.exists(p)) {
+                return p.toAbsolutePath().toString();
+            }
+        }
+
+        // 2. JAVA_HOME environment variable
+        String envJavaHome = System.getenv("JAVA_HOME");
+        if (envJavaHome != null && !envJavaHome.isBlank()) {
+            Path p = Paths.get(envJavaHome, "bin", exeName);
+            if (Files.exists(p)) {
+                return p.toAbsolutePath().toString();
+            }
+        }
+
+        return exeName;
     }
 
     private static volatile String cachedCCompilerPath = null;
@@ -338,15 +518,16 @@ public class CodeExecutionService {
             case "clang":
             case "cpp":
             case "c++": {
-                Path sourceFile = dir.resolve("solution.c");
+                boolean isCpp = language.contains("++") || language.equals("cpp");
+                Path sourceFile = dir.resolve(isCpp ? "solution.cpp" : "solution.c");
                 Files.writeString(sourceFile, code, StandardCharsets.UTF_8);
                 boolean isWindows = System.getProperty("os.name", "").toLowerCase().contains("win");
                 Path exeFile = dir.resolve(isWindows ? "solution.exe" : "solution");
 
                 String compiler = findCCompiler();
                 if (compiler == null) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST,
-                            "C compiler (GCC / Clang) is not available on the server host. Please contact admin or use Python / Java.");
+                    log.info("Local C compiler not found; will use online execution engine.");
+                    return null;
                 }
 
                 List<String> compileCmd = new ArrayList<>();
@@ -361,7 +542,14 @@ public class CodeExecutionService {
                 compilePb.directory(dir.toFile());
                 injectCompilerPath(compilePb);
 
-                Process compileProc = compilePb.start();
+                Process compileProc;
+                try {
+                    compileProc = compilePb.start();
+                } catch (IOException ex) {
+                    log.warn("Cannot start compiler {}: {}", compiler, ex.getMessage());
+                    return null;
+                }
+
                 Future<String> compileErr = captureStreamAsync(compileProc.getErrorStream());
                 Future<String> compileOut = captureStreamAsync(compileProc.getInputStream());
 
@@ -386,7 +574,7 @@ public class CodeExecutionService {
                             String rErr = retryErr.get(2, TimeUnit.SECONDS);
                             if (rErr.isBlank()) rErr = retryOut.get(1, TimeUnit.SECONDS);
                             if (rErr.isBlank()) rErr = err;
-                            throw new RuntimeException("COMPILATION_ERROR: " + (!rErr.isBlank() ? rErr.trim() : "C compilation failed"));
+                            throw new RuntimeException("COMPILATION_ERROR: " + (!rErr.isBlank() ? rErr.trim() : "Compilation failed"));
                         }
                     }
                 } catch (InterruptedException | ExecutionException | TimeoutException e) {
@@ -412,9 +600,11 @@ public class CodeExecutionService {
                 return List.of("node", file.toAbsolutePath().toString());
             }
             case "java": {
-                Path file = dir.resolve("Solution.java");
+                String className = extractJavaClassName(code);
+                Path file = dir.resolve(className + ".java");
                 Files.writeString(file, code, StandardCharsets.UTF_8);
-                return List.of("java", file.toAbsolutePath().toString());
+                String javaExe = findJavaExecutable();
+                return List.of(javaExe, file.toAbsolutePath().toString());
             }
             default:
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported programming language: " + language);

@@ -16,6 +16,7 @@ import ExamDetail from "./pages/admin/ExamDetail";
 import AdminReportView from "./pages/admin/AdminReportView";
 import CodingAssessmentReports from "./pages/admin/CodingAssessmentReports";
 import MobileDeviceBlocker from "./components/MobileDeviceBlocker";
+import OnlineIde from "./pages/OnlineIde";
 import { isStaffAuthenticated } from "./api/client";
 
 /**
@@ -38,6 +39,8 @@ export default function App() {
         <Route path="/exams" element={<Exams />} />
         <Route path="/instructions" element={<Instructions />} />
         <Route path="/about" element={<About />} />
+        <Route path="/ide" element={<OnlineIde />} />
+        <Route path="/online-ide" element={<OnlineIde />} />
 
         {/* Student assessment flow (Blocked on Mobile / Tablets even in Desktop Mode) */}
         <Route

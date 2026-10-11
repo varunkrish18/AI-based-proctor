@@ -46,7 +46,7 @@ public class SecurityConfig {
                 // Public: landing page data, exam listing, network time, student verification, admin login
                 .requestMatchers(HttpMethod.GET, "/", "/api/exams/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/admin/auth/login", "/api/admin/auth/refresh").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/exams/*/verify-student").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/exams/*/verify-student", "/api/exams/run-code").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/ws/**").permitAll() // WebSocket handshake; per-session auth handled at connect time
                 // Admin user & credential management strictly restricted to ADMIN

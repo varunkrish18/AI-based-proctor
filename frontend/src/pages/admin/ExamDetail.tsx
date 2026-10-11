@@ -350,6 +350,9 @@ if __name__ == '__main__':
   const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
   const [parsedBulkQuestions, setParsedBulkQuestions] = useState<any[]>([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const createTestCaseFileInputRef = useRef<HTMLInputElement>(null);
+  const editTestCaseFileInputRef = useRef<HTMLInputElement>(null);
+  const [testCaseUploadMsg, setTestCaseUploadMsg] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -720,11 +723,12 @@ public class Solution {
         "Code Template": "",
         "Sample Input": "",
         "Sample Output": "",
+        "Is Hidden": "",
         "Sample Explanation": "",
       },
       {
         "Question Type": "CODING",
-        "Question Text": "Write a C program to read two integers and print their sum.",
+        "Question Text": "Write a program to read two integers and print their sum.",
         "Option A": "",
         "Option B": "",
         "Option C": "",
@@ -737,7 +741,44 @@ public class Solution {
         "Code Template": "#include <stdio.h>\nint main() {\n    int a, b;\n    if (scanf(\"%d %d\", &a, &b) == 2) printf(\"%d\\n\", a + b);\n    return 0;\n}",
         "Sample Input": "4 6",
         "Sample Output": "10",
-        "Sample Explanation": "4 + 6 = 10",
+        "Is Hidden": "false",
+        "Sample Explanation": "Sample 1: 4 + 6 = 10",
+      },
+      {
+        "Question Type": "CODING",
+        "Question Text": "",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": "",
+        "Problem Title": "Sum of Two Numbers",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "10 20",
+        "Sample Output": "30",
+        "Is Hidden": "false",
+        "Sample Explanation": "Sample 2: 10 + 20 = 30",
+      },
+      {
+        "Question Type": "CODING",
+        "Question Text": "",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": "",
+        "Problem Title": "Sum of Two Numbers",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "-5 5",
+        "Sample Output": "0",
+        "Is Hidden": "true",
+        "Sample Explanation": "Hidden test case: cancellation",
       }
     ];
 
@@ -745,6 +786,196 @@ public class Solution {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Questions");
     XLSX.writeFile(wb, "bulk_questions_sample_template.csv", { bookType: "csv" });
+  }
+
+  function downloadSampleTestCasesCsv() {
+    const sampleCases = [
+      { "Input": "4 6", "Expected Output": "10", "Is Hidden": false, "Explanation": "Sample 1: 4 + 6 = 10" },
+      { "Input": "10 20", "Expected Output": "30", "Is Hidden": false, "Explanation": "Sample 2: 10 + 20 = 30" },
+      { "Input": "-5 5", "Expected Output": "0", "Is Hidden": false, "Explanation": "Zero sum verification" },
+      { "Input": "0 0", "Expected Output": "0", "Is Hidden": true, "Explanation": "Hidden: zero identity" },
+      { "Input": "100000 100000", "Expected Output": "200000", "Is Hidden": true, "Explanation": "Hidden: upper bound" },
+      { "Input": "-100000 -100000", "Expected Output": "-200000", "Is Hidden": true, "Explanation": "Hidden: lower bound" },
+      { "Input": "-100 200", "Expected Output": "100", "Is Hidden": true, "Explanation": "Hidden: mixed signs" },
+      { "Input": "1 -1", "Expected Output": "0", "Is Hidden": true, "Explanation": "Hidden: cancellation" },
+      { "Input": "999 1", "Expected Output": "1000", "Is Hidden": true, "Explanation": "Hidden: carry transition" },
+      { "Input": "123 456", "Expected Output": "579", "Is Hidden": true, "Explanation": "Hidden: arbitrary numbers" },
+      { "Input": "50 -50", "Expected Output": "0", "Is Hidden": true, "Explanation": "Hidden: exact opposites" },
+      { "Input": "-1 0", "Expected Output": "-1", "Is Hidden": true, "Explanation": "Hidden: negative zero addition" },
+      { "Input": "0 1", "Expected Output": "1", "Is Hidden": true, "Explanation": "Hidden: zero positive addition" },
+      { "Input": "42 58", "Expected Output": "100", "Is Hidden": true, "Explanation": "Hidden: round number sum" },
+      { "Input": "12345 67890", "Expected Output": "80235", "Is Hidden": true, "Explanation": "Hidden: large distinct values" },
+    ];
+    const ws = XLSX.utils.json_to_sheet(sampleCases);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "TestCases");
+    XLSX.writeFile(wb, "sample_15_test_cases.csv", { bookType: "csv" });
+  }
+
+  async function parseTestCasesFromFile(file: File): Promise<TestCase[]> {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) throw new Error("The file has no sheets.");
+    const sheet = workbook.Sheets[firstSheetName];
+    const rawRows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    if (rawRows.length === 0) {
+      throw new Error("No data rows found in the test cases file.");
+    }
+
+    const resultCases: TestCase[] = [];
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      const norm: Record<string, string> = {};
+      for (const [k, v] of Object.entries(row)) {
+        const keyNorm = k.toLowerCase().trim().replace(/[\s_-]+/g, "");
+        norm[keyNorm] = String(v ?? "").trim();
+      }
+
+      // Check direct input / output on this row
+      const inVal = norm["input"] || norm["sampleinput"] || norm["stdin"] || norm["testinput"] || norm["testcaseinput"] || norm["inputdata"] || norm["in"] || "";
+      const outVal = norm["expectedoutput"] || norm["output"] || norm["sampleoutput"] || norm["stdout"] || norm["testoutput"] || norm["testcaseoutput"] || norm["expected"] || norm["out"] || "";
+      const explVal = norm["sampleexplanation"] || norm["explanation"] || norm["notes"] || norm["desc"] || "";
+      const hiddenRaw = (norm["ishidden"] || norm["hidden"] || norm["private"] || norm["secret"] || norm["is_hidden"] || "").toLowerCase();
+      const isHidden = hiddenRaw === "true" || hiddenRaw === "1" || hiddenRaw === "yes" || hiddenRaw === "hidden";
+
+      if (inVal !== "" || outVal !== "") {
+        resultCases.push({
+          input: inVal,
+          expectedOutput: outVal,
+          isHidden: isHidden,
+          explanation: explVal,
+          displayOrder: resultCases.length,
+        });
+      }
+
+      // Also check numbered columns on this row (Input 1, Output 1, Input 2, Output 2... up to 50)
+      for (let k = 1; k <= 50; k++) {
+        const inK = norm[`input${k}`] || norm[`sampleinput${k}`] || norm[`stdin${k}`] || norm[`testcaseinput${k}`] || norm[`tc${k}input`];
+        const outK = norm[`output${k}`] || norm[`sampleoutput${k}`] || norm[`expectedoutput${k}`] || norm[`stdout${k}`] || norm[`testcaseoutput${k}`] || norm[`tc${k}output`];
+        const explK = norm[`explanation${k}`] || norm[`sampleexplanation${k}`] || norm[`notes${k}`] || "";
+        const hidK = (norm[`hidden${k}`] || norm[`ishidden${k}`] || norm[`private${k}`] || "").toLowerCase();
+        const isHidK = hidK === "true" || hidK === "1" || hidK === "yes" || hidK === "hidden";
+
+        if (inK !== undefined || outK !== undefined) {
+          resultCases.push({
+            input: String(inK ?? "").trim(),
+            expectedOutput: String(outK ?? "").trim(),
+            isHidden: isHidK,
+            explanation: String(explK ?? "").trim(),
+            displayOrder: resultCases.length,
+          });
+        }
+      }
+    }
+
+    if (resultCases.length === 0) {
+      throw new Error("No test cases found. Ensure columns include 'Input' and 'Expected Output' (or 'Sample Input' / 'Sample Output').");
+    }
+
+    return resultCases;
+  }
+
+  async function handleCreateTestCaseFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = await parseTestCasesFromFile(file);
+      setCodingForm((f) => ({
+        ...f,
+        testCases: parsed,
+      }));
+      setTestCaseUploadMsg(`✅ Successfully imported all ${parsed.length} test cases from ${file.name}!`);
+      setTimeout(() => setTestCaseUploadMsg(null), 6000);
+    } catch (err: any) {
+      alert(err instanceof Error ? err.message : "Failed to parse test cases file.");
+    } finally {
+      e.target.value = "";
+    }
+  }
+
+  async function handleEditTestCaseFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = await parseTestCasesFromFile(file);
+      setEditForm((f) => ({
+        ...f,
+        testCases: parsed,
+      }));
+      alert(`✅ Successfully imported all ${parsed.length} test cases from ${file.name}!`);
+    } catch (err: any) {
+      alert(err instanceof Error ? err.message : "Failed to parse test cases file.");
+    } finally {
+      e.target.value = "";
+    }
+  }
+
+  function extractTestCasesFromNorm(norm: Record<string, string>): TestCase[] {
+    const cases: TestCase[] = [];
+
+    // 1. Direct input/output
+    const inVal = norm["sampleinput"] || norm["input"] || norm["stdin"] || norm["testinput"] || norm["testcaseinput"] || norm["in"] || "";
+    const outVal = norm["sampleoutput"] || norm["output"] || norm["expectedoutput"] || norm["stdout"] || norm["testoutput"] || norm["expected"] || norm["out"] || "";
+    const explVal = norm["sampleexplanation"] || norm["explanation"] || norm["notes"] || norm["desc"] || "";
+    const hidRaw = (norm["ishidden"] || norm["hidden"] || norm["private"] || norm["secret"] || norm["is_hidden"] || "").toLowerCase();
+    const isHidden = hidRaw === "true" || hidRaw === "1" || hidRaw === "yes" || hidRaw === "hidden";
+
+    if (inVal !== "" || outVal !== "") {
+      cases.push({
+        input: inVal,
+        expectedOutput: outVal,
+        isHidden,
+        explanation: explVal,
+        displayOrder: 0,
+      });
+    }
+
+    // 2. Numbered columns (Input 1, Output 1, Input 2, Output 2 ... up to 50)
+    for (let k = 1; k <= 50; k++) {
+      const inK = norm[`input${k}`] || norm[`sampleinput${k}`] || norm[`stdin${k}`] || norm[`testcaseinput${k}`] || norm[`tc${k}input`];
+      const outK = norm[`output${k}`] || norm[`sampleoutput${k}`] || norm[`expectedoutput${k}`] || norm[`stdout${k}`] || norm[`testcaseoutput${k}`] || norm[`tc${k}output`];
+      const explK = norm[`explanation${k}`] || norm[`sampleexplanation${k}`] || norm[`notes${k}`] || "";
+      const hiddenK = (norm[`hidden${k}`] || norm[`ishidden${k}`] || norm[`private${k}`] || "").toLowerCase();
+      const isHiddenK = hiddenK === "true" || hiddenK === "1" || hiddenK === "yes" || hiddenK === "hidden";
+
+      if (inK !== undefined || outK !== undefined) {
+        cases.push({
+          input: String(inK ?? "").trim(),
+          expectedOutput: String(outK ?? "").trim(),
+          isHidden: isHiddenK,
+          explanation: String(explK ?? "").trim(),
+          displayOrder: cases.length,
+        });
+      }
+    }
+
+    // 3. JSON in testcases column
+    const jsonRaw = norm["testcases"] || norm["testcase"] || norm["cases"] || "";
+    if (jsonRaw && (jsonRaw.startsWith("[") || jsonRaw.startsWith("{"))) {
+      try {
+        const parsed = JSON.parse(jsonRaw);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (typeof item === "object" && item !== null) {
+              cases.push({
+                input: String(item.input ?? item.stdin ?? "").trim(),
+                expectedOutput: String(item.expectedOutput ?? item.output ?? item.stdout ?? "").trim(),
+                isHidden: Boolean(item.isHidden ?? item.hidden),
+                explanation: String(item.explanation ?? "").trim(),
+                displayOrder: cases.length,
+              });
+            }
+          }
+        }
+      } catch {
+        // ignore invalid JSON
+      }
+    }
+
+    return cases;
   }
 
   async function handleBulkFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -768,42 +999,133 @@ public class Solution {
         throw new Error("No data rows found in the uploaded file.");
       }
 
-      const parsed: any[] = [];
-      for (let i = 0; i < rawRows.length; i++) {
-        const row = rawRows[i];
+      const allNormRows = rawRows.map((row) => {
         const norm: Record<string, string> = {};
         for (const [k, v] of Object.entries(row)) {
           const keyNorm = k.toLowerCase().trim().replace(/[\s_-]+/g, "");
           norm[keyNorm] = String(v ?? "").trim();
         }
+        return norm;
+      });
 
+      // 1. Check if the entire file is a dedicated Test Cases CSV file (e.g. 15 rows of inputs/outputs)
+      const hasMcqSignals = allNormRows.some(
+        (r) => r["optiona"] || r["optionb"] || r["correctanswer"] || (r["questiontype"] || "").toUpperCase() === "MCQ"
+      );
+      const rowsWithQuestionText = allNormRows.filter(
+        (r) => r["questiontext"] || r["question"] || r["statement"] || r["problemstatement"]
+      );
+
+      const totalTestCasesFoundInFile = allNormRows.reduce((cnt, r) => {
+        const hasDirect = Boolean((r["input"] || r["sampleinput"] || r["stdin"]) || (r["output"] || r["sampleoutput"] || r["expectedoutput"] || r["stdout"]));
+        return cnt + (hasDirect ? 1 : 0);
+      }, 0);
+
+      if (!hasMcqSignals && totalTestCasesFoundInFile > 1 && rowsWithQuestionText.length <= 1) {
+        // This is a dedicated test-cases file!
+        const testCases: TestCase[] = [];
+        let problemTitle = file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ");
+        let questionText = "Solve the coding challenge and verify against all automated test cases.";
+        let marks = 10;
+        let constraints = "Time Limit: 5.0 seconds\nMemory Limit: 256 MB";
+        let allowedLanguages = "c,python,java";
+        let codeTemplate = `#include <stdio.h>\n\nint main() {\n    // Read input\n    return 0;\n}`;
+
+        // If row 0 has metadata, extract it
+        if (allNormRows[0]) {
+          const r0 = allNormRows[0];
+          if (r0["problemtitle"] || r0["title"]) problemTitle = r0["problemtitle"] || r0["title"];
+          if (r0["questiontext"] || r0["question"] || r0["statement"]) questionText = r0["questiontext"] || r0["question"] || r0["statement"];
+          if (r0["marks"] || r0["score"]) marks = Number(r0["marks"] || r0["score"]) || 10;
+          if (r0["constraints"]) constraints = r0["constraints"];
+          if (r0["allowedlanguages"]) allowedLanguages = r0["allowedlanguages"];
+          if (r0["codetemplate"]) codeTemplate = r0["codetemplate"];
+        }
+
+        for (let i = 0; i < allNormRows.length; i++) {
+          const r = allNormRows[i];
+          const inVal = r["input"] || r["sampleinput"] || r["stdin"] || r["testinput"] || r["testcaseinput"] || r["in"] || "";
+          const outVal = r["expectedoutput"] || r["output"] || r["sampleoutput"] || r["stdout"] || r["testoutput"] || r["expected"] || r["out"] || "";
+          const explVal = r["sampleexplanation"] || r["explanation"] || r["notes"] || "";
+          const hidRaw = (r["ishidden"] || r["hidden"] || r["private"] || "").toLowerCase();
+          const isHidden = hidRaw === "true" || hidRaw === "1" || hidRaw === "yes" || hidRaw === "hidden";
+
+          if (inVal !== "" || outVal !== "") {
+            testCases.push({
+              input: inVal,
+              expectedOutput: outVal,
+              isHidden,
+              explanation: explVal,
+              displayOrder: testCases.length,
+            });
+          }
+        }
+
+        if (testCases.length > 0) {
+          const parsed = [{
+            questionType: "CODING",
+            problemTitle,
+            questionText,
+            marks,
+            constraints,
+            allowedLanguages,
+            codeTemplate,
+            testCases,
+          }];
+          setParsedBulkQuestions(parsed);
+          setBulkSuccessMsg(`✨ Successfully detected all ${testCases.length} test cases! Packaged into Coding Question '${problemTitle}' ready to import.`);
+          return;
+        }
+      }
+
+      // 2. Standard or Mixed Bulk Questions Parser with multi-row and multi-column test cases grouping
+      const parsed: any[] = [];
+      let currentCodingQuestion: any = null;
+
+      for (let i = 0; i < allNormRows.length; i++) {
+        const norm = allNormRows[i];
         const qTypeRaw = (norm["questiontype"] || norm["type"] || "").toUpperCase();
         const qText = norm["questiontext"] || norm["question"] || norm["statement"] || norm["problemstatement"] || "";
-        if (!qText) continue;
+        const title = norm["problemtitle"] || norm["title"] || "";
+
+        // Check if this row is an extra test case row for the preceding coding question
+        const rowHasInputOutput = Boolean(
+          norm["sampleinput"] || norm["input"] || norm["stdin"] ||
+          norm["sampleoutput"] || norm["output"] || norm["expectedoutput"] || norm["stdout"]
+        );
+
+        const isSameQuestionAsCurrent = currentCodingQuestion && (
+          (!qText && !title && rowHasInputOutput) || // blank question text following coding question
+          (title && title.toLowerCase() === currentCodingQuestion.problemTitle.toLowerCase()) ||
+          (qText && qText.toLowerCase() === currentCodingQuestion.questionText.toLowerCase())
+        );
+
+        if (isSameQuestionAsCurrent && currentCodingQuestion) {
+          // Append test case(s) from this row to current coding question
+          const rowCases = extractTestCasesFromNorm(norm);
+          for (const tc of rowCases) {
+            tc.displayOrder = currentCodingQuestion.testCases.length;
+            currentCodingQuestion.testCases.push(tc);
+          }
+          continue;
+        }
+
+        // Otherwise, this must be a new question
+        if (!qText && !title) continue; // Skip empty rows
 
         const marks = Number(norm["marks"] || norm["score"] || norm["points"]) || (qTypeRaw.includes("CODE") ? 5 : 1);
-        const isCoding = qTypeRaw.includes("CODE") || Boolean(norm["codetemplate"] || norm["template"] || norm["sampleinput"]);
+        const isCoding = qTypeRaw.includes("CODE") || Boolean(norm["codetemplate"] || norm["template"] || norm["sampleinput"] || norm["input"] || title);
 
         if (isCoding) {
-          const problemTitle = norm["problemtitle"] || norm["title"] || qText.slice(0, 50);
+          const problemTitle = title || qText.slice(0, 50);
           const constraints = norm["constraints"] || "Time Limit: 5.0 seconds\nMemory Limit: 256 MB";
           const allowedLanguages = norm["allowedlanguages"] || norm["languages"] || "c,python,java";
           const codeTemplate = norm["codetemplate"] || norm["template"] || norm["startercode"] || `#include <stdio.h>\n\nint main() {\n    return 0;\n}`;
-          
-          const sampleIn = norm["sampleinput"] || norm["input"] || "";
-          const sampleOut = norm["sampleoutput"] || norm["output"] || "";
-          const sampleExpl = norm["sampleexplanation"] || norm["explanation"] || "";
 
-          const testCases = [];
-          if (sampleIn || sampleOut) {
-            testCases.push({
-              input: sampleIn,
-              expectedOutput: sampleOut,
-              isHidden: false,
-              explanation: sampleExpl,
-              displayOrder: 0,
-            });
-          } else {
+          // Extract all test cases from this row (single or numbered columns Input 1..N)
+          const testCases = extractTestCasesFromNorm(norm);
+
+          if (testCases.length === 0) {
             testCases.push({
               input: "1",
               expectedOutput: "1",
@@ -813,18 +1135,20 @@ public class Solution {
             });
           }
 
-          parsed.push({
+          currentCodingQuestion = {
             questionType: "CODING",
             problemTitle,
-            questionText: qText,
+            questionText: qText || problemTitle,
             marks,
             constraints,
             allowedLanguages,
             codeTemplate,
             testCases,
-          });
+          };
+          parsed.push(currentCodingQuestion);
         } else {
-          // MCQ
+          // MCQ Question
+          currentCodingQuestion = null;
           const optionA = norm["optiona"] || norm["a"] || "";
           const optionB = norm["optionb"] || norm["b"] || "";
           const optionC = norm["optionc"] || norm["c"] || "";
@@ -852,11 +1176,16 @@ public class Solution {
       }
 
       if (parsed.length === 0) {
-        throw new Error("No valid questions could be parsed from the file. Please check column headers.");
+        throw new Error("No valid questions or test cases could be parsed from the file. Please check column headers.");
       }
 
+      const totalTestCases = parsed.reduce((sum, q) => sum + (q.testCases?.length || 0), 0);
       setParsedBulkQuestions(parsed);
-      setBulkSuccessMsg(`Parsed ${parsed.length} questions (${parsed.filter(p => p.questionType === 'MCQ').length} MCQ, ${parsed.filter(p => p.questionType === 'CODING').length} Coding). Review preview below and click 'Confirm & Import'.`);
+      setBulkSuccessMsg(
+        `Parsed ${parsed.length} question(s) (${parsed.filter((p) => p.questionType === "MCQ").length} MCQ, ${
+          parsed.filter((p) => p.questionType === "CODING").length
+        } Coding with ${totalTestCases} total test case(s)). Review preview below and click 'Confirm & Import'.`
+      );
     } catch (err: any) {
       setBulkError(err instanceof Error ? err.message : "Failed to parse questions file.");
     } finally {
@@ -1494,7 +1823,7 @@ public class Solution {
 
               {/* Test Cases Builder */}
               <div className="space-y-2 border-t border-slate-200 pt-3">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-slate-800">
                       Test Cases ({codingForm.testCases.length})
@@ -1504,14 +1833,45 @@ public class Solution {
                       {codingForm.testCases.filter((tc) => tc.isHidden).length} Hidden)
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addTestCase}
-                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-2.5 py-1 rounded transition-colors cursor-pointer"
-                  >
-                    + Add Test Case
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <input
+                      type="file"
+                      ref={createTestCaseFileInputRef}
+                      accept=".csv,.xlsx,.xls"
+                      onChange={handleCreateTestCaseFileUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => createTestCaseFileInputRef.current?.click()}
+                      className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                      title="Upload CSV / Excel containing test cases (Input, Expected Output, Hidden, Explanation)"
+                    >
+                      <span>📥</span> Import CSV ({codingForm.testCases.length} loaded)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={downloadSampleTestCasesCsv}
+                      className="text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 rounded transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                      title="Download sample 15 test cases CSV template"
+                    >
+                      <span>📄</span> 15 Cases Template
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addTestCase}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                    >
+                      + Add Test Case
+                    </button>
+                  </div>
                 </div>
+
+                {testCaseUploadMsg && (
+                  <div className="text-xs p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-medium">
+                    {testCaseUploadMsg}
+                  </div>
+                )}
 
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {codingForm.testCases.map((tc, idx) => (
@@ -1902,17 +2262,42 @@ public class Solution {
                   </div>
 
                   <div className="space-y-2 border-t border-slate-100 pt-3">
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <span className="text-xs font-bold text-slate-800">
                         Test Cases ({editForm.testCases.length})
                       </span>
-                      <button
-                        type="button"
-                        onClick={addEditTestCase}
-                        className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded cursor-pointer"
-                      >
-                        + Add Test Case
-                      </button>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <input
+                          type="file"
+                          ref={editTestCaseFileInputRef}
+                          accept=".csv,.xlsx,.xls"
+                          onChange={handleEditTestCaseFileUpload}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => editTestCaseFileInputRef.current?.click()}
+                          className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-1 rounded cursor-pointer flex items-center gap-1 shadow-2xs"
+                          title="Upload CSV / Excel containing test cases"
+                        >
+                          <span>📥</span> Import CSV ({editForm.testCases.length} loaded)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={downloadSampleTestCasesCsv}
+                          className="text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 rounded cursor-pointer"
+                          title="Download sample 15 test cases CSV template"
+                        >
+                          <span>📄</span> 15 Cases Template
+                        </button>
+                        <button
+                          type="button"
+                          onClick={addEditTestCase}
+                          className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded cursor-pointer"
+                        >
+                          + Add Test Case
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-2 max-h-52 overflow-y-auto">
@@ -2087,6 +2472,14 @@ public class Solution {
                 >
                   <span>📄</span> Download CSV (.csv)
                 </button>
+                <button
+                  type="button"
+                  onClick={downloadSampleTestCasesCsv}
+                  className="bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  title="Download sample CSV with 15 test cases"
+                >
+                  <span>🧪</span> 15 Cases CSV (.csv)
+                </button>
               </div>
             </div>
 
@@ -2180,7 +2573,7 @@ public class Solution {
                           <td className="p-2.5 font-mono text-slate-600">{pq.marks} pts</td>
                           <td className="p-2.5 text-slate-500 text-[11px]">
                             {pq.questionType === "CODING"
-                              ? `${pq.testCases?.length || 0} Testcase(s)`
+                              ? `${pq.testCases?.length || 0} Testcase(s) (${pq.testCases?.filter((t: any) => !t.isHidden).length || 0} Sample, ${pq.testCases?.filter((t: any) => t.isHidden).length || 0} Hidden)`
                               : `Ans: ${String.fromCharCode(65 + (pq.correctAnswer || 0))}`}
                           </td>
                         </tr>
