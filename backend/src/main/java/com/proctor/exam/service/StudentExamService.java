@@ -177,6 +177,7 @@ public class StudentExamService {
             } else {
                 // Fall back to fresh random selection from the full bank
                 List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+                List<ExamQuestion> selected = new ArrayList<>(bank);
                 // Always shuffle the question bank so whoever enters the exam gets a random question set
                 Collections.shuffle(selected);
                 int take = (exam.getNumQuestions() != null && exam.getNumQuestions() > 0)
