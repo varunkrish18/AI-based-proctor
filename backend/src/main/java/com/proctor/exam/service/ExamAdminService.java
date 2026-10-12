@@ -686,46 +686,54 @@ public class ExamAdminService {
                     "questionsPerStudent must be between 1 and the total question count (" + bank.size() + ").");
         }
 
-        List<ExamAssignment> rawEnrolled = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
-        // Deduplicate enrolled by student email
-        Map<String, ExamAssignment> enrolledMap = new LinkedHashMap<>();
-        for (ExamAssignment a : rawEnrolled) {
-            if (a.getStudentEmail() != null && !a.getStudentEmail().isBlank()) {
-                enrolledMap.putIfAbsent(a.getStudentEmail().trim().toLowerCase(), a);
-            }
+        // Synchronize exam question limit so ANY student who enters the exam automatically
+        // receives exactly questionsPerStudent random questions from the question bank
+        if (exam.getNumQuestions() == null || exam.getNumQuestions() != questionsPerStudent) {
+            exam.setNumQuestions(questionsPerStudent);
+            examRepository.save(exam);
         }
-        List<ExamAssignment> enrolled = new ArrayList<>(enrolledMap.values());
 
-        // If a specific number of students is requested, adjust enrolled students list or auto-provision slots
-        if (studentCount != null && studentCount > 0) {
-            if (enrolled.size() < studentCount) {
-                int needed = studentCount - enrolled.size();
-                for (int i = 1; i <= needed; i++) {
-                    int candNum = enrolled.size() + 1;
-                    String autoEmail = "candidate" + candNum + "_exam" + examId + "@student.campus-notes.in";
-                    while (assignmentRepository.findByExamIdAndStudentEmailIgnoreCase(examId, autoEmail).isPresent()
-                            || enrolledMap.containsKey(autoEmail.toLowerCase())) {
-                        candNum++;
-                        autoEmail = "candidate" + candNum + "_exam" + examId + "@student.campus-notes.in";
-                    }
-                    String pwd = generateRandomPassword(8);
-                    ExamAssignment assignment = ExamAssignment.builder()
-                            .exam(exam)
-                            .studentEmail(autoEmail)
-                            .accessPassword(pwd)
-                            .build();
-                    assignment = assignmentRepository.save(assignment);
-                    enrolledMap.put(autoEmail.toLowerCase(), assignment);
-                    enrolled.add(assignment);
+        List<ExamAssignment> enrolled;
+
+        if (exam.isOpenToAll()) {
+            // For an Open-to-All exam, whoever enters the exam automatically receives
+            // the configured random questions. Clean up any dummy candidate seats.
+            entityManager.createNativeQuery("DELETE FROM exam_assignments WHERE exam_id = :examId AND student_email LIKE 'candidate%@student.campus-notes.in'")
+                    .setParameter("examId", examId).executeUpdate();
+            entityManager.flush();
+
+            // Check if any real students have already verified/joined this open exam
+            List<ExamAssignment> rawEnrolled = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
+            Map<String, ExamAssignment> enrolledMap = new LinkedHashMap<>();
+            for (ExamAssignment a : rawEnrolled) {
+                if (a.getStudentEmail() != null && !a.getStudentEmail().isBlank()
+                        && !a.getStudentEmail().startsWith("candidate")) {
+                    enrolledMap.putIfAbsent(a.getStudentEmail().trim().toLowerCase(), a);
                 }
-            } else if (enrolled.size() > studentCount) {
+            }
+            enrolled = new ArrayList<>(enrolledMap.values());
+            if (studentCount != null && studentCount > 0 && enrolled.size() > studentCount) {
                 enrolled = new ArrayList<>(enrolled.subList(0, studentCount));
             }
-        }
+        } else {
+            // For a private (restricted) exam, use students explicitly assigned in the "Assign Students" tab
+            List<ExamAssignment> rawEnrolled = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
+            Map<String, ExamAssignment> enrolledMap = new LinkedHashMap<>();
+            for (ExamAssignment a : rawEnrolled) {
+                if (a.getStudentEmail() != null && !a.getStudentEmail().isBlank()) {
+                    enrolledMap.putIfAbsent(a.getStudentEmail().trim().toLowerCase(), a);
+                }
+            }
+            enrolled = new ArrayList<>(enrolledMap.values());
 
-        if (enrolled.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "No students are assigned to exam ID " + examId + ". Assign students first or specify a student count to auto-assign.");
+            if (studentCount != null && studentCount > 0 && enrolled.size() > studentCount) {
+                enrolled = new ArrayList<>(enrolled.subList(0, studentCount));
+            }
+
+            if (enrolled.isEmpty()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "No students are assigned to exam ID " + examId + ". Please add student emails in the 'Assign Students' tab first.");
+            }
         }
 
         // Clear previous random assignments for this exam and flush immediately
@@ -817,7 +825,9 @@ public class ExamAdminService {
                     }
                 });
 
-        int qps = sqas.isEmpty() ? 0 : sqas.get(0).getQuestionsPerStudent();
+        int qps = sqas.isEmpty()
+                ? (exam.getNumQuestions() != null ? exam.getNumQuestions() : 0)
+                : sqas.get(0).getQuestionsPerStudent();
 
         List<StudentQuestionAssignmentEntry> entries = new ArrayList<>();
         for (StudentQuestionAssignment sqa : sqas) {

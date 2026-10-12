@@ -331,7 +331,14 @@ export default function ExamDetail() {
       )}
       {tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
       {tab === "results" && <ResultsTab examId={exam.id} />}
-      {tab === "qassign" && <QuestionAssignTab examId={exam.id} examName={exam.name} questionCount={questions.length} />}
+      {tab === "qassign" && (
+        <QuestionAssignTab
+          examId={exam.id}
+          examName={exam.name}
+          questionCount={questions.length}
+          openToAll={exam.openToAll}
+        />
+      )}
 
       {/* Delete Exam Confirmation Modal */}
       {showDeleteModal && (
@@ -4617,13 +4624,14 @@ function QuestionAssignTab({
   examId,
   examName,
   questionCount,
+  openToAll,
 }: {
   examId: number;
   examName: string;
   questionCount: number;
+  openToAll?: boolean;
 }) {
   const [qps, setQps] = useState<number>(2);
-  const [studentCount, setStudentCount] = useState<number | "">("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<QuestionAssignmentReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -4653,10 +4661,7 @@ function QuestionAssignTab({
     setLoading(true);
     setError(null);
     try {
-      const payload: { questionsPerStudent: number; studentCount?: number } = { questionsPerStudent: qps };
-      if (typeof studentCount === "number" && studentCount > 0) {
-        payload.studentCount = studentCount;
-      }
+      const payload = { questionsPerStudent: qps };
       const result = await api.post<QuestionAssignmentReport>(
         `/api/admin/exams/${examId}/assign-questions-randomly`,
         payload,
@@ -4898,8 +4903,8 @@ function QuestionAssignTab({
               📋 Random Question Assignment &amp; 1-Page PDF Reports
             </h2>
             <p className="text-sm text-slate-500 mt-1 max-w-xl">
-              Randomly map a fixed number of questions from the question bank to enrolled students or specify
-              the exact number of students to assign (with automatic credential generation).
+              Specify how many random questions from the question bank each student should receive.
+              For Open-to-All exams, whoever enters the exam automatically receives this number of random questions.
               Generates a dedicated PDF report with exactly 1 candidate per page.
             </p>
           </div>
@@ -4949,29 +4954,6 @@ function QuestionAssignTab({
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              Number of students (optional)
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                id="student-count-input"
-                type="number"
-                min={1}
-                placeholder="All assigned"
-                value={studentCount}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setStudentCount(val === "" ? "" : Math.max(1, parseInt(val, 10) || 1));
-                }}
-                className="w-32 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-              <span className="text-xs text-slate-400">
-                (blank = all enrolled)
-              </span>
-            </div>
-          </div>
-
           <button
             onClick={handleAssign}
             disabled={loading || questionCount === 0}
@@ -4983,10 +4965,10 @@ function QuestionAssignTab({
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
-                Assigning…
+                Saving…
               </>
             ) : (
-              "🎲 Assign Random Questions"
+              openToAll ? "🎲 Allocate Questions for Open Exam" : "🎲 Assign Random Questions"
             )}
           </button>
 
@@ -4996,6 +4978,15 @@ function QuestionAssignTab({
             </p>
           )}
         </div>
+
+        {openToAll && (
+          <div className="mt-4 flex items-center gap-2 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-4 py-2.5 rounded-xl font-medium">
+            <span className="text-base">🌐</span>
+            <span>
+              <strong>Open to All (Public Exam) Active:</strong> Whoever enters this exam will automatically receive <strong>{qps} random questions</strong> from the question bank. As students verify and enter, their individual assignments will appear in the report below.
+            </span>
+          </div>
+        )}
 
         {error && (
           <p className="mt-3 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-4 py-2">

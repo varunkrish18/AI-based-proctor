@@ -177,13 +177,25 @@ public class StudentExamService {
             } else {
                 // Fall back to fresh random selection from the full bank
                 List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
-                List<ExamQuestion> selected = new ArrayList<>(bank);
-                if (Boolean.TRUE.equals(exam.getRandomizeQuestions())) {
-                    Collections.shuffle(selected);
-                }
-                int take = Math.min(exam.getNumQuestions(), selected.size());
+                // Always shuffle the question bank so whoever enters the exam gets a random question set
+                Collections.shuffle(selected);
+                int take = (exam.getNumQuestions() != null && exam.getNumQuestions() > 0)
+                        ? Math.min(exam.getNumQuestions(), selected.size())
+                        : selected.size();
                 selected = selected.subList(0, take);
                 orderedQuestionIds = selected.stream().map(ExamQuestion::getId).toList();
+
+                // Persist this assignment so this candidate has their questions tracked permanently
+                try {
+                    com.proctor.exam.entity.StudentQuestionAssignment autoSqa =
+                            com.proctor.exam.entity.StudentQuestionAssignment.builder()
+                                    .exam(exam)
+                                    .studentEmail(studentEmail)
+                                    .questionIds(objectMapper.writeValueAsString(orderedQuestionIds))
+                                    .questionsPerStudent(orderedQuestionIds.size())
+                                    .build();
+                    sqaRepository.save(autoSqa);
+                } catch (Exception ignored) {}
             }
 
             attempt = ExamAttempt.builder()
