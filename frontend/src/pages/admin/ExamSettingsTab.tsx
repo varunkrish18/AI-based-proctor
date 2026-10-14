@@ -17,7 +17,26 @@ interface ExamSettingsTabProps {
 }
 
 export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }: ExamSettingsTabProps) {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string;
+    description: string;
+    subject: string;
+    durationMinutes: number | string;
+    startAt: string;
+    endAt: string;
+    numQuestions: number | string;
+    passingMarks: number | string;
+    negativeMarking: number | string;
+    randomizeQuestions: boolean;
+    randomizeOptions: boolean;
+    maxAttempts: number | string;
+    webcamRequired: boolean;
+    microphoneRequired: boolean;
+    screenRequired: boolean;
+    locationRequired: boolean;
+    audioInputLevel: number | string;
+    status: string;
+  }>({
     name: exam.name || "",
     description: exam.description || "",
     subject: exam.subject || "",
@@ -93,6 +112,12 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
     try {
       const payload = {
         ...form,
+        durationMinutes: Math.max(1, Number(form.durationMinutes) || 60),
+        numQuestions: Math.max(1, Number(form.numQuestions) || 10),
+        maxAttempts: Math.max(1, Number(form.maxAttempts) || 1),
+        passingMarks: Math.max(0, Number(form.passingMarks) || 0),
+        negativeMarking: Math.max(0, Number(form.negativeMarking) || 0),
+        audioInputLevel: Math.max(1, Math.min(100, Number(form.audioInputLevel) || 20)),
         startAt: startDate.toISOString(),
         endAt: endDate.toISOString(),
       };
@@ -247,7 +272,12 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
                 min={1}
                 required
                 value={form.durationMinutes}
-                onChange={(e) => set("durationMinutes", Math.max(1, Number(e.target.value)))}
+                onChange={(e) => set("durationMinutes", e.target.value)}
+                onBlur={() => {
+                  if (form.durationMinutes === "" || Number(form.durationMinutes) < 1) {
+                    set("durationMinutes", 1);
+                  }
+                }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <span className="text-[11px] text-slate-400 mt-0.5 block">Candidate countdown timer length</span>
@@ -269,7 +299,12 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
                 min={1}
                 required
                 value={form.numQuestions}
-                onChange={(e) => set("numQuestions", Math.max(1, Number(e.target.value)))}
+                onChange={(e) => set("numQuestions", e.target.value)}
+                onBlur={() => {
+                  if (form.numQuestions === "" || Number(form.numQuestions) < 1) {
+                    set("numQuestions", 1);
+                  }
+                }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
               />
               <span className="text-[11px] text-slate-400 mt-0.5 block">Questions served to student</span>
@@ -282,7 +317,12 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
                 min={1}
                 required
                 value={form.maxAttempts}
-                onChange={(e) => set("maxAttempts", Math.max(1, Number(e.target.value)))}
+                onChange={(e) => set("maxAttempts", e.target.value)}
+                onBlur={() => {
+                  if (form.maxAttempts === "" || Number(form.maxAttempts) < 1) {
+                    set("maxAttempts", 1);
+                  }
+                }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
               />
               <span className="text-[11px] text-slate-400 mt-0.5 block">Allowed student retries</span>
@@ -294,7 +334,12 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
                 type="number"
                 min={0}
                 value={form.passingMarks}
-                onChange={(e) => set("passingMarks", Number(e.target.value))}
+                onChange={(e) => set("passingMarks", e.target.value)}
+                onBlur={() => {
+                  if (form.passingMarks === "" || Number(form.passingMarks) < 0) {
+                    set("passingMarks", 0);
+                  }
+                }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <span className="text-[11px] text-slate-400 mt-0.5 block">Minimum passing score</span>
@@ -307,7 +352,12 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
                 min={0}
                 step="0.25"
                 value={form.negativeMarking}
-                onChange={(e) => set("negativeMarking", Number(e.target.value))}
+                onChange={(e) => set("negativeMarking", e.target.value)}
+                onBlur={() => {
+                  if (form.negativeMarking === "" || Number(form.negativeMarking) < 0) {
+                    set("negativeMarking", 0);
+                  }
+                }}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <span className="text-[11px] text-slate-400 mt-0.5 block">Deduction per incorrect option</span>
@@ -399,7 +449,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
                   min={5}
                   max={100}
                   step={1}
-                  value={form.audioInputLevel}
+                  value={Number(form.audioInputLevel) || 20}
                   onChange={(e) => set("audioInputLevel", Number(e.target.value))}
                   className="w-full accent-blue-600 cursor-pointer"
                 />
@@ -408,7 +458,15 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
                   min={5}
                   max={100}
                   value={form.audioInputLevel}
-                  onChange={(e) => set("audioInputLevel", Math.max(1, Math.min(100, Number(e.target.value))))}
+                  onChange={(e) => set("audioInputLevel", e.target.value)}
+                  onBlur={() => {
+                    const val = Number(form.audioInputLevel);
+                    if (form.audioInputLevel === "" || isNaN(val) || val < 1) {
+                      set("audioInputLevel", 20);
+                    } else if (val > 100) {
+                      set("audioInputLevel", 100);
+                    }
+                  }}
                   className="w-16 px-2 py-1 text-xs border border-slate-300 rounded-md text-center font-bold"
                 />
               </div>

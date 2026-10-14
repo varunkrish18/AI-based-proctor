@@ -15,7 +15,7 @@ export default function CodingAssessmentReports() {
   const [problemHint, setProblemHint] = useState<string>(
     "Distributed graph cycle detection, binary search trees, sliding window event streaming, and dynamic programming knapsack allocation"
   );
-  const [targetCount, setTargetCount] = useState<number>(65);
+  const [targetCount, setTargetCount] = useState<number | string>(65);
   const [apiKey, setApiKey] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [genSuccessMsg, setGenSuccessMsg] = useState<string | null>(null);
@@ -56,7 +56,7 @@ export default function CodingAssessmentReports() {
     try {
       setIsGenerating(true);
       setGenSuccessMsg(null);
-      const generated = await generateNewQuestions(problemHint, targetCount, apiKey || undefined);
+      const generated = await generateNewQuestions(problemHint, Number(targetCount) || 60, apiKey || undefined);
       setGenSuccessMsg(`Successfully generated ${generated.length} unique questions and classified with Random Forest!`);
       loadData();
     } catch (err: any) {
@@ -220,7 +220,13 @@ export default function CodingAssessmentReports() {
                   min={60}
                   max={100}
                   value={targetCount}
-                  onChange={(e) => setTargetCount(Number(e.target.value))}
+                  onChange={(e) => setTargetCount(e.target.value)}
+                  onBlur={() => {
+                    const val = Number(targetCount);
+                    if (!targetCount || isNaN(val) || val < 60) setTargetCount(60);
+                    else if (val > 100) setTargetCount(100);
+                    else setTargetCount(val);
+                  }}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
               </div>

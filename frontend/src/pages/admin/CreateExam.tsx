@@ -14,7 +14,25 @@ export default function CreateExam() {
   const inOneHour = new Date(now.getTime() + 60 * 60 * 1000);
   const inOneWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string;
+    description: string;
+    subject: string;
+    durationMinutes: number | string;
+    startAt: string;
+    endAt: string;
+    numQuestions: number | string;
+    passingMarks: number | string;
+    negativeMarking: number | string;
+    randomizeQuestions: boolean;
+    randomizeOptions: boolean;
+    maxAttempts: number | string;
+    webcamRequired: boolean;
+    microphoneRequired: boolean;
+    screenRequired: boolean;
+    locationRequired: boolean;
+    audioInputLevel: number | string;
+  }>({
     name: "",
     description: "",
     subject: "",
@@ -47,6 +65,12 @@ export default function CreateExam() {
     try {
       const payload = {
         ...form,
+        durationMinutes: Math.max(1, Number(form.durationMinutes) || 60),
+        numQuestions: Math.max(1, Number(form.numQuestions) || 10),
+        passingMarks: Math.max(0, Number(form.passingMarks) || 0),
+        negativeMarking: Math.max(0, Number(form.negativeMarking) || 0),
+        maxAttempts: Math.max(1, Number(form.maxAttempts) || 1),
+        audioInputLevel: Math.max(1, Math.min(100, Number(form.audioInputLevel) || 20)),
         startAt: new Date(form.startAt).toISOString(),
         endAt: new Date(form.endAt).toISOString(),
       };
@@ -79,12 +103,34 @@ export default function CreateExam() {
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Duration (minutes)">
-            <input type="number" min={1} required value={form.durationMinutes}
-              onChange={(e) => set("durationMinutes", Number(e.target.value))} className="input" />
+            <input
+              type="number"
+              min={1}
+              required
+              value={form.durationMinutes}
+              onChange={(e) => set("durationMinutes", e.target.value)}
+              onBlur={() => {
+                if (form.durationMinutes === "" || Number(form.durationMinutes) < 1) {
+                  set("durationMinutes", 1);
+                }
+              }}
+              className="input"
+            />
           </Field>
           <Field label="Number of Questions">
-            <input type="number" min={1} required value={form.numQuestions}
-              onChange={(e) => set("numQuestions", Number(e.target.value))} className="input" />
+            <input
+              type="number"
+              min={1}
+              required
+              value={form.numQuestions}
+              onChange={(e) => set("numQuestions", e.target.value)}
+              onBlur={() => {
+                if (form.numQuestions === "" || Number(form.numQuestions) < 1) {
+                  set("numQuestions", 1);
+                }
+              }}
+              className="input"
+            />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -99,16 +145,48 @@ export default function CreateExam() {
         </div>
         <div className="grid grid-cols-3 gap-4">
           <Field label="Passing Marks">
-            <input type="number" min={0} required value={form.passingMarks}
-              onChange={(e) => set("passingMarks", Number(e.target.value))} className="input" />
+            <input
+              type="number"
+              min={0}
+              required
+              value={form.passingMarks}
+              onChange={(e) => set("passingMarks", e.target.value)}
+              onBlur={() => {
+                if (form.passingMarks === "" || Number(form.passingMarks) < 0) {
+                  set("passingMarks", 0);
+                }
+              }}
+              className="input"
+            />
           </Field>
           <Field label="Negative Marking">
-            <input type="number" min={0} step="0.25" value={form.negativeMarking}
-              onChange={(e) => set("negativeMarking", Number(e.target.value))} className="input" />
+            <input
+              type="number"
+              min={0}
+              step="0.25"
+              value={form.negativeMarking}
+              onChange={(e) => set("negativeMarking", e.target.value)}
+              onBlur={() => {
+                if (form.negativeMarking === "" || Number(form.negativeMarking) < 0) {
+                  set("negativeMarking", 0);
+                }
+              }}
+              className="input"
+            />
           </Field>
           <Field label="Max Attempts">
-            <input type="number" min={1} value={form.maxAttempts}
-              onChange={(e) => set("maxAttempts", Number(e.target.value))} className="input" />
+            <input
+              type="number"
+              min={1}
+              value={form.maxAttempts}
+              onChange={(e) => set("maxAttempts", e.target.value)}
+              onBlur={() => {
+                if (form.maxAttempts === "" || Number(form.maxAttempts) < 1) {
+                  set("maxAttempts", 1);
+                }
+              }}
+              className="input"
+            />
           </Field>
         </div>
         <div className="flex gap-6">
@@ -156,7 +234,7 @@ export default function CreateExam() {
                     min={5}
                     max={100}
                     step={1}
-                    value={form.audioInputLevel}
+                    value={Number(form.audioInputLevel) || 20}
                     onChange={(e) => set("audioInputLevel", Number(e.target.value))}
                     className="w-full accent-blue-600 cursor-pointer"
                   />
@@ -165,7 +243,15 @@ export default function CreateExam() {
                     min={5}
                     max={100}
                     value={form.audioInputLevel}
-                    onChange={(e) => set("audioInputLevel", Math.max(1, Math.min(100, Number(e.target.value))))}
+                    onChange={(e) => set("audioInputLevel", e.target.value)}
+                    onBlur={() => {
+                      const val = Number(form.audioInputLevel);
+                      if (form.audioInputLevel === "" || isNaN(val) || val < 1) {
+                        set("audioInputLevel", 20);
+                      } else if (val > 100) {
+                        set("audioInputLevel", 100);
+                      }
+                    }}
                     className="w-16 px-2 py-1 text-xs border border-slate-300 rounded text-center"
                   />
                 </div>

@@ -450,7 +450,15 @@ function QuestionsTab({
   const [questionType, setQuestionType] = useState<"MCQ" | "CODING">("MCQ");
 
   // MCQ Form
-  const [mcqForm, setMcqForm] = useState({
+  const [mcqForm, setMcqForm] = useState<{
+    questionText: string;
+    optionA: string;
+    optionB: string;
+    optionC: string;
+    optionD: string;
+    correctAnswer: number;
+    marks: number | string;
+  }>({
     questionText: "",
     optionA: "",
     optionB: "",
@@ -468,7 +476,7 @@ function QuestionsTab({
   const [codingForm, setCodingForm] = useState<{
     problemTitle: string;
     questionText: string;
-    marks: number;
+    marks: number | string;
     constraints: string;
     allowedLanguages: string;
     codeTemplate: string;
@@ -534,7 +542,7 @@ if __name__ == '__main__':
   const [editForm, setEditForm] = useState<{
     questionType: "MCQ" | "CODING";
     questionText: string;
-    marks: number;
+    marks: number | string;
     optionA: string;
     optionB: string;
     optionC: string;
@@ -567,7 +575,7 @@ if __name__ == '__main__':
   // AI Question Generation Modal state
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiTopics, setAiTopics] = useState(exam.subject ? `${exam.subject}` : "");
-  const [aiNumQuestions, setAiNumQuestions] = useState(5);
+  const [aiNumQuestions, setAiNumQuestions] = useState<number | string>(5);
   const [aiQuestionType, setAiQuestionType] = useState<"MIXED" | "MCQ" | "CODING">("MIXED");
   const [aiDifficulty, setAiDifficulty] = useState("Medium");
   const [aiGenerating, setAiGenerating] = useState(false);
@@ -1390,6 +1398,7 @@ public class Solution {
       if (questionType === "MCQ") {
         await api.post(`/api/admin/exams/${exam.id}/questions`, {
           ...mcqForm,
+          marks: Number(mcqForm.marks) || 1,
           questionType: "MCQ",
         }, "admin");
         setMcqForm({
@@ -1409,7 +1418,7 @@ public class Solution {
           questionType: "CODING",
           problemTitle: codingForm.problemTitle,
           questionText: codingForm.questionText,
-          marks: codingForm.marks,
+          marks: Number(codingForm.marks) || 10,
           constraints: codingForm.constraints,
           allowedLanguages: codingForm.allowedLanguages,
           codeTemplate: codingForm.codeTemplate,
@@ -1495,7 +1504,10 @@ public class Solution {
       if (editForm.questionType === "CODING" && editForm.testCases.length === 0) {
         throw new Error("Coding questions require at least one test case.");
       }
-      await api.put(`/api/admin/exams/${exam.id}/questions/${editingQuestion.id}`, editForm, "admin");
+      await api.put(`/api/admin/exams/${exam.id}/questions/${editingQuestion.id}`, {
+        ...editForm,
+        marks: Number(editForm.marks) || 1,
+      }, "admin");
       setEditingQuestion(null);
       onAdded();
     } catch (err) {
@@ -1615,7 +1627,12 @@ public class Solution {
                     min={1}
                     max={20}
                     value={aiNumQuestions}
-                    onChange={(e) => setAiNumQuestions(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                    onChange={(e) => setAiNumQuestions(e.target.value)}
+                    onBlur={() => {
+                      const val = Number(aiNumQuestions);
+                      if (aiNumQuestions === "" || isNaN(val) || val < 1) setAiNumQuestions(1);
+                      else if (val > 20) setAiNumQuestions(20);
+                    }}
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>
@@ -1842,7 +1859,12 @@ public class Solution {
                   min={0.5}
                   step="0.5"
                   value={mcqForm.marks}
-                  onChange={(e) => setMcq("marks", Number(e.target.value))}
+                  onChange={(e) => setMcq("marks", e.target.value)}
+                  onBlur={() => {
+                    if (mcqForm.marks === "" || Number(mcqForm.marks) <= 0) {
+                      setMcq("marks", 1);
+                    }
+                  }}
                   className="input w-24"
                 />
               </div>
@@ -1886,7 +1908,12 @@ public class Solution {
                     min={1}
                     step="1"
                     value={codingForm.marks}
-                    onChange={(e) => setCodingForm((f) => ({ ...f, marks: Number(e.target.value) }))}
+                    onChange={(e) => setCodingForm((f) => ({ ...f, marks: e.target.value }))}
+                    onBlur={() => {
+                      if (codingForm.marks === "" || Number(codingForm.marks) < 1) {
+                        setCodingForm((f) => ({ ...f, marks: 1 }));
+                      }
+                    }}
                     className="input"
                   />
                 </div>
@@ -2357,7 +2384,12 @@ public class Solution {
                         min={1}
                         step="1"
                         value={editForm.marks}
-                        onChange={(e) => setEditForm((f) => ({ ...f, marks: Number(e.target.value) }))}
+                        onChange={(e) => setEditForm((f) => ({ ...f, marks: e.target.value }))}
+                        onBlur={() => {
+                          if (editForm.marks === "" || Number(editForm.marks) < 1) {
+                            setEditForm((f) => ({ ...f, marks: 1 }));
+                          }
+                        }}
                         className="input"
                       />
                     </div>
@@ -2561,7 +2593,12 @@ public class Solution {
                       min={0.5}
                       step="0.5"
                       value={editForm.marks}
-                      onChange={(e) => setEditForm((f) => ({ ...f, marks: Number(e.target.value) }))}
+                      onChange={(e) => setEditForm((f) => ({ ...f, marks: e.target.value }))}
+                      onBlur={() => {
+                        if (editForm.marks === "" || Number(editForm.marks) <= 0) {
+                          setEditForm((f) => ({ ...f, marks: 1 }));
+                        }
+                      }}
                       className="input w-24"
                     />
                   </div>
@@ -4631,7 +4668,7 @@ function QuestionAssignTab({
   questionCount: number;
   openToAll?: boolean;
 }) {
-  const [qps, setQps] = useState<number>(2);
+  const [qps, setQps] = useState<number | string>(2);
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<QuestionAssignmentReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -4654,14 +4691,15 @@ function QuestionAssignTab({
   }, [examId]);
 
   async function handleAssign() {
-    if (qps <= 0 || qps > questionCount) {
+    const numQps = Number(qps);
+    if (!numQps || numQps <= 0 || numQps > questionCount) {
       setError(`Questions per student must be between 1 and ${questionCount}.`);
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const payload = { questionsPerStudent: qps };
+      const payload = { questionsPerStudent: numQps };
       const result = await api.post<QuestionAssignmentReport>(
         `/api/admin/exams/${examId}/assign-questions-randomly`,
         payload,
@@ -4945,7 +4983,17 @@ function QuestionAssignTab({
                 min={1}
                 max={questionCount}
                 value={qps}
-                onChange={(e) => setQps(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                onChange={(e) => setQps(e.target.value)}
+                onBlur={() => {
+                  const val = Number(qps);
+                  if (qps === "" || isNaN(val) || val < 1) {
+                    setQps(1);
+                  } else if (val > questionCount) {
+                    setQps(questionCount);
+                  } else {
+                    setQps(val);
+                  }
+                }}
                 className="w-24 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
               <span className="text-xs text-slate-400">

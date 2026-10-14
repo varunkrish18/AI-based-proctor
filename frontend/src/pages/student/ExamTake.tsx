@@ -509,23 +509,28 @@ export default function ExamTake() {
         }
       }
 
-      // 3. Acquire and verify Location
-      if (navigator.geolocation) {
-        try {
-          await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              timeout: 6000,
-              enableHighAccuracy: true,
+      // 3. Acquire and verify Location (only if explicitly required)
+      const locationRequired = session.locationRequired ?? false;
+      if (locationRequired) {
+        if (navigator.geolocation) {
+          try {
+            await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                timeout: 6000,
+                enableHighAccuracy: true,
+              });
             });
-          });
-          setLocationStatus("ACTIVE");
-        } catch (locErr: any) {
-          if (locErr.code === 1 /* PERMISSION_DENIED */) {
-            logEvent("LOCATION_DENIED", undefined, { reason: "Location permission denied" });
-            throw new Error("Location permission is mandatory throughout the exam. Please allow Location access in your browser settings.");
+            setLocationStatus("ACTIVE");
+          } catch (locErr: any) {
+            if (locErr.code === 1 /* PERMISSION_DENIED */) {
+              logEvent("LOCATION_DENIED", undefined, { reason: "Location permission denied" });
+              throw new Error("Location permission is mandatory throughout the exam. Please allow Location access in your browser settings.");
+            }
+            setLocationStatus("ACTIVE");
           }
-          setLocationStatus("ACTIVE");
         }
+      } else {
+        setLocationStatus("NOT_REQUIRED");
       }
 
       // 4. Verify or request fullscreen mode
@@ -707,8 +712,8 @@ export default function ExamTake() {
         });
       }
 
-      // Re-verify Location
-      if (navigator.geolocation) {
+      // Re-verify Location (only if required)
+      if (session?.locationRequired && navigator.geolocation) {
         await new Promise<GeolocationPosition>((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
         });
@@ -720,7 +725,10 @@ export default function ExamTake() {
       setWarning(null);
     } catch (err: any) {
       setPermissionError(
-        err?.message || "Failed to restore permissions. Please enable Camera, Microphone, and Location in your browser address bar."
+        err?.message ||
+          (session?.locationRequired
+            ? "Failed to restore permissions. Please enable Camera, Microphone, and Location in your browser address bar."
+            : "Failed to restore permissions. Please enable Camera and Microphone in your browser address bar.")
       );
     } finally {
       setReacquiringPermissions(false);
@@ -1186,9 +1194,10 @@ export default function ExamTake() {
   useEffect(() => {
     if (!session || !screenGatePassed || submittedRef.current) return;
 
-    // 1. Geolocation continuous watcher
+    // 1. Geolocation continuous watcher (only if location is required)
     let geoWatchId: number | null = null;
-    if (navigator.geolocation) {
+    const isLocationRequired = session?.locationRequired ?? false;
+    if (isLocationRequired && navigator.geolocation) {
       geoWatchId = navigator.geolocation.watchPosition(
         () => {
           setLocationStatus("ACTIVE");
@@ -1233,7 +1242,7 @@ export default function ExamTake() {
                 "Microphone Access Revoked",
                 "Microphone permission was turned off in your browser settings. Audio monitoring is strictly mandatory."
               );
-            } else if (type === "location") {
+            } else if (type === "location" && isLocationRequired) {
               setLocationStatus("LOST");
               logEvent("LOCATION_DENIED", undefined, { reason: "Location permission revoked in browser settings" });
               setPermissionMissing({ type: "location", reason: "Location permission was turned off in browser settings" });
@@ -1254,9 +1263,9 @@ export default function ExamTake() {
       } catch {}
     };
 
-    watchPerm("camera" as any, "webcam");
-    watchPerm("microphone" as any, "microphone");
-    watchPerm("geolocation" as any, "location");
+    if (session?.webcamRequired ?? true) watchPerm("camera" as any, "webcam");
+    if (session?.microphoneRequired ?? true) watchPerm("microphone" as any, "microphone");
+    if (isLocationRequired) watchPerm("geolocation" as any, "location");
 
     return () => {
       if (geoWatchId !== null && navigator.geolocation) {
@@ -2079,6 +2088,12 @@ export default function ExamTake() {
                 <span>Microphone: Audio monitoring (Admin Gain: {session.audioInputLevel ?? 20}%)</span>
               </div>
             )}
+            {session.locationRequired && (
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600 font-bold">✓</span>
+                <span>Location: Verified geolocation monitoring</span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-blue-600 font-bold">✓</span>
               <span>Locked fullscreen examination mode</span>
@@ -2209,15 +2224,24 @@ export default function ExamTake() {
                 : "Location Access Revoked / Disconnected"}
             </h2>
             <p className="text-slate-300 text-sm leading-relaxed">
-              Examination integrity requires continuous, uninterrupted access to your <strong>Camera, Microphone, and Location</strong>.
-              All permissions must remain granted in your browser throughout the entire exam.
+              Examination integrity requires continuous, uninterrupted access to your{" "}
+              <strong>
+                {session?.locationRequired ? "Camera, Microphone, and Location" : "Camera and Microphone"}
+              </strong>
+              . All permissions must remain granted in your browser throughout the entire exam.
             </p>
           </div>
           <div className="bg-rose-950/40 border border-rose-500/30 rounded-lg p-3 text-xs text-rose-200 text-left space-y-1">
             <p className="font-semibold text-rose-300">How to restore permissions &amp; resume exam:</p>
             <ol className="list-decimal list-inside space-y-1 text-slate-300">
               <li>Click the <strong>site settings / lock icon</strong> next to the URL in your browser address bar.</li>
-              <li>Set <strong>Camera, Microphone, and Location</strong> to <strong>&quot;Allow&quot;</strong>.</li>
+              <li>
+                Set{" "}
+                <strong>
+                  {session?.locationRequired ? "Camera, Microphone, and Location" : "Camera and Microphone"}
+                </strong>{" "}
+                to <strong>&quot;Allow&quot;</strong>.
+              </li>
               <li>Click <strong>&quot;Restore Permissions to Resume Exam&quot;</strong> below.</li>
             </ol>
           </div>
@@ -2716,15 +2740,19 @@ export default function ExamTake() {
               />
               Screen
             </span>
-            <span className="text-slate-600">|</span>
-            <span className="flex items-center gap-1.5" title={`Location: ${locationStatus}`}>
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  locationStatus === "ACTIVE" ? "bg-emerald-400" : "bg-rose-400"
-                }`}
-              />
-              Location
-            </span>
+            {session?.locationRequired && (
+              <>
+                <span className="text-slate-600">|</span>
+                <span className="flex items-center gap-1.5" title={`Location: ${locationStatus}`}>
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      locationStatus === "ACTIVE" ? "bg-emerald-400" : "bg-rose-400"
+                    }`}
+                  />
+                  Location
+                </span>
+              </>
+            )}
           </div>
 
           {/* AI Focus Indicators (Phase 4 & 5) */}
