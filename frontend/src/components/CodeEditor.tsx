@@ -237,8 +237,14 @@ export default function CodeEditor({
       (typeof e.key === "string" && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
       (typeof e.code === "string" && /^F([1-9]|1[0-2])$/i.test(e.code));
 
-    // Block non-editing restricted keys (Windows, Ctrl, Alt, F1-F12) to protect exam integrity
-    if (isWindowsKey || isCtrlKey || isAltKey || isFunctionKey) {
+    const isEscapeKey =
+      e.key === "Escape" ||
+      e.key === "Esc" ||
+      e.code === "Escape" ||
+      e.keyCode === 27;
+
+    // Block non-editing restricted keys (Escape, Windows, Ctrl, Alt, F1-F12) to protect exam integrity
+    if (isWindowsKey || isCtrlKey || isAltKey || isFunctionKey || isEscapeKey) {
       e.preventDefault();
       e.stopPropagation();
       return;

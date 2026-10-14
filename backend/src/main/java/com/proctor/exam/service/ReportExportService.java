@@ -168,9 +168,15 @@ public class ReportExportService {
             com.lowagie.text.Font bodyFont = new com.lowagie.text.Font(
                     com.lowagie.text.Font.HELVETICA, 10);
 
-            String studentName = studentRepository.findByEmailIgnoreCase(ctx.attempt.getStudentEmail())
+            Optional<com.proctor.exam.entity.Student> studentOpt = studentRepository.findByEmailIgnoreCase(ctx.attempt.getStudentEmail());
+            String studentName = studentOpt
                     .map(com.proctor.exam.entity.Student::getFullName)
+                    .filter(s -> !s.isBlank())
                     .orElse("Candidate");
+            String regNumber = studentOpt
+                    .map(com.proctor.exam.entity.Student::getRegisterNumber)
+                    .filter(s -> !s.isBlank())
+                    .orElse("—");
 
             // Title
             doc.add(new com.lowagie.text.Paragraph("Official Student Examination & Evaluation Report", titleFont));
@@ -182,6 +188,7 @@ public class ReportExportService {
             com.lowagie.text.pdf.PdfPTable summaryTable = new com.lowagie.text.pdf.PdfPTable(2);
             summaryTable.setWidthPercentage(100);
             addPdfRow(summaryTable, "Student Name", studentName);
+            addPdfRow(summaryTable, "Register Number", regNumber);
             addPdfRow(summaryTable, "Student Email", ctx.attempt.getStudentEmail());
             addPdfRow(summaryTable, "Attempt ID", "#" + ctx.attempt.getId());
             addPdfRow(summaryTable, "Examination", ctx.attempt.getExam().getName());
@@ -428,16 +435,18 @@ public class ReportExportService {
             Map<String, Integer> weights = riskEngine.resolveWeights(exam);
 
             for (ExamAttempt at : attempts) {
-                String sName = studentRepository.findByEmailIgnoreCase(at.getStudentEmail())
-                        .map(Student::getFullName)
-                        .orElse("Student");
+                Optional<Student> stOpt = studentRepository.findByEmailIgnoreCase(at.getStudentEmail());
+                String sName = stOpt.map(Student::getFullName).filter(s -> !s.isBlank()).orElse("Student");
+                String reg = stOpt.map(Student::getRegisterNumber).filter(r -> !r.isBlank()).orElse("");
+                String studentCol = reg.isEmpty() ? sName : sName + "\n[" + reg + "]";
+
                 List<ProctoringEvent> evs = eventRepository.findByAttemptIdOrderByOccurredAtAsc(at.getId());
                 BigDecimal rScore = riskEngine.computeDecayedRiskScore(evs, weights, Instant.now());
                 String scoreStr = at.getScore() != null ? at.getScore().toPlainString() + " pts" : "—";
                 String integrityStr = Boolean.TRUE.equals(at.getFlaggedForReview()) ? "FLAGGED" : "Clear";
 
                 addPdfRow(rosterTable,
-                        sName,
+                        studentCol,
                         at.getStudentEmail(),
                         String.valueOf(at.getAttemptNumber()),
                         at.getStatus() != null ? at.getStatus() : "—",
@@ -534,6 +543,537 @@ public class ReportExportService {
             cell.setCellValue(values[i]);
             if (style != null) cell.setCellStyle(style);
         }
+    }
+
+    // ── Requirement 3: 1-Page Question Completion PDF ─────────────────────────
+
+    @Transactional(readOnly = true)
+    public byte[] exportExamQuestionCompletionPdf(Long examId) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found: " + examId));
+
+        List<ExamAttempt> attempts = attemptRepository.findByExamIdOrderByStartTimeDesc(examId);
+
+        com.lowagie.text.Document doc = new com.lowagie.text.Document(com.lowagie.text.PageSize.A4, 28, 28, 28, 28);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            com.lowagie.text.pdf.PdfWriter.getInstance(doc, out);
+            doc.open();
+
+            if (attempts.isEmpty()) {
+                com.lowagie.text.Font titleFont = new com.lowagie.text.Font(
+                        com.lowagie.text.Font.HELVETICA, 14, com.lowagie.text.Font.BOLD, new java.awt.Color(30, 41, 59));
+                com.lowagie.text.Paragraph p = new com.lowagie.text.Paragraph("No student attempts recorded yet for " + exam.getName(), titleFont);
+                p.setAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+                doc.add(p);
+            } else {
+                for (int i = 0; i < attempts.size(); i++) {
+                    if (i > 0) {
+                        doc.newPage();
+                    }
+                    renderQuestionCompletionPage(doc, exam, attempts.get(i));
+                }
+            }
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generate question completion PDF: " + e.getMessage());
+        } finally {
+            if (doc != null && doc.isOpen()) {
+                doc.close();
+            }
+        }
+        return out.toByteArray();
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportAttemptQuestionCompletionPdf(Long attemptId) {
+        ExamAttempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found: " + attemptId));
+        Exam exam = attempt.getExam();
+
+        com.lowagie.text.Document doc = new com.lowagie.text.Document(com.lowagie.text.PageSize.A4, 28, 28, 28, 28);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            com.lowagie.text.pdf.PdfWriter.getInstance(doc, out);
+            doc.open();
+            renderQuestionCompletionPage(doc, exam, attempt);
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generate question completion PDF: " + e.getMessage());
+        } finally {
+            if (doc != null && doc.isOpen()) {
+                doc.close();
+            }
+        }
+        return out.toByteArray();
+    }
+
+    private void renderQuestionCompletionPage(com.lowagie.text.Document doc, Exam exam, ExamAttempt attempt) throws com.lowagie.text.DocumentException {
+        Optional<Student> studentOpt = studentRepository.findByEmailIgnoreCase(attempt.getStudentEmail());
+        String studentName = studentOpt.map(Student::getFullName).filter(s -> !s.isBlank()).orElse("Candidate");
+        String regNumber = studentOpt.map(Student::getRegisterNumber).filter(s -> !s.isBlank()).orElse("—");
+        String studentEmail = attempt.getStudentEmail();
+
+        List<Long> orderedQuestionIds = decodeOrder(attempt.getQuestionOrder());
+        List<ExamQuestion> questionsToDisplay;
+        if (orderedQuestionIds != null && !orderedQuestionIds.isEmpty()) {
+            Map<Long, ExamQuestion> qMap = new HashMap<>();
+            questionRepository.findAllById(orderedQuestionIds).forEach(q -> qMap.put(q.getId(), q));
+            questionsToDisplay = new ArrayList<>();
+            for (Long qid : orderedQuestionIds) {
+                ExamQuestion q = qMap.get(qid);
+                if (q != null) questionsToDisplay.add(q);
+            }
+        } else {
+            questionsToDisplay = questionRepository.findByExamIdOrderByDisplayOrderAsc(exam.getId());
+        }
+
+        List<ExamAnswer> studentAnswers = answerRepository.findByAttemptId(attempt.getId());
+        Map<Long, ExamAnswer> answerByQuestion = new HashMap<>();
+        if (studentAnswers != null) {
+            studentAnswers.forEach(ans -> {
+                if (ans != null && ans.getQuestion() != null && ans.getQuestion().getId() != null) {
+                    answerByQuestion.put(ans.getQuestion().getId(), ans);
+                }
+            });
+        }
+
+        int totalQuestions = questionsToDisplay.size();
+        int completedCount = 0;
+        int incompletedCount = 0;
+
+        for (ExamQuestion q : questionsToDisplay) {
+            ExamAnswer ans = answerByQuestion.get(q.getId());
+            boolean isCoding = "CODING".equalsIgnoreCase(q.getQuestionType());
+            boolean isCompleted;
+            if (isCoding) {
+                isCompleted = ans != null && ans.getCodeSubmission() != null && !ans.getCodeSubmission().trim().isEmpty();
+            } else {
+                isCompleted = ans != null && ans.getSelectedOption() != null && ans.getSelectedOption() > 0;
+            }
+            if (isCompleted) {
+                completedCount++;
+            } else {
+                incompletedCount++;
+            }
+        }
+
+        double completionRate = totalQuestions > 0 ? (completedCount * 100.0 / totalQuestions) : 0;
+
+        com.lowagie.text.Font titleFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 13, com.lowagie.text.Font.BOLD, new java.awt.Color(30, 41, 59));
+        com.lowagie.text.Font subTitleFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 8f, com.lowagie.text.Font.NORMAL, new java.awt.Color(100, 116, 139));
+        com.lowagie.text.Font sectionTitleFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 9.5f, com.lowagie.text.Font.BOLD, new java.awt.Color(30, 41, 59));
+        com.lowagie.text.Font metaLabelFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 8, com.lowagie.text.Font.BOLD, new java.awt.Color(71, 85, 105));
+        com.lowagie.text.Font metaValFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 8, com.lowagie.text.Font.NORMAL, new java.awt.Color(15, 23, 42));
+        com.lowagie.text.Font tableHeaderFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 8, com.lowagie.text.Font.BOLD, new java.awt.Color(30, 41, 59));
+        com.lowagie.text.Font cellFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 7.5f, com.lowagie.text.Font.NORMAL, new java.awt.Color(15, 23, 42));
+        com.lowagie.text.Font statusCompletedFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 7.5f, com.lowagie.text.Font.BOLD, new java.awt.Color(22, 101, 52));
+        com.lowagie.text.Font statusIncompletedFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 7.5f, com.lowagie.text.Font.BOLD, new java.awt.Color(185, 28, 28));
+
+        com.lowagie.text.Paragraph pTitle = new com.lowagie.text.Paragraph("OFFICIAL CANDIDATE QUESTION COMPLETION REPORT", titleFont);
+        pTitle.setAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+        doc.add(pTitle);
+
+        com.lowagie.text.Paragraph pSub = new com.lowagie.text.Paragraph(
+                "Examination: " + exam.getName() + " | Subject: " + (exam.getSubject() != null ? exam.getSubject() : "General") + " | Generated: " + FMT.format(Instant.now()), subTitleFont);
+        pSub.setAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+        pSub.setSpacingAfter(6f);
+        doc.add(pSub);
+
+        // Student Info Summary Table
+        com.lowagie.text.pdf.PdfPTable infoTable = new com.lowagie.text.pdf.PdfPTable(4);
+        infoTable.setWidthPercentage(100);
+        float[] infoWidths = {2.2f, 3.8f, 2.2f, 3.8f};
+        infoTable.setWidths(infoWidths);
+        infoTable.setSpacingAfter(7f);
+
+        addPdfInfoCell(infoTable, "Student Name:", metaLabelFont, studentName, metaValFont);
+        addPdfInfoCell(infoTable, "Register Number:", metaLabelFont, regNumber, metaValFont);
+        addPdfInfoCell(infoTable, "Mail ID (Email):", metaLabelFont, studentEmail, metaValFont);
+        addPdfInfoCell(infoTable, "Attempt Number:", metaLabelFont, "#" + attempt.getAttemptNumber() + " (ID: #" + attempt.getId() + ")", metaValFont);
+        addPdfInfoCell(infoTable, "Exam Status:", metaLabelFont, attempt.getStatus(), metaValFont);
+        addPdfInfoCell(infoTable, "Verified Marks:", metaLabelFont, attempt.getScore() != null ? attempt.getScore().toPlainString() + " pts" : "Pending", metaValFont);
+        addPdfInfoCell(infoTable, "Questions Completed:", metaLabelFont, completedCount + " / " + totalQuestions + " (" + String.format("%.1f", completionRate) + "%)", metaValFont);
+        addPdfInfoCell(infoTable, "Questions Incompleted:", metaLabelFont, incompletedCount + " / " + totalQuestions, metaValFont);
+
+        doc.add(infoTable);
+
+        com.lowagie.text.Paragraph pSec = new com.lowagie.text.Paragraph("Question-by-Question Completion Status (" + totalQuestions + " Questions)", sectionTitleFont);
+        pSec.setSpacingAfter(3f);
+        doc.add(pSec);
+
+        com.lowagie.text.pdf.PdfPTable qTable = new com.lowagie.text.pdf.PdfPTable(5);
+        qTable.setWidthPercentage(100);
+        float[] qWidths = {0.8f, 4.8f, 1.4f, 2.2f, 2.8f};
+        qTable.setWidths(qWidths);
+
+        addStyledHeaderCell(qTable, "Q#", tableHeaderFont);
+        addStyledHeaderCell(qTable, "Question / Problem Title", tableHeaderFont);
+        addStyledHeaderCell(qTable, "Type", tableHeaderFont);
+        addStyledHeaderCell(qTable, "Completion Status", tableHeaderFont);
+        addStyledHeaderCell(qTable, "Candidate Submission", tableHeaderFont);
+
+        int qIdx = 1;
+        for (ExamQuestion q : questionsToDisplay) {
+            ExamAnswer ans = answerByQuestion.get(q.getId());
+            boolean isCoding = "CODING".equalsIgnoreCase(q.getQuestionType());
+            boolean isCompleted = false;
+            String responseSummary = "No response";
+
+            if (isCoding) {
+                if (ans != null && ans.getCodeSubmission() != null && !ans.getCodeSubmission().trim().isEmpty()) {
+                    isCompleted = true;
+                    int lines = ans.getCodeSubmission().split("\r\n|\r|\n").length;
+                    String lang = ans.getCodeLanguage() != null ? ans.getCodeLanguage().toUpperCase() : "CODE";
+                    responseSummary = lang + " (" + lines + " lines)";
+                }
+            } else {
+                if (ans != null && ans.getSelectedOption() != null && ans.getSelectedOption() > 0) {
+                    isCompleted = true;
+                    char opt = (char) ('A' + (ans.getSelectedOption() - 1));
+                    responseSummary = "Selected Option " + opt;
+                }
+            }
+
+            String title = q.getProblemTitle() != null && !q.getProblemTitle().isBlank()
+                    ? q.getProblemTitle()
+                    : (q.getQuestionText() != null ? (q.getQuestionText().length() > 50 ? q.getQuestionText().substring(0, 48) + "..." : q.getQuestionText()) : ("Question " + qIdx));
+
+            addStyledBodyCell(qTable, String.valueOf(qIdx++), cellFont, com.lowagie.text.Element.ALIGN_CENTER, null);
+            addStyledBodyCell(qTable, title, cellFont, com.lowagie.text.Element.ALIGN_LEFT, null);
+            addStyledBodyCell(qTable, isCoding ? "CODING" : "MCQ", cellFont, com.lowagie.text.Element.ALIGN_CENTER, null);
+
+            if (isCompleted) {
+                addStyledBodyCell(qTable, "COMPLETED", statusCompletedFont, com.lowagie.text.Element.ALIGN_CENTER, new java.awt.Color(220, 252, 231));
+            } else {
+                addStyledBodyCell(qTable, "INCOMPLETED", statusIncompletedFont, com.lowagie.text.Element.ALIGN_CENTER, new java.awt.Color(254, 226, 226));
+            }
+
+            addStyledBodyCell(qTable, responseSummary, cellFont, com.lowagie.text.Element.ALIGN_LEFT, null);
+        }
+
+        doc.add(qTable);
+
+        com.lowagie.text.Paragraph pFooter = new com.lowagie.text.Paragraph("✓ Official Integrity Verification: This candidate question completion record is sealed and tamper-evident.", subTitleFont);
+        pFooter.setSpacingBefore(6f);
+        pFooter.setAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+        doc.add(pFooter);
+    }
+
+    // ── Requirement 4: Warning Strikes Report ─────────────────────────────────
+
+    public static class StrikeDetail {
+        public int strike;
+        public Instant occurredAt;
+        public String violationType;
+        public String reason;
+        public String riskScore;
+        public String action;
+
+        public StrikeDetail(int strike, Instant occurredAt, String violationType, String reason, String riskScore, String action) {
+            this.strike = strike;
+            this.occurredAt = occurredAt;
+            this.violationType = violationType;
+            this.reason = reason;
+            this.riskScore = riskScore;
+            this.action = action;
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportExamWarningStrikesPdf(Long examId) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found: " + examId));
+
+        List<ExamAttempt> attempts = attemptRepository.findByExamIdOrderByStartTimeDesc(examId);
+
+        com.lowagie.text.Document doc = new com.lowagie.text.Document(com.lowagie.text.PageSize.A4, 28, 28, 28, 28);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            com.lowagie.text.pdf.PdfWriter.getInstance(doc, out);
+            doc.open();
+
+            renderWarningStrikesDoc(doc, exam, attempts);
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generate warning strikes PDF: " + e.getMessage());
+        } finally {
+            if (doc != null && doc.isOpen()) {
+                doc.close();
+            }
+        }
+        return out.toByteArray();
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportAttemptWarningStrikesPdf(Long attemptId) {
+        ExamAttempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found: " + attemptId));
+        Exam exam = attempt.getExam();
+
+        com.lowagie.text.Document doc = new com.lowagie.text.Document(com.lowagie.text.PageSize.A4, 28, 28, 28, 28);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        try {
+            com.lowagie.text.pdf.PdfWriter.getInstance(doc, out);
+            doc.open();
+
+            renderWarningStrikesDoc(doc, exam, List.of(attempt));
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generate warning strikes PDF: " + e.getMessage());
+        } finally {
+            if (doc != null && doc.isOpen()) {
+                doc.close();
+            }
+        }
+        return out.toByteArray();
+    }
+
+    private void renderWarningStrikesDoc(com.lowagie.text.Document doc, Exam exam, List<ExamAttempt> attempts) throws com.lowagie.text.DocumentException {
+        com.lowagie.text.Font titleFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 14, com.lowagie.text.Font.BOLD, new java.awt.Color(185, 28, 28));
+        com.lowagie.text.Font subTitleFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 8.5f, com.lowagie.text.Font.NORMAL, new java.awt.Color(100, 116, 139));
+        com.lowagie.text.Font sectionHeaderFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 10, com.lowagie.text.Font.BOLD, new java.awt.Color(30, 41, 59));
+        com.lowagie.text.Font metaLabelFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 8, com.lowagie.text.Font.BOLD, new java.awt.Color(71, 85, 105));
+        com.lowagie.text.Font metaValFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 8, com.lowagie.text.Font.NORMAL, new java.awt.Color(15, 23, 42));
+        com.lowagie.text.Font tableHeaderFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 8, com.lowagie.text.Font.BOLD, new java.awt.Color(30, 41, 59));
+        com.lowagie.text.Font cellFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 7.5f, com.lowagie.text.Font.NORMAL, new java.awt.Color(15, 23, 42));
+        com.lowagie.text.Font strikeBadgeFont = new com.lowagie.text.Font(
+                com.lowagie.text.Font.HELVETICA, 7.5f, com.lowagie.text.Font.BOLD, new java.awt.Color(185, 28, 28));
+
+        com.lowagie.text.Paragraph pTitle = new com.lowagie.text.Paragraph("PROCTORING WARNING STRIKES & INTEGRITY AUDIT REPORT", titleFont);
+        pTitle.setAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+        doc.add(pTitle);
+
+        com.lowagie.text.Paragraph pSub = new com.lowagie.text.Paragraph(
+                "Examination: " + exam.getName() + " | Subject: " + (exam.getSubject() != null ? exam.getSubject() : "General") + " | Generated: " + FMT.format(Instant.now()), subTitleFont);
+        pSub.setAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+        pSub.setSpacingAfter(8f);
+        doc.add(pSub);
+
+        List<Map.Entry<ExamAttempt, List<StrikeDetail>>> penalizedStudents = new ArrayList<>();
+        for (ExamAttempt at : attempts) {
+            List<StrikeDetail> strikes = getStrikesForAttempt(at);
+            if (!strikes.isEmpty()) {
+                penalizedStudents.add(new AbstractMap.SimpleEntry<>(at, strikes));
+            }
+        }
+
+        com.lowagie.text.pdf.PdfPTable metaTable = new com.lowagie.text.pdf.PdfPTable(4);
+        metaTable.setWidthPercentage(100);
+        float[] mWidths = {2.5f, 3.5f, 2.5f, 3.5f};
+        metaTable.setWidths(mWidths);
+        metaTable.setSpacingAfter(10f);
+
+        addPdfInfoCell(metaTable, "Total Assessed Candidates:", metaLabelFont, String.valueOf(attempts.size()), metaValFont);
+        addPdfInfoCell(metaTable, "Candidates with Warning Strikes:", metaLabelFont, String.valueOf(penalizedStudents.size()), metaValFont);
+        addPdfInfoCell(metaTable, "Passing Marks Threshold:", metaLabelFont, exam.getPassingMarks() != null ? exam.getPassingMarks().toPlainString() + " pts" : "—", metaValFont);
+        addPdfInfoCell(metaTable, "Proctoring Integrity Audit:", metaLabelFont, penalizedStudents.isEmpty() ? "100% CLEAN" : penalizedStudents.size() + " Infractions Flagged", metaValFont);
+
+        doc.add(metaTable);
+
+        if (penalizedStudents.isEmpty()) {
+            com.lowagie.text.pdf.PdfPTable cleanTable = new com.lowagie.text.pdf.PdfPTable(1);
+            cleanTable.setWidthPercentage(100);
+            com.lowagie.text.pdf.PdfPCell cleanCell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(
+                    "✓ 100% Clean Integrity Record: No candidates incurred warning strikes during this examination session. All candidates observed fullscreen, tab focus, and proctoring compliance without infraction.",
+                    new com.lowagie.text.Font(com.lowagie.text.Font.HELVETICA, 9.5f, com.lowagie.text.Font.BOLD, new java.awt.Color(22, 101, 52))));
+            cleanCell.setBackgroundColor(new java.awt.Color(240, 253, 244));
+            cleanCell.setBorderColor(new java.awt.Color(134, 239, 172));
+            cleanCell.setPadding(12f);
+            cleanCell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+            cleanTable.addCell(cleanCell);
+            cleanTable.setSpacingBefore(12f);
+            doc.add(cleanTable);
+            return;
+        }
+
+        int studentIdx = 1;
+        for (Map.Entry<ExamAttempt, List<StrikeDetail>> entry : penalizedStudents) {
+            ExamAttempt at = entry.getKey();
+            List<StrikeDetail> strikes = entry.getValue();
+
+            Optional<Student> studentOpt = studentRepository.findByEmailIgnoreCase(at.getStudentEmail());
+            String studentName = studentOpt.map(Student::getFullName).filter(s -> !s.isBlank()).orElse("Candidate");
+            String regNumber = studentOpt.map(Student::getRegisterNumber).filter(s -> !s.isBlank()).orElse("—");
+            String studentEmail = at.getStudentEmail();
+
+            com.lowagie.text.Paragraph pCand = new com.lowagie.text.Paragraph(
+                    studentIdx++ + ". " + studentName + " (Reg No: " + regNumber + ")", sectionHeaderFont);
+            pCand.setSpacingBefore(8f);
+            pCand.setSpacingAfter(4f);
+            doc.add(pCand);
+
+            com.lowagie.text.pdf.PdfPTable candInfo = new com.lowagie.text.pdf.PdfPTable(4);
+            candInfo.setWidthPercentage(100);
+            float[] cWidths = {2.2f, 3.8f, 2.2f, 3.8f};
+            candInfo.setWidths(cWidths);
+            candInfo.setSpacingAfter(4f);
+
+            addPdfInfoCell(candInfo, "Student Name:", metaLabelFont, studentName, metaValFont);
+            addPdfInfoCell(candInfo, "Register Number:", metaLabelFont, regNumber, metaValFont);
+            addPdfInfoCell(candInfo, "Mail ID (Email):", metaLabelFont, studentEmail, metaValFont);
+            addPdfInfoCell(candInfo, "Total Strikes Incurred:", metaLabelFont, strikes.size() + " / 3 Strikes (" + (strikes.size() >= 3 ? "EXAM TERMINATED" : (strikes.size() == 2 ? "FINAL WARNING" : "WARNING ISSUED")) + ")", strikeBadgeFont);
+
+            doc.add(candInfo);
+
+            com.lowagie.text.pdf.PdfPTable sTable = new com.lowagie.text.pdf.PdfPTable(5);
+            sTable.setWidthPercentage(100);
+            float[] sWidths = {1.2f, 2.0f, 2.5f, 4.3f, 2.0f};
+            sTable.setWidths(sWidths);
+            sTable.setSpacingAfter(8f);
+
+            addStyledHeaderCell(sTable, "Strike Level", tableHeaderFont);
+            addStyledHeaderCell(sTable, "Timestamp", tableHeaderFont);
+            addStyledHeaderCell(sTable, "Violation Type", tableHeaderFont);
+            addStyledHeaderCell(sTable, "Infraction Reason / Description", tableHeaderFont);
+            addStyledHeaderCell(sTable, "Action Taken", tableHeaderFont);
+
+            for (StrikeDetail s : strikes) {
+                addStyledBodyCell(sTable, "Strike " + s.strike + " of 3", strikeBadgeFont, com.lowagie.text.Element.ALIGN_CENTER, new java.awt.Color(254, 242, 242));
+                addStyledBodyCell(sTable, s.occurredAt != null ? FMT.format(s.occurredAt) : "—", cellFont, com.lowagie.text.Element.ALIGN_CENTER, null);
+                addStyledBodyCell(sTable, s.violationType, cellFont, com.lowagie.text.Element.ALIGN_LEFT, null);
+                addStyledBodyCell(sTable, s.reason, cellFont, com.lowagie.text.Element.ALIGN_LEFT, null);
+                addStyledBodyCell(sTable, s.action, cellFont, com.lowagie.text.Element.ALIGN_CENTER, null);
+            }
+
+            doc.add(sTable);
+        }
+
+        com.lowagie.text.Paragraph pFooter = new com.lowagie.text.Paragraph("✓ Official Proctoring Security Log: Warning strikes are permanently recorded in the immutable audit registry.", subTitleFont);
+        pFooter.setSpacingBefore(10f);
+        pFooter.setAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+        doc.add(pFooter);
+    }
+
+    private List<StrikeDetail> getStrikesForAttempt(ExamAttempt attempt) {
+        List<StrikeDetail> strikes = new ArrayList<>();
+        Map<Integer, StrikeDetail> strikeByLevel = new HashMap<>();
+
+        // 1. Check Warning records
+        List<Warning> warnings = warningRepository.findByAttemptIdOrderByCreatedAtAsc(attempt.getId());
+        for (Warning w : warnings) {
+            int lvl = w.getLevel() != null ? w.getLevel().intValue() : 1;
+            String action = lvl >= 3 ? "EXAM_TERMINATED" : (lvl == 2 ? "FINAL_WARNING" : "WARNING_ISSUED");
+            strikeByLevel.put(lvl, new StrikeDetail(
+                    lvl,
+                    w.getCreatedAt(),
+                    "PROCTORING_VIOLATION",
+                    w.getMessage() != null ? w.getMessage() : "Proctoring threshold breach",
+                    w.getRiskScoreAtTime() != null ? w.getRiskScoreAtTime().toPlainString() : "—",
+                    action
+            ));
+        }
+
+        // 2. Check ProctoringEvent records
+        List<ProctoringEvent> events = eventRepository.findByAttemptIdOrderByOccurredAtAsc(attempt.getId());
+        for (ProctoringEvent ev : events) {
+            if ("WARNING_STRIKE".equalsIgnoreCase(ev.getEventType())) {
+                int strikeNum = 1;
+                String reason = "Proctoring infraction";
+                String desc = "";
+                String action = "WARNING_ISSUED";
+                if (ev.getMetadata() != null && !ev.getMetadata().isBlank()) {
+                    try {
+                        Map<String, Object> map = objectMapper.readValue(ev.getMetadata(), Map.class);
+                        if (map.containsKey("strike") && map.get("strike") != null) {
+                            strikeNum = ((Number) map.get("strike")).intValue();
+                        }
+                        if (map.containsKey("reason") && map.get("reason") != null) {
+                            reason = String.valueOf(map.get("reason"));
+                        }
+                        if (map.containsKey("description") && map.get("description") != null) {
+                            desc = String.valueOf(map.get("description"));
+                        }
+                        if (map.containsKey("action") && map.get("action") != null) {
+                            action = String.valueOf(map.get("action"));
+                        }
+                    } catch (Exception ignored) {}
+                }
+                String combinedReason = desc.isBlank() ? reason : (reason + " (" + desc + ")");
+                action = strikeNum >= 3 ? "EXAM_TERMINATED" : (strikeNum == 2 ? "FINAL_WARNING" : "WARNING_ISSUED");
+                strikeByLevel.put(strikeNum, new StrikeDetail(
+                        strikeNum,
+                        ev.getOccurredAt(),
+                        "WARNING_STRIKE",
+                        combinedReason,
+                        ev.getSeverity() != null ? ev.getSeverity() : "HIGH",
+                        action
+                ));
+            } else if ("FULLSCREEN_EXIT".equalsIgnoreCase(ev.getEventType())) {
+                if (ev.getMetadata() != null && ev.getMetadata().contains("count")) {
+                    try {
+                        Map<String, Object> map = objectMapper.readValue(ev.getMetadata(), Map.class);
+                        int count = map.containsKey("count") ? ((Number) map.get("count")).intValue() : 1;
+                        String act = map.containsKey("action") ? String.valueOf(map.get("action")) : "WARNING_ISSUED";
+                        String reason = map.containsKey("reason") ? String.valueOf(map.get("reason")) : "Exited fullscreen mode";
+                        if (!strikeByLevel.containsKey(count)) {
+                            strikeByLevel.put(count, new StrikeDetail(
+                                    count,
+                                    ev.getOccurredAt(),
+                                    "FULLSCREEN_EXIT",
+                                    reason,
+                                    ev.getSeverity() != null ? ev.getSeverity() : "HIGH",
+                                    act
+                            ));
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        strikes.addAll(strikeByLevel.values());
+        strikes.sort(Comparator.comparingInt(s -> s.strike));
+        return strikes;
+    }
+
+    private void addPdfInfoCell(com.lowagie.text.pdf.PdfPTable t, String label, com.lowagie.text.Font lf, String val, com.lowagie.text.Font vf) {
+        com.lowagie.text.pdf.PdfPCell lCell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(label, lf));
+        lCell.setBackgroundColor(new java.awt.Color(248, 250, 252));
+        lCell.setBorderColor(new java.awt.Color(226, 232, 240));
+        lCell.setPadding(3.5f);
+        t.addCell(lCell);
+
+        com.lowagie.text.pdf.PdfPCell vCell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(val != null ? val : "—", vf));
+        vCell.setBorderColor(new java.awt.Color(226, 232, 240));
+        vCell.setPadding(3.5f);
+        t.addCell(vCell);
+    }
+
+    private void addStyledHeaderCell(com.lowagie.text.pdf.PdfPTable t, String title, com.lowagie.text.Font font) {
+        com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(title, font));
+        cell.setBackgroundColor(new java.awt.Color(241, 245, 249));
+        cell.setBorderColor(new java.awt.Color(203, 213, 225));
+        cell.setPadding(4.5f);
+        cell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
+        t.addCell(cell);
+    }
+
+    private void addStyledBodyCell(com.lowagie.text.pdf.PdfPTable t, String text, com.lowagie.text.Font font, int align, java.awt.Color bg) {
+        com.lowagie.text.pdf.PdfPCell cell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(text != null ? text : "", font));
+        if (bg != null) {
+            cell.setBackgroundColor(bg);
+        }
+        cell.setBorderColor(new java.awt.Color(226, 232, 240));
+        cell.setPadding(3.5f);
+        cell.setHorizontalAlignment(align);
+        cell.setVerticalAlignment(com.lowagie.text.Element.ALIGN_MIDDLE);
+        t.addCell(cell);
     }
 
     // ── PDF helpers ───────────────────────────────────────────────────────────

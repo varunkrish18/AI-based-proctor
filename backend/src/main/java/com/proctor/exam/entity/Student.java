@@ -24,6 +24,9 @@ public class Student {
     @Column(name = "full_name")
     private String fullName;
 
+    @Column(name = "register_number")
+    private String registerNumber;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

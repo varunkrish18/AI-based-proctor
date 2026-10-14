@@ -59,8 +59,8 @@ sudo systemctl enable --now docker
 ### 3. Launch the Stack
 Clone the repository and spin up all 4 services:
 ```bash
-git clone <your-repo-url> "monitoring-system"
-cd "monitoring-system"
+git clone <your-repo-url> "Proctor-Git"
+cd "Proctor-Git"
 
 # Optional: configure secrets in .env
 cp backend/.env.example backend/.env

@@ -3501,6 +3501,10 @@ function ResultsTab({ examId }: { examId: number }) {
   const [customToDate, setCustomToDate] = useState<string>("");
   const [exportingId, setExportingId] = useState<number | null>(null);
   const [exportingCumulative, setExportingCumulative] = useState<boolean>(false);
+  const [exportingQuestionPdf, setExportingQuestionPdf] = useState<boolean>(false);
+  const [exportingStrikesPdf, setExportingStrikesPdf] = useState<boolean>(false);
+  const [exportingAttemptQuestionPdfId, setExportingAttemptQuestionPdfId] = useState<number | null>(null);
+  const [exportingAttemptStrikesPdfId, setExportingAttemptStrikesPdfId] = useState<number | null>(null);
   const [quickScore, setQuickScore] = useState<string>("");
   const [savingQuickScore, setSavingQuickScore] = useState<boolean>(false);
 
@@ -3516,6 +3520,66 @@ function ResultsTab({ examId }: { examId: number }) {
       alert(err instanceof Error ? err.message : "Failed to export cumulative PDF");
     } finally {
       setExportingCumulative(false);
+    }
+  }
+
+  async function handleExportQuestionCompletionPdf() {
+    setExportingQuestionPdf(true);
+    try {
+      await downloadFile(
+        `/api/admin/exams/${examId}/report/question-completion-pdf`,
+        `exam-${examId}-question-completion.pdf`,
+        "admin"
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to export question completion PDF");
+    } finally {
+      setExportingQuestionPdf(false);
+    }
+  }
+
+  async function handleExportWarningStrikesPdf() {
+    setExportingStrikesPdf(true);
+    try {
+      await downloadFile(
+        `/api/admin/exams/${examId}/report/warning-strikes-pdf`,
+        `exam-${examId}-warning-strikes.pdf`,
+        "admin"
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to export warning strikes PDF");
+    } finally {
+      setExportingStrikesPdf(false);
+    }
+  }
+
+  async function handleExportAttemptQuestionPdf(attemptId: number) {
+    setExportingAttemptQuestionPdfId(attemptId);
+    try {
+      await downloadFile(
+        `/api/admin/attempts/${attemptId}/report/question-completion-pdf`,
+        `attempt-${attemptId}-question-completion.pdf`,
+        "admin"
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to export attempt question completion PDF");
+    } finally {
+      setExportingAttemptQuestionPdfId(null);
+    }
+  }
+
+  async function handleExportAttemptStrikesPdf(attemptId: number) {
+    setExportingAttemptStrikesPdfId(attemptId);
+    try {
+      await downloadFile(
+        `/api/admin/attempts/${attemptId}/report/warning-strikes-pdf`,
+        `attempt-${attemptId}-warning-strikes.pdf`,
+        "admin"
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to export attempt warning strikes PDF");
+    } finally {
+      setExportingAttemptStrikesPdfId(null);
     }
   }
 
@@ -3885,14 +3949,32 @@ function ResultsTab({ examId }: { examId: number }) {
               ↻ Refresh
             </button>
           </div>
-          <button
-            onClick={handleExportCumulativePdf}
-            disabled={exportingCumulative || attempts.length === 0}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
-            title="Download cumulative PDF containing all candidate results, verified marks & proctoring audit"
-          >
-            <span>📄 {exportingCumulative ? "Generating PDF…" : "Export Cumulative Exam PDF (All Students)"}</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleExportCumulativePdf}
+              disabled={exportingCumulative || attempts.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
+              title="Download cumulative PDF containing all candidate results, verified marks & proctoring audit"
+            >
+              <span>📄 {exportingCumulative ? "Generating PDF…" : "Cumulative Exam PDF"}</span>
+            </button>
+            <button
+              onClick={handleExportQuestionCompletionPdf}
+              disabled={exportingQuestionPdf || attempts.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
+              title="Download PDF containing student name, register number, mail ID & question completion status (1 page per student)"
+            >
+              <span>📋 {exportingQuestionPdf ? "Generating PDF…" : "Question Completion (1-Page / Student)"}</span>
+            </button>
+            <button
+              onClick={handleExportWarningStrikesPdf}
+              disabled={exportingStrikesPdf || attempts.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
+              title="Download Warning Strikes PDF describing students involved in strikes with student name & register number"
+            >
+              <span>⚠️ {exportingStrikesPdf ? "Generating PDF…" : "Warning Strikes Report (PDF)"}</span>
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto w-full">
           <table className="w-full text-sm">
@@ -4047,10 +4129,28 @@ function ResultsTab({ examId }: { examId: number }) {
                           <span>↗</span>
                         </Link>
                         <button
+                          onClick={() => handleExportAttemptQuestionPdf(a.attemptId)}
+                          disabled={exportingAttemptQuestionPdfId === a.attemptId}
+                          className="text-indigo-700 hover:text-indigo-900 font-bold text-xs bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
+                          title="Export 1-Page Question Completion PDF (Student Name, Reg No, Mail ID & Status)"
+                        >
+                          <span>📋</span>
+                          <span>{exportingAttemptQuestionPdfId === a.attemptId ? "..." : "1-Page PDF"}</span>
+                        </button>
+                        <button
+                          onClick={() => handleExportAttemptStrikesPdf(a.attemptId)}
+                          disabled={exportingAttemptStrikesPdfId === a.attemptId}
+                          className="text-amber-700 hover:text-amber-900 font-bold text-xs bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
+                          title="Export Warning Strikes Audit PDF for this candidate"
+                        >
+                          <span>⚠️</span>
+                          <span>{exportingAttemptStrikesPdfId === a.attemptId ? "..." : "Strikes PDF"}</span>
+                        </button>
+                        <button
                           onClick={() => handleExport(a.attemptId, "pdf")}
                           disabled={exportingId === a.attemptId}
                           className="text-rose-700 hover:text-rose-900 font-bold text-xs bg-rose-50 hover:bg-rose-100 border border-rose-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
-                          title="Export candidate report as PDF"
+                          title="Export candidate full proctoring report as PDF"
                         >
                           <span>📄</span>
                           <span>{exportingId === a.attemptId ? "..." : "PDF"}</span>
@@ -4124,6 +4224,24 @@ function ResultsTab({ examId }: { examId: number }) {
                 <span>Full Page Report</span>
                 <span>↗</span>
               </Link>
+              <button
+                onClick={() => handleExportAttemptQuestionPdf(selectedAttempt.attemptId)}
+                disabled={exportingAttemptQuestionPdfId === selectedAttempt.attemptId}
+                className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-300 font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                title="Export 1-Page Question Completion PDF"
+              >
+                <span>📋</span>
+                <span>{exportingAttemptQuestionPdfId === selectedAttempt.attemptId ? "Exporting…" : "1-Page PDF"}</span>
+              </button>
+              <button
+                onClick={() => handleExportAttemptStrikesPdf(selectedAttempt.attemptId)}
+                disabled={exportingAttemptStrikesPdfId === selectedAttempt.attemptId}
+                className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                title="Export Warning Strikes PDF"
+              >
+                <span>⚠️</span>
+                <span>{exportingAttemptStrikesPdfId === selectedAttempt.attemptId ? "Exporting…" : "Strikes PDF"}</span>
+              </button>
               <button
                 onClick={() => handleExport(selectedAttempt.attemptId, "pdf")}
                 disabled={exportingId === selectedAttempt.attemptId}

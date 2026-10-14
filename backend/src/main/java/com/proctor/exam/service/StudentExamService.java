@@ -63,7 +63,7 @@ public class StudentExamService {
      * assignment is missing, so we don't leak which emails are registered.
      */
     @Transactional
-    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail, String rawPassword) {
+    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail, String rawPassword, String rawName, String rawRegisterNumber) {
         String email = rawEmail.trim().toLowerCase();
         Exam exam = examRepository.findById(examId).orElse(null);
         if (exam == null || !"PUBLISHED".equals(exam.getStatus())) {
@@ -106,8 +106,28 @@ public class StudentExamService {
             return new VerifyStudentResponse(false, null, "This exam has already ended.", false, false, false, false);
         }
 
-        studentRepository.findByEmail(email).orElseGet(() ->
-                studentRepository.save(Student.builder().email(email).build()));
+        Student student = studentRepository.findByEmail(email).orElse(null);
+        if (student == null) {
+            student = Student.builder()
+                    .email(email)
+                    .fullName(rawName != null && !rawName.trim().isBlank() ? rawName.trim() : null)
+                    .registerNumber(rawRegisterNumber != null && !rawRegisterNumber.trim().isBlank() ? rawRegisterNumber.trim() : null)
+                    .build();
+            student = studentRepository.save(student);
+        } else {
+            boolean updated = false;
+            if (rawName != null && !rawName.trim().isBlank()) {
+                student.setFullName(rawName.trim());
+                updated = true;
+            }
+            if (rawRegisterNumber != null && !rawRegisterNumber.trim().isBlank()) {
+                student.setRegisterNumber(rawRegisterNumber.trim());
+                updated = true;
+            }
+            if (updated) {
+                student = studentRepository.save(student);
+            }
+        }
 
         String sessionToken = jwtService.generateStudentSessionToken(email, examId);
         return new VerifyStudentResponse(
@@ -117,13 +137,20 @@ public class StudentExamService {
                 exam.getWebcamRequired() != null ? exam.getWebcamRequired() : true,
                 exam.getMicrophoneRequired() != null ? exam.getMicrophoneRequired() : true,
                 exam.getScreenRequired() != null ? exam.getScreenRequired() : true,
-                exam.getLocationRequired() != null ? exam.getLocationRequired() : false
+                exam.getLocationRequired() != null ? exam.getLocationRequired() : false,
+                student.getFullName(),
+                student.getRegisterNumber()
         );
     }
 
     @Transactional
+    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail, String rawPassword) {
+        return verifyStudent(examId, rawEmail, rawPassword, null, null);
+    }
+
+    @Transactional
     public VerifyStudentResponse verifyStudent(Long examId, String rawEmail) {
-        return verifyStudent(examId, rawEmail, null);
+        return verifyStudent(examId, rawEmail, null, null, null);
     }
 
     @Transactional

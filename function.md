@@ -159,7 +159,7 @@ graph TB
 ## 4. Codebase Directory Structure
 
 ```
-monitoring system/
+Proctor-Git/
 ├── README.md                          # Repository overview & quickstart
 ├── function.md                        # Complete functional specification (this document)
 ├── docker-compose.yml                 # Orchestration for all 4 services

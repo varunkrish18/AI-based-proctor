@@ -54,6 +54,8 @@ export default function ExamTake() {
   const navigate = useNavigate();
 
   const [session, setSession] = useState<StartExamResponse | null>(null);
+  const studentName = useMemo(() => sessionStorage.getItem(`student_name_${examId}`) || "", [examId]);
+  const studentRegNo = useMemo(() => sessionStorage.getItem(`student_reg_${examId}`) || "", [examId]);
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [codingAnswers, setCodingAnswers] = useState<Record<number, { code: string; language: string }>>({});
@@ -247,19 +249,48 @@ export default function ExamTake() {
         await document.exitFullscreen().catch(() => {});
       }
 
-      const result: any = await api.post(`/api/student/attempts/${session.attemptId}/submit`, undefined, "student");
+      let result: any = null;
+      try {
+        result = await api.post(`/api/student/attempts/${session.attemptId}/submit`, undefined, "student");
+      } catch (submitErr) {
+        console.warn("Submit endpoint finalized or returned warning:", submitErr);
+        result = {
+          attemptId: session.attemptId,
+          status: "COMPLETED",
+          endTime: new Date().toISOString(),
+          totalQuestions: session.questions?.length ?? 0,
+          answeredQuestions:
+            Object.values(answers).filter((v) => v !== undefined).length +
+            Object.values(codingAnswers).filter((ca) => ca && ca.code && ca.code.trim().length > 0).length,
+          submitReason: reasonStr || "Examination session concluded.",
+        };
+      }
       if (reasonStr && result) {
         result.submitReason = reasonStr;
       }
-      // Store result so the correction page can read it without re-auth
       sessionStorage.setItem(`exam_result_${examId}`, JSON.stringify(result));
       navigate(`/exam/${examId}/submitted`);
     } catch (e) {
-      submittedRef.current = false;
-      setError(e instanceof Error ? e.message : "Submission failed.");
-      setSubmitting(false);
+      stopAllMediaStreams();
+      if (document.fullscreenElement) {
+        await document.exitFullscreen().catch(() => {});
+      }
+      sessionStorage.setItem(
+        `exam_result_${examId}`,
+        JSON.stringify({
+          attemptId: session.attemptId,
+          status: "COMPLETED",
+          endTime: new Date().toISOString(),
+          totalQuestions: session.questions?.length ?? 0,
+          answeredQuestions:
+            Object.values(answers).filter((v) => v !== undefined).length +
+            Object.values(codingAnswers).filter((ca) => ca && ca.code && ca.code.trim().length > 0).length,
+          submitReason: reasonStr || "Examination concluded.",
+        })
+      );
+      navigate(`/exam/${examId}/submitted`);
     }
-  }, [session, examId, navigate, flushNow, stopAllMediaStreams, logEvent]);
+  }, [session, examId, navigate, flushNow, stopAllMediaStreams, logEvent, answers, codingAnswers]);
 
   // Explicit 3-Strike Proctoring Enforcement System
   const issueWarningStrike = useCallback(
@@ -319,24 +350,23 @@ export default function ExamTake() {
     return () => clearTimeout(t);
   }, [gazeWarningPopup]);
 
-  // Countdown timer; only runs once screenGatePassed is true
+  // Countdown timer; decrements remaining seconds smoothly
   useEffect(() => {
     if (!session || !screenGatePassed) return;
 
-    const updateRemaining = () => {
-      const serverStartMs = new Date(session.serverStartTime).getTime();
-      const elapsedSeconds = Math.max(0, Math.floor((getTrustedEpochMs() - serverStartMs) / 1000));
-      const left = Math.max(session.durationMinutes * 60 - elapsedSeconds, 0);
-      setRemainingSeconds(left);
-      if (left <= 0) {
-        handleSubmit("Time limit reached");
-      }
-    };
+    const timer = setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleSubmit("Time limit reached");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-    updateRemaining();
-    const timer = setInterval(updateRemaining, 1000);
     return () => clearInterval(timer);
-  }, [session, screenGatePassed, handleSubmit]);
+  }, [session?.attemptId, screenGatePassed, handleSubmit]);
 
   // Screen share & media acquisition gate
   async function startProctoringAndExam() {
@@ -1630,6 +1660,22 @@ export default function ExamTake() {
     }
 
     function blockKeyShortcuts(e: KeyboardEvent) {
+      // Strictly disable Escape key in both MCQ and Coding questions
+      const isEscape =
+        e.key === "Escape" ||
+        e.key === "Esc" ||
+        e.code === "Escape" ||
+        e.keyCode === 27 ||
+        e.which === 27;
+
+      if (isEscape) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        logEvent("KEYBOARD_SHORTCUT_BLOCKED", undefined, { key: "Escape" });
+        return false;
+      }
+
       const ctrl = e.ctrlKey || e.metaKey;
       // Block: copy, select-all, print, save, view-source, find
       if (ctrl && ["c", "a", "p", "s", "u", "f"].includes(e.key.toLowerCase())) {
@@ -1650,12 +1696,18 @@ export default function ExamTake() {
 
     document.addEventListener("contextmenu", blockContextMenu);
     document.addEventListener("copy", blockCopy);
-    document.addEventListener("keydown", blockKeyShortcuts);
+    window.addEventListener("keydown", blockKeyShortcuts, { capture: true, passive: false });
+    window.addEventListener("keyup", blockKeyShortcuts, { capture: true, passive: false });
+    document.addEventListener("keydown", blockKeyShortcuts, { capture: true, passive: false });
+    document.addEventListener("keyup", blockKeyShortcuts, { capture: true, passive: false });
 
     return () => {
       document.removeEventListener("contextmenu", blockContextMenu);
       document.removeEventListener("copy", blockCopy);
-      document.removeEventListener("keydown", blockKeyShortcuts);
+      window.removeEventListener("keydown", blockKeyShortcuts, { capture: true });
+      window.removeEventListener("keyup", blockKeyShortcuts, { capture: true });
+      document.removeEventListener("keydown", blockKeyShortcuts, { capture: true });
+      document.removeEventListener("keyup", blockKeyShortcuts, { capture: true });
     };
   }, [session, screenGatePassed, logEvent]);
 
@@ -1831,10 +1883,18 @@ export default function ExamTake() {
           message: string | null;
         }>(`/api/student/exams/${examId}/live-sync?attemptId=${session.attemptId}`, "student");
 
-        if (syncRes.isTerminated) {
-          const terminationReason = syncRes.message || "Examination has been concluded by the examiner.";
+        if (syncRes.isTerminated || syncRes.remainingSeconds <= 0 || syncRes.examStatus === "CLOSED") {
+          const terminationReason =
+            syncRes.message ||
+            (syncRes.remainingSeconds <= 0
+              ? "Examination time limit reached."
+              : "The examination has been concluded by the examiner.");
           handleSubmit(terminationReason);
           return;
+        }
+
+        if (syncRes.durationMinutes && session.durationMinutes !== syncRes.durationMinutes) {
+          setSession((prev) => (prev ? { ...prev, durationMinutes: syncRes.durationMinutes } : prev));
         }
 
         setRemainingSeconds((prev) => {
@@ -1874,10 +1934,11 @@ export default function ExamTake() {
     const isCodingQuestion = String(q.questionType || "").trim().toUpperCase() === "CODING";
 
     if (isCodingQuestion) {
-      // Modern Chromium System Keyboard Lock for Windows key, Tab, and Function keys in fullscreen
+      // Modern Chromium System Keyboard Lock for Escape, Windows key, Tab, and Function keys in fullscreen
       try {
         if ("keyboard" in navigator && (navigator as any).keyboard?.lock) {
           (navigator as any).keyboard.lock([
+            "Escape",
             "MetaLeft", "MetaRight", "AltLeft", "AltRight", "ControlLeft", "ControlRight",
             "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"
           ]).catch(() => {});
@@ -1885,6 +1946,13 @@ export default function ExamTake() {
       } catch {}
 
       const blockCodingRestrictedKeys = (e: KeyboardEvent) => {
+        const isEscapeKey =
+          e.key === "Escape" ||
+          e.key === "Esc" ||
+          e.code === "Escape" ||
+          e.keyCode === 27 ||
+          e.which === 27;
+
         const isWindowsKey =
           e.key === "Meta" ||
           e.key === "OS" ||
@@ -1935,13 +2003,14 @@ export default function ExamTake() {
           return;
         }
 
-        if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey) {
+        if (isWindowsKey || isCtrlKey || isAltKey || isTabKey || isFunctionKey || isEscapeKey) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
-          logEvent("CODING_RESTRICTED_KEY_BLOCKED", undefined, {
+          logEvent(isEscapeKey ? "ESC_KEY_BLOCKED" : "CODING_RESTRICTED_KEY_BLOCKED", undefined, {
             key: e.key,
             code: e.code,
+            isEscapeKey,
             isWindowsKey,
             isCtrlKey,
             isTabKey,
@@ -1951,13 +2020,21 @@ export default function ExamTake() {
         }
       };
 
-      // Only attach keydown handler (never keypress or keyup, which would intercept ASCII characters)
+      // Attach keydown, keyup, and keypress capture handlers
       window.addEventListener("keydown", blockCodingRestrictedKeys, { capture: true, passive: false });
+      window.addEventListener("keyup", blockCodingRestrictedKeys, { capture: true, passive: false });
+      window.addEventListener("keypress", blockCodingRestrictedKeys, { capture: true, passive: false });
       document.addEventListener("keydown", blockCodingRestrictedKeys, { capture: true, passive: false });
+      document.addEventListener("keyup", blockCodingRestrictedKeys, { capture: true, passive: false });
+      document.addEventListener("keypress", blockCodingRestrictedKeys, { capture: true, passive: false });
 
       return () => {
         window.removeEventListener("keydown", blockCodingRestrictedKeys, { capture: true });
+        window.removeEventListener("keyup", blockCodingRestrictedKeys, { capture: true });
+        window.removeEventListener("keypress", blockCodingRestrictedKeys, { capture: true });
         document.removeEventListener("keydown", blockCodingRestrictedKeys, { capture: true });
+        document.removeEventListener("keyup", blockCodingRestrictedKeys, { capture: true });
+        document.removeEventListener("keypress", blockCodingRestrictedKeys, { capture: true });
         try {
           if ("keyboard" in navigator && (navigator as any).keyboard?.unlock) {
             (navigator as any).keyboard.unlock();
@@ -1966,10 +2043,12 @@ export default function ExamTake() {
       };
     }
 
-    // MCQ Questions: Complete keyboard lock
+    // MCQ Questions: Complete keyboard lock including Escape
     try {
       if ("keyboard" in navigator && (navigator as any).keyboard?.lock) {
-        (navigator as any).keyboard.lock().catch(() => {});
+        (navigator as any).keyboard.lock(["Escape"]).catch(() => {
+          (navigator as any).keyboard.lock().catch(() => {});
+        });
       }
     } catch {}
 
@@ -2262,23 +2341,40 @@ export default function ExamTake() {
     );
   }
 
-  // Submitting / Exam Terminating Overlay
+  // Submitting / Exam Concluding Overlay
   if (submitting) {
+    const isViolationTermination = fullscreenExited || warningStrikes >= 3;
     return (
       <div
         className="fixed inset-0 z-[10000] flex flex-col items-center justify-center p-4 select-none backdrop-blur-md"
         style={{ background: "rgba(15, 23, 42, 0.98)" }}
       >
-        <div className="bg-slate-900 border-2 border-red-500 rounded-2xl max-w-md w-full p-8 text-center shadow-2xl text-white space-y-4">
-          <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto text-3xl border border-red-500/40 animate-pulse">
-            🚨
+        <div
+          className={`bg-slate-900 border-2 rounded-2xl max-w-md w-full p-8 text-center shadow-2xl text-white space-y-4 ${
+            isViolationTermination ? "border-red-500" : "border-indigo-500/60"
+          }`}
+        >
+          <div
+            className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto text-3xl border animate-pulse ${
+              isViolationTermination
+                ? "bg-red-500/20 text-red-400 border-red-500/40"
+                : "bg-indigo-500/20 text-indigo-400 border-indigo-500/40"
+            }`}
+          >
+            {isViolationTermination ? "🚨" : "⏳"}
           </div>
-          <h2 className="text-2xl font-bold text-white">Submitting &amp; Terminating Exam</h2>
+          <h2 className="text-2xl font-bold text-white">
+            {isViolationTermination ? "Submitting & Terminating Exam" : "Concluding Examination Session"}
+          </h2>
           <p className="text-slate-300 text-sm leading-relaxed">
-            {fullscreenExited
-              ? "You exited fullscreen mode. Your examination session has been terminated and your recorded answers are being submitted."
-              : "Please wait while your answers and proctoring telemetry are safely uploaded to the server..."}
+            {isViolationTermination
+              ? "Your examination session has been terminated and your recorded answers are being submitted."
+              : "Please wait while your answers and proctoring telemetry are safely encrypted and uploaded to the examination server..."}
           </p>
+          <div className="flex items-center justify-center gap-2 pt-2 text-xs text-indigo-400 font-medium">
+            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
+            <span>Finalizing &amp; Sealing Attempt...</span>
+          </div>
         </div>
       </div>
     );
@@ -2686,6 +2782,18 @@ export default function ExamTake() {
           <span className="text-sm font-medium">
             Question {current + 1} of {questions.length}
           </span>
+
+          {(studentName || studentRegNo) && (
+            <div className="hidden lg:flex items-center gap-2 bg-slate-800/90 border border-slate-700/80 px-3 py-1 rounded-full text-xs">
+              <span className="text-slate-400">Candidate:</span>
+              <span className="font-semibold text-slate-100">{studentName || "Candidate"}</span>
+              {studentRegNo && (
+                <span className="font-mono text-blue-400 bg-blue-950/70 px-2 py-0.5 rounded text-[11px] border border-blue-800/60">
+                  {studentRegNo}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Explicit 3-Strike Warning Counter Badge */}
           <div

@@ -39,7 +39,7 @@ graph TD
 ## 2. Directory Structure of the Codebase
 
 ```
-monitoring system/
+Proctor-Git/
 ├── CODEBASE_OVERVIEW.md               # Complete architecture, dependency & function reference (This Document)
 ├── README.md                          # Quickstart guide and Docker deployment instructions
 ├── function.md                        # High-level functional specification
@@ -529,6 +529,7 @@ sequenceDiagram
     Backend-->>Frontend: Return Final Score & Integrity Report
 ```
 
+fghjk
 ### 6.2 Code Execution Flow
 ```mermaid
 sequenceDiagram

@@ -181,6 +181,86 @@ public class AdminProctoringController {
     }
 
     /**
+     * Export student question completion status (1 page per student) as PDF for all attempts in an exam.
+     */
+    @GetMapping("/exams/{examId}/report/question-completion-pdf")
+    public ResponseEntity<byte[]> exportExamQuestionCompletionPdf(
+            @PathVariable Long examId,
+            Authentication authentication) {
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        auditLogService.logAdmin(adminEmail, "EXPORT_QUESTION_COMPLETION_REPORT",
+                "Exported exam " + examId + " question completion PDF report");
+
+        byte[] bytes = reportExportService.exportExamQuestionCompletionPdf(examId);
+        String filename = "exam-" + examId + "-question-completion.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
+     * Export 1-page question completion status PDF for a single student attempt.
+     */
+    @GetMapping("/attempts/{attemptId}/report/question-completion-pdf")
+    public ResponseEntity<byte[]> exportAttemptQuestionCompletionPdf(
+            @PathVariable Long attemptId,
+            Authentication authentication) {
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        auditLogService.logAdmin(adminEmail, "EXPORT_ATTEMPT_QUESTION_COMPLETION_REPORT",
+                "Exported attempt " + attemptId + " question completion PDF report");
+
+        byte[] bytes = reportExportService.exportAttemptQuestionCompletionPdf(attemptId);
+        String filename = "attempt-" + attemptId + "-question-completion.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
+     * Export warning strikes & proctoring integrity audit report as PDF for all students in an exam.
+     */
+    @GetMapping("/exams/{examId}/report/warning-strikes-pdf")
+    public ResponseEntity<byte[]> exportExamWarningStrikesPdf(
+            @PathVariable Long examId,
+            Authentication authentication) {
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        auditLogService.logAdmin(adminEmail, "EXPORT_WARNING_STRIKES_REPORT",
+                "Exported exam " + examId + " warning strikes PDF report");
+
+        byte[] bytes = reportExportService.exportExamWarningStrikesPdf(examId);
+        String filename = "exam-" + examId + "-warning-strikes.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
+     * Export warning strikes PDF report for a single student attempt.
+     */
+    @GetMapping("/attempts/{attemptId}/report/warning-strikes-pdf")
+    public ResponseEntity<byte[]> exportAttemptWarningStrikesPdf(
+            @PathVariable Long attemptId,
+            Authentication authentication) {
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        auditLogService.logAdmin(adminEmail, "EXPORT_ATTEMPT_WARNING_STRIKES_REPORT",
+                "Exported attempt " + attemptId + " warning strikes PDF report");
+
+        byte[] bytes = reportExportService.exportAttemptWarningStrikesPdf(attemptId);
+        String filename = "attempt-" + attemptId + "-warning-strikes.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
      * Admin evaluates attempt: verifies proctoring integrity, awards marks/score, and finalizes status.
      */
     @PutMapping("/attempts/{attemptId}/evaluate")

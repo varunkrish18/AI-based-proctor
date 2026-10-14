@@ -10,6 +10,8 @@ interface VerifyResponse {
   microphoneRequired?: boolean;
   screenRequired?: boolean;
   locationRequired?: boolean;
+  studentName?: string | null;
+  registerNumber?: string | null;
 }
 
 interface PublicExamDetails {
@@ -28,6 +30,8 @@ interface PublicExamDetails {
 export default function ExamVerify() {
   const { examId } = useParams();
   const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const [registerNumber, setRegisterNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -60,11 +64,17 @@ export default function ExamVerify() {
     setSubmitting(true);
     try {
       const res = await api.post<VerifyResponse>(`/api/exams/${examId}/verify-student`, {
+        name: name.trim(),
+        registerNumber: registerNumber.trim(),
         email: email.trim(),
         password: password.trim(),
       });
       if (res.verified && res.sessionToken) {
         setToken("student", res.sessionToken);
+        // Persist student profile information for candidate badges and proctoring logs
+        sessionStorage.setItem(`student_name_${examId}`, res.studentName || name.trim());
+        sessionStorage.setItem(`student_reg_${examId}`, res.registerNumber || registerNumber.trim());
+        sessionStorage.setItem(`student_email_${examId}`, email.trim());
         // Persist proctoring requirement config for system check & exam take
         sessionStorage.setItem(
           `exam_proctoring_${examId}`,
@@ -140,6 +150,36 @@ export default function ExamVerify() {
 
         {/* Verification Form */}
         <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Candidate Full Name
+            </label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+              placeholder="e.g. John Doe"
+              autoComplete="name"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Register Number / Roll No.
+            </label>
+            <input
+              type="text"
+              required
+              value={registerNumber}
+              onChange={(e) => setRegisterNumber(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+              placeholder="e.g. 711321104001 or REG-2024-001"
+              autoComplete="off"
+            />
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Registered Candidate Email

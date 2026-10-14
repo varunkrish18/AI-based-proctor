@@ -79,7 +79,7 @@ public class PublicExamController {
 
     @PostMapping("/{examId}/verify-student")
     public VerifyStudentResponse verifyStudent(@PathVariable Long examId, @Valid @RequestBody VerifyStudentRequest request) {
-        return studentExamService.verifyStudent(examId, request.email(), request.password());
+        return studentExamService.verifyStudent(examId, request.email(), request.password(), request.name(), request.registerNumber());
     }
 
     @PostMapping("/run-code")
