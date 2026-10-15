@@ -51,16 +51,10 @@ export default function NavBar() {
             💻 Online IDE
           </NavLink>
 
-          {/* Coding Lab & Assessment Reports - strictly restricted to Admin and Examiner */}
+          {/* Staff controls - strictly restricted to Admin and Examiner */}
           {isStaff && (
             <>
               <div className="h-4 w-px bg-slate-700 mx-1" />
-              <NavLink to="/assessment/code-editor" className={linkClass}>
-                &lt;/&gt; Coding Lab
-              </NavLink>
-              <NavLink to="/admin/coding-reports" className={linkClass}>
-                📊 Assessment Reports
-              </NavLink>
               <NavLink to="/admin/dashboard" className={linkClass}>
                 🎛️ Dashboard
               </NavLink>

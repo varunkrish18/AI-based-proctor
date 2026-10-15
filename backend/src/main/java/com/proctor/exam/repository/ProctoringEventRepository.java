@@ -70,4 +70,45 @@ public interface ProctoringEventRepository extends JpaRepository<ProctoringEvent
             ORDER BY hour
             """, nativeQuery = true)
     List<Object[]> countByHourSince(@Param("since") Instant since, @Param("examId") Long examId);
+
+    @Query("""
+            SELECT e.attempt.exam.name, COUNT(e)
+            FROM ProctoringEvent e
+            WHERE e.attempt.exam.id IN :examIds
+            GROUP BY e.attempt.exam.name
+            ORDER BY COUNT(e) DESC
+            """)
+    List<Object[]> countWarningsByExamIds(@Param("examIds") List<Long> examIds);
+
+    @Query("""
+            SELECT e.eventType, COUNT(e)
+            FROM ProctoringEvent e
+            WHERE e.attempt.exam.id IN :examIds
+            GROUP BY e.eventType
+            ORDER BY COUNT(e) DESC
+            """)
+    List<Object[]> countByEventTypeInExamIds(@Param("examIds") List<Long> examIds);
+
+    @Query(value = """
+            SELECT TO_CHAR(DATE_TRUNC('hour', occurred_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:00') AS hour,
+                   COUNT(*) AS cnt
+            FROM proctoring_events pe
+            JOIN exam_attempts ea ON ea.id = pe.attempt_id
+            WHERE pe.occurred_at >= :since
+            AND ea.exam_id IN :examIds
+            GROUP BY hour
+            ORDER BY hour
+            """, nativeQuery = true)
+    List<Object[]> countByHourSinceInExamIds(@Param("since") Instant since, @Param("examIds") List<Long> examIds);
+
+    @Query("""
+            SELECT COUNT(e) FROM ProctoringEvent e
+            WHERE e.attempt.exam.id IN :examIds
+            AND e.severity IN :severities
+            AND e.occurredAt >= :since
+            """)
+    long countBySeverityInAndOccurredAtAfterInExamIds(
+            @Param("severities") List<String> severities,
+            @Param("since") Instant since,
+            @Param("examIds") List<Long> examIds);
 }

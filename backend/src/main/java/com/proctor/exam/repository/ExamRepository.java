@@ -12,5 +12,7 @@ public interface ExamRepository extends JpaRepository<Exam, Long> {
     long countByStatus(String status);
     List<Exam> findByCreatedBy(Long createdBy);
     List<Exam> findByCreatedByOrderByCreatedAtDesc(Long createdBy);
+    long countByCreatedBy(Long createdBy);
+    long countByCreatedByAndStatus(Long createdBy, String status);
 }
 

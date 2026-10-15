@@ -386,24 +386,6 @@ export default function AdminDashboard() {
             {isRefreshing ? "Syncing…" : "Sync Telemetry"}
           </button>
 
-          {/* Assessment Reports Quick Link (Admin and Examiner) */}
-          <Link
-            to="/admin/coding-reports"
-            className="px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-indigo-300 hover:text-indigo-200 flex items-center gap-1.5"
-            title="Generate & Review Candidate Reports"
-          >
-            <span>📊</span> Reports
-          </Link>
-
-          {/* Coding Lab Sandbox Quick Link (Admin and Examiner) */}
-          <Link
-            to="/assessment/code-editor"
-            className="px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-emerald-300 hover:text-emerald-200 flex items-center gap-1.5"
-            title="Open Algorithmic Coding Lab"
-          >
-            <span>&lt;/&gt;</span> Coding Lab
-          </Link>
-
           {/* User Credentials Management Tab Button (Strictly ADMIN only) */}
           {isAdmin && (
             <button
@@ -461,13 +443,6 @@ export default function AdminDashboard() {
             <span>👥</span> User Accounts &amp; Login Credentials
           </button>
         )}
-
-        <Link
-          to="/admin/coding-reports"
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-all ml-auto"
-        >
-          <span>📑</span> Assessment &amp; Candidate Reports &rarr;
-        </Link>
       </div>
 
       {currentTab === "users" && isAdmin ? (
@@ -485,7 +460,13 @@ export default function AdminDashboard() {
             onChange={(e) => setSelectedExamId(e.target.value)}
             className="bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded-lg px-3 py-1.5 font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer max-w-xs"
           >
-            <option value="ALL">🌐 All Configured Exams ({exams.length})</option>
+            <option value="ALL">
+              {isAdmin
+                ? `🌐 All Configured Exams (${exams.length})`
+                : exams.length === 0
+                ? "⚠️ No Examinations Created Yet"
+                : `🌐 All My Created Exams (${exams.length})`}
+            </option>
             {exams.map((ex) => (
               <option key={ex.id} value={String(ex.id)}>
                 📝 {ex.name} ({ex.status})
@@ -641,7 +622,9 @@ export default function AdminDashboard() {
                   <span className="text-amber-500">⚡</span> Dominant Infraction Pattern
                 </span>
                 <p className="text-slate-600 mt-1 leading-relaxed">
-                  {topThreat ? (
+                  {!isAdmin && exams.length === 0 ? (
+                    "No exams authored under your examiner profile yet. Once candidates write your exams, infraction patterns will automatically appear here."
+                  ) : topThreat ? (
                     <>
                       <strong>{topThreat.label}</strong> is the most common anomaly, representing{" "}
                       <strong className="text-amber-700 font-bold">{topThreat.percentage}%</strong> of all recorded flags.
@@ -657,8 +640,9 @@ export default function AdminDashboard() {
                   <span className="text-emerald-500">🎯</span> Environment Integrity
                 </span>
                 <p className="text-slate-600 mt-1 leading-relaxed">
-                  Screen share lockdown and camera heartbeats are verified. Candidates attempting window or display escapes
-                  are cataloged with instant timestamped evidence.
+                  {!isAdmin && exams.length === 0
+                    ? "Environment monitoring and lock-down triggers will activate when candidates begin writing your tests."
+                    : "Screen share lockdown and camera heartbeats are verified. Candidates attempting window or display escapes are cataloged with instant timestamped evidence."}
                 </p>
               </div>
 
@@ -667,7 +651,9 @@ export default function AdminDashboard() {
                   <span className="text-purple-500">📋</span> Proctor Action Priority
                 </span>
                 <p className="text-slate-600 mt-1 leading-relaxed">
-                  {flaggedSessions.length > 0 ? (
+                  {!isAdmin && exams.length === 0 ? (
+                    "No examinations authored yet. Click 'Create New Exam' above to set up questions and proctoring parameters."
+                  ) : flaggedSessions.length > 0 ? (
                     <>
                       <strong className="text-rose-700">{flaggedSessions.length} session(s)</strong> require manual
                       audit prior to certificate issuance. Review snapshot evidence in the queue below.
@@ -1176,8 +1162,30 @@ export default function AdminDashboard() {
                   ))}
                   {filteredExams.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-slate-400 text-xs">
-                        No examinations found matching your search.
+                      <td colSpan={6} className="text-center py-12 text-slate-500 text-xs">
+                        {exams.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center space-y-2">
+                            <span className="text-3xl block">📝</span>
+                            <p className="font-bold text-slate-700 text-sm">
+                              {userRole === "EXAMINER"
+                                ? "You haven't authored any examinations yet"
+                                : "No examinations configured"}
+                            </p>
+                            <p className="text-slate-400 max-w-sm">
+                              {userRole === "EXAMINER"
+                                ? "As an Examiner, your dashboard exclusively monitors exams and examinee attempts created under your account."
+                                : "Create an exam to begin configuring questions, proctoring rules, and candidate enrollment."}
+                            </p>
+                            <Link
+                              to="/admin/exams/new"
+                              className="mt-2 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition shadow-sm"
+                            >
+                              <span>+</span> Create New Exam
+                            </Link>
+                          </div>
+                        ) : (
+                          "No examinations found matching your search."
+                        )}
                       </td>
                     </tr>
                   )}

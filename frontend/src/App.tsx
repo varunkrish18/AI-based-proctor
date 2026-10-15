@@ -8,13 +8,11 @@ import ExamVerify from "./pages/student/ExamVerify";
 import SystemCheck from "./pages/student/SystemCheck";
 import ExamTake from "./pages/student/ExamTake";
 import ExamSubmitted from "./pages/student/ExamSubmitted";
-import CodingAssessment from "./pages/student/CodingAssessment";
 import AdminLogin from "./pages/admin/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import CreateExam from "./pages/admin/CreateExam";
 import ExamDetail from "./pages/admin/ExamDetail";
 import AdminReportView from "./pages/admin/AdminReportView";
-import CodingAssessmentReports from "./pages/admin/CodingAssessmentReports";
 import MobileDeviceBlocker from "./components/MobileDeviceBlocker";
 import OnlineIde from "./pages/OnlineIde";
 import { isStaffAuthenticated } from "./api/client";
@@ -77,16 +75,6 @@ export default function App() {
         />
         <Route path="/exam/:examId/submitted" element={<ExamSubmitted />} />
 
-        {/* Staff-only Coding Lab & Sandbox (Strictly ADMIN & EXAMINER access) */}
-        <Route
-          path="/assessment/code-editor"
-          element={
-            <StaffRoute>
-              <CodingAssessment />
-            </StaffRoute>
-          }
-        />
-
         {/* Staff authentication */}
         <Route path="/admin/login" element={<AdminLogin />} />
 
@@ -104,14 +92,6 @@ export default function App() {
           element={
             <StaffRoute>
               <Navigate to="/admin/dashboard?tab=users" replace />
-            </StaffRoute>
-          }
-        />
-        <Route
-          path="/admin/coding-reports"
-          element={
-            <StaffRoute>
-              <CodingAssessmentReports />
             </StaffRoute>
           }
         />

@@ -388,10 +388,6 @@ Proctor-Git/
     - Automated background webcam frame capture sending frames at 1–2 fps.
     - Fullscreen lock and tab switch detection.
     - Real-time warning modal overlays on infractions.
-- **`student/CodingAssessment.tsx`**:
-  - Dedicated coding exam interface with split-pane layout:
-    - Left Pane: Problem title, description, constraints, sample I/O, and test case status tabs.
-    - Right Pane: Embedded syntax-highlighted code editor, language selector (C, Python, Java, JS), "Run Code" button, and "Submit Solution" button.
 - **`student/ExamVerify.tsx`**:
   - Candidate identity verification form. Accepts Student Email and Exam Access Password, verifying against the backend before unlocking the pre-flight check.
 - **`student/ExamSubmitted.tsx`**:
@@ -409,8 +405,6 @@ Proctor-Git/
     - Live attempt monitor.
 - **`admin/AdminReportView.tsx`**:
   - Individual student attempt forensic inspector. Displays student profile, score, second-by-second event timeline, and one-click PDF, Excel, and CSV download buttons.
-- **`admin/CodingAssessmentReports.tsx`**:
-  - Reporting view specifically dedicated to coding attempts, showing test cases passed, runtime performance, and language breakdowns.
 - **`admin/UserManagementTab.tsx`**:
   - Staff management panel allowing Admins to create, edit, and deactivate Examiner and Proctor accounts.
 

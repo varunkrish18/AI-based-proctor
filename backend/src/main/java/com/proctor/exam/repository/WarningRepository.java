@@ -16,4 +16,12 @@ public interface WarningRepository extends JpaRepository<Warning, Long> {
     long countByAttemptId(Long attemptId);
 
     long countByCreatedAtAfter(Instant since);
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT COUNT(w) FROM Warning w
+            WHERE w.attempt.exam.id IN :examIds
+            AND w.createdAt >= :since
+            """)
+    long countByCreatedAtAfterInExamIds(@org.springframework.data.repository.query.Param("since") Instant since,
+                                        @org.springframework.data.repository.query.Param("examIds") List<Long> examIds);
 }

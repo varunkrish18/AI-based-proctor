@@ -64,4 +64,37 @@ public interface ExamAttemptRepository extends JpaRepository<ExamAttempt, Long>,
             ORDER BY MIN(a.score)
             """)
     List<Object[]> scoreDistribution(@Param("examId") Long examId);
+
+    long countByExamIdInAndStatus(List<Long> examIds, String status);
+
+    long countByExamIdIn(List<Long> examIds);
+
+    long countByExamIdInAndFlaggedForReviewTrue(List<Long> examIds);
+
+    @Query("SELECT AVG(a.score) FROM ExamAttempt a WHERE a.status = 'SUBMITTED' AND a.score IS NOT NULL AND a.exam.id IN :examIds")
+    Double findAverageScoreInExamIds(@Param("examIds") List<Long> examIds);
+
+    @Query("""
+            SELECT COUNT(DISTINCT a.id) FROM ExamAttempt a
+            JOIN ProctoringSession ps ON ps.attempt.id = a.id
+            WHERE a.status = :status
+            AND a.exam.id IN :examIds
+            AND ps.lastHeartbeatAt > :since
+            """)
+    long countByStatusAndActiveHeartbeatInExamIds(@Param("status") String status,
+                                                 @Param("since") Instant since,
+                                                 @Param("examIds") List<Long> examIds);
+
+    @Query("""
+            SELECT
+              CONCAT(CAST(FLOOR(COALESCE(a.score, 0) / 10) * 10 AS string), '-',
+                     CAST(FLOOR(COALESCE(a.score, 0) / 10) * 10 + 10 AS string)) AS bucket,
+              COUNT(a) AS cnt
+            FROM ExamAttempt a
+            WHERE a.status = 'SUBMITTED'
+            AND a.exam.id IN :examIds
+            GROUP BY bucket
+            ORDER BY MIN(a.score)
+            """)
+    List<Object[]> scoreDistributionInExamIds(@Param("examIds") List<Long> examIds);
 }

@@ -29,6 +29,7 @@ public class AdminProctoringController {
     private final AuditLogService auditLogService;
     private final ExamAttemptRepository attemptRepository;
     private final AiProxyService aiProxyService;
+    private final ExamAdminService examAdminService;
 
     public AdminProctoringController(ProctoringSessionService sessionService,
                                      ProctoringEventService eventService,
@@ -37,7 +38,8 @@ public class AdminProctoringController {
                                      ReportExportService reportExportService,
                                      AuditLogService auditLogService,
                                      ExamAttemptRepository attemptRepository,
-                                     AiProxyService aiProxyService) {
+                                     AiProxyService aiProxyService,
+                                     ExamAdminService examAdminService) {
         this.sessionService = sessionService;
         this.eventService = eventService;
         this.riskEngine = riskEngine;
@@ -46,6 +48,14 @@ public class AdminProctoringController {
         this.auditLogService = auditLogService;
         this.attemptRepository = attemptRepository;
         this.aiProxyService = aiProxyService;
+        this.examAdminService = examAdminService;
+    }
+
+    private void verifyAttemptAccess(Long attemptId, Authentication auth) {
+        if (auth == null) return;
+        ExamAttempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+        examAdminService.verifyExamAccess(attempt.getExam(), auth.getName());
     }
 
     @GetMapping("/system/ai-health")
@@ -54,18 +64,19 @@ public class AdminProctoringController {
     }
 
     @GetMapping("/dashboard/summary")
-    public DashboardSummaryResponse getDashboardSummary() {
-        return dashboardService.getSummary();
+    public DashboardSummaryResponse getDashboardSummary(Authentication auth) {
+        return dashboardService.getSummary(auth != null ? auth.getName() : null);
     }
 
     @GetMapping("/dashboard/stats")
-    public DashboardStatsResponse getDashboardStats() {
-        return dashboardService.getStats();
+    public DashboardStatsResponse getDashboardStats(Authentication auth) {
+        return dashboardService.getStats(auth != null ? auth.getName() : null);
     }
 
     @GetMapping("/dashboard/charts")
-    public DashboardChartsResponse getDashboardCharts(@RequestParam(required = false) Long examId) {
-        return dashboardService.getCharts(examId);
+    public DashboardChartsResponse getDashboardCharts(@RequestParam(required = false) Long examId,
+                                                      Authentication auth) {
+        return dashboardService.getCharts(examId, auth != null ? auth.getName() : null);
     }
 
     /**
@@ -79,7 +90,9 @@ public class AdminProctoringController {
             @RequestParam(required = false) String severity,
             @RequestParam(required = false) String studentEmail,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            Authentication auth) {
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), auth != null ? auth.getName() : null);
         return eventService.getAttemptsWithEventSummary(examId, studentEmail, severity, eventType, from, to);
     }
 
@@ -88,7 +101,9 @@ public class AdminProctoringController {
      */
     @GetMapping("/exams/{examId}/attempts/{attemptId}/proctoring-session")
     public ProctoringSessionResponse getProctoringSession(@PathVariable Long examId,
-                                                         @PathVariable Long attemptId) {
+                                                          @PathVariable Long attemptId,
+                                                          Authentication auth) {
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), auth != null ? auth.getName() : null);
         return sessionService.getSessionForAdmin(examId, attemptId);
     }
 
@@ -97,8 +112,10 @@ public class AdminProctoringController {
      */
     @GetMapping("/attempts/{attemptId}/events")
     public List<ProctoringEventResponse> getAttemptEvents(@PathVariable Long attemptId,
-                                                         @RequestParam(required = false) String severity,
-                                                         @RequestParam(required = false) String type) {
+                                                          @RequestParam(required = false) String severity,
+                                                          @RequestParam(required = false) String type,
+                                                          Authentication auth) {
+        verifyAttemptAccess(attemptId, auth);
         return eventService.getEventsForAttempt(attemptId, severity, type);
     }
 
@@ -106,7 +123,8 @@ public class AdminProctoringController {
      * Time-decayed risk timeline, warning history, and flagged status for an attempt.
      */
     @GetMapping("/attempts/{attemptId}/risk-timeline")
-    public RiskTimelineResponse getRiskTimeline(@PathVariable Long attemptId) {
+    public RiskTimelineResponse getRiskTimeline(@PathVariable Long attemptId, Authentication auth) {
+        verifyAttemptAccess(attemptId, auth);
         return riskEngine.getRiskTimeline(attemptId);
     }
 
@@ -114,7 +132,8 @@ public class AdminProctoringController {
      * Full single-attempt report view and event timeline.
      */
     @GetMapping({"/attempts/{attemptId}/report", "/reports/attempts/{attemptId}"})
-    public AdminAttemptReportResponse getAttemptReport(@PathVariable Long attemptId) {
+    public AdminAttemptReportResponse getAttemptReport(@PathVariable Long attemptId, Authentication auth) {
+        verifyAttemptAccess(attemptId, auth);
         return reportExportService.buildReport(attemptId);
     }
 
@@ -126,6 +145,7 @@ public class AdminProctoringController {
             @PathVariable Long attemptId,
             @RequestParam(defaultValue = "pdf") String format,
             Authentication authentication) throws IOException {
+        verifyAttemptAccess(attemptId, authentication);
 
         String adminEmail = authentication != null ? authentication.getName() : "admin";
         auditLogService.logAdmin(adminEmail, "EXPORT_REPORT",
@@ -168,6 +188,7 @@ public class AdminProctoringController {
             @PathVariable Long examId,
             Authentication authentication) {
         String adminEmail = authentication != null ? authentication.getName() : "admin";
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), adminEmail);
         auditLogService.logAdmin(adminEmail, "EXPORT_CUMULATIVE_REPORT",
                 "Exported cumulative exam " + examId + " PDF report");
 
@@ -188,6 +209,7 @@ public class AdminProctoringController {
             @PathVariable Long examId,
             Authentication authentication) {
         String adminEmail = authentication != null ? authentication.getName() : "admin";
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), adminEmail);
         auditLogService.logAdmin(adminEmail, "EXPORT_QUESTION_COMPLETION_REPORT",
                 "Exported exam " + examId + " question completion PDF report");
 
@@ -207,6 +229,7 @@ public class AdminProctoringController {
     public ResponseEntity<byte[]> exportAttemptQuestionCompletionPdf(
             @PathVariable Long attemptId,
             Authentication authentication) {
+        verifyAttemptAccess(attemptId, authentication);
         String adminEmail = authentication != null ? authentication.getName() : "admin";
         auditLogService.logAdmin(adminEmail, "EXPORT_ATTEMPT_QUESTION_COMPLETION_REPORT",
                 "Exported attempt " + attemptId + " question completion PDF report");
@@ -228,6 +251,7 @@ public class AdminProctoringController {
             @PathVariable Long examId,
             Authentication authentication) {
         String adminEmail = authentication != null ? authentication.getName() : "admin";
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), adminEmail);
         auditLogService.logAdmin(adminEmail, "EXPORT_WARNING_STRIKES_REPORT",
                 "Exported exam " + examId + " warning strikes PDF report");
 
@@ -247,6 +271,7 @@ public class AdminProctoringController {
     public ResponseEntity<byte[]> exportAttemptWarningStrikesPdf(
             @PathVariable Long attemptId,
             Authentication authentication) {
+        verifyAttemptAccess(attemptId, authentication);
         String adminEmail = authentication != null ? authentication.getName() : "admin";
         auditLogService.logAdmin(adminEmail, "EXPORT_ATTEMPT_WARNING_STRIKES_REPORT",
                 "Exported attempt " + attemptId + " warning strikes PDF report");
@@ -268,6 +293,7 @@ public class AdminProctoringController {
             @PathVariable Long attemptId,
             @jakarta.validation.Valid @RequestBody AdminAttemptEvaluationRequest request,
             Authentication authentication) {
+        verifyAttemptAccess(attemptId, authentication);
         String adminEmail = authentication != null ? authentication.getName() : "admin";
         ExamAttempt attempt = attemptRepository.findById(attemptId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found"));
