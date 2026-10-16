@@ -7,6 +7,7 @@ public record AdminUserResponse(
         String email,
         String fullName,
         String role,
+        String department,
         String displayPassword,
         Integer failedAttempts,
         boolean locked,

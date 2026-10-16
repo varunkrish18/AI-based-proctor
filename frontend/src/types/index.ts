@@ -3,7 +3,7 @@ export interface ExamSummary {
   name: string;
   subject: string | null;
   numQuestions: number;
-  durationMinutes: number;
+  durationMinutes?: number | null;
   startAt: string;
   endAt: string;
   status: "UPCOMING" | "OPEN" | "CLOSED" | string;
@@ -11,11 +11,11 @@ export interface ExamSummary {
 
 export interface Exam extends ExamSummary {
   description: string | null;
-  passingMarks: number;
-  negativeMarking: number;
+  passingMarks?: number | null;
+  negativeMarking?: number | null;
   randomizeQuestions: boolean;
   randomizeOptions: boolean;
-  maxAttempts: number;
+  maxAttempts?: number | null;
   webcamRequired?: boolean;
   microphoneRequired?: boolean;
   screenRequired?: boolean;
@@ -314,6 +314,7 @@ export interface AdminUser {
   email: string;
   fullName: string;
   role: string;
+  department?: string | null;
   displayPassword?: string;
   failedAttempts: number;
   locked: boolean;
@@ -327,12 +328,14 @@ export interface CreateAdminUserPayload {
   password: string;
   fullName: string;
   role?: string;
+  department?: string;
 }
 
 export interface UpdateAdminUserPayload {
   email?: string;
   fullName?: string;
   role?: string;
+  department?: string;
   password?: string;
   resetLock?: boolean;
 }

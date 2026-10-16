@@ -29,7 +29,7 @@ public class Exam {
 
     private String subject;
 
-    @Column(name = "duration_minutes", nullable = false)
+    @Column(name = "duration_minutes")
     private Integer durationMinutes;
 
     @Column(name = "start_at", nullable = false)
@@ -41,13 +41,11 @@ public class Exam {
     @Column(name = "num_questions", nullable = false)
     private Integer numQuestions;
 
-    @Column(name = "passing_marks", nullable = false)
-    @Builder.Default
-    private BigDecimal passingMarks = BigDecimal.ZERO;
+    @Column(name = "passing_marks")
+    private BigDecimal passingMarks;
 
-    @Column(name = "negative_marking", nullable = false)
-    @Builder.Default
-    private BigDecimal negativeMarking = BigDecimal.ZERO;
+    @Column(name = "negative_marking")
+    private BigDecimal negativeMarking;
 
     @Column(name = "randomize_questions", nullable = false)
     @Builder.Default
@@ -57,9 +55,8 @@ public class Exam {
     @Builder.Default
     private Boolean randomizeOptions = true;
 
-    @Column(name = "max_attempts", nullable = false)
-    @Builder.Default
-    private Integer maxAttempts = 1;
+    @Column(name = "max_attempts")
+    private Integer maxAttempts;
 
     @Column(name = "webcam_required", nullable = false)
     @Builder.Default

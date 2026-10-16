@@ -22,13 +22,18 @@ public class AdminUserController {
     }
 
     @GetMapping
-    public List<AdminUserResponse> listUsers() {
-        return adminUserService.listUsers();
+    public List<AdminUserResponse> listUsers(Authentication auth) {
+        return adminUserService.listUsers(auth != null ? auth.getName() : null);
+    }
+
+    @GetMapping("/me")
+    public AdminUserResponse getMe(Authentication auth) {
+        return adminUserService.getMe(auth.getName());
     }
 
     @GetMapping("/{id}")
-    public AdminUserResponse getUser(@PathVariable Long id) {
-        return adminUserService.getUserById(id);
+    public AdminUserResponse getUser(@PathVariable Long id, Authentication auth) {
+        return adminUserService.getUserById(id, auth != null ? auth.getName() : null);
     }
 
     @PostMapping

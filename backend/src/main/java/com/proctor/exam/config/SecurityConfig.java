@@ -49,10 +49,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/exams/*/verify-student", "/api/exams/run-code").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/ws/**").permitAll() // WebSocket handshake; per-session auth handled at connect time
-                // Admin user & credential management strictly restricted to ADMIN
-                .requestMatchers("/api/admin/users/**").hasRole("ADMIN")
-                // General Admin & Examiner surface (exam creation/editing/managing, report generation, dashboard analytics)
-                .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "EXAMINER")
+                // User & credential management accessible to ADMIN and COURSE_COORDINATOR (with service-level isolation)
+                .requestMatchers("/api/admin/users/**").hasAnyRole("ADMIN", "COURSE_COORDINATOR")
+                // General Admin, Examiner, Coordinator & Faculty surface
+                .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "EXAMINER", "COURSE_COORDINATOR", "FACULTY")
                 // Student exam-taking surface (requires a student session token)
                 .requestMatchers("/api/student/**").hasRole("STUDENT")
                 .anyRequest().authenticated()

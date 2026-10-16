@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
-import { api, downloadFile } from "../../api/client";
+import { api, downloadFile, isCoordinatorRole } from "../../api/client";
 import ExamSettingsTab from "./ExamSettingsTab";
 import type {
   AdminAttemptSummary,
@@ -22,12 +22,18 @@ export default function ExamDetail() {
   const { examId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isCoordinator = isCoordinatorRole();
+  const allowedTabs: Tab[] = isCoordinator
+    ? ["questions", "settings"]
+    : ["questions", "settings", "assign", "results", "qassign"];
+
   const queryTab = searchParams.get("tab") as Tab | null;
   const [exam, setExam] = useState<Exam | null>(null);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
-  const [tab, setTab] = useState<Tab>(
-    queryTab && ["questions", "settings", "assign", "results", "qassign"].includes(queryTab) ? queryTab : "questions"
-  );
+  const [tab, setTab] = useState<Tab>(() => {
+    if (queryTab && allowedTabs.includes(queryTab)) return queryTab;
+    return "questions";
+  });
   const [error, setError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -76,9 +82,19 @@ export default function ExamDetail() {
   }
 
   function handleTabChange(nextTab: Tab) {
+    if (isCoordinator && (nextTab === "assign" || nextTab === "results" || nextTab === "qassign")) {
+      nextTab = "questions";
+    }
     setTab(nextTab);
     setSearchParams({ tab: nextTab });
   }
+
+  useEffect(() => {
+    if (isCoordinator && (tab === "assign" || tab === "results" || tab === "qassign")) {
+      setTab("questions");
+      setSearchParams({ tab: "questions" });
+    }
+  }, [isCoordinator, tab, setSearchParams]);
 
   function reload() {
     Promise.all([
@@ -247,7 +263,12 @@ export default function ExamDetail() {
               </span>
             </div>
             <div className="text-xs sm:text-sm font-medium text-slate-300 mt-0.5">
-              Duration: <span className="text-white font-bold">{exam.durationMinutes} mins</span> &middot; Scheduled End:{" "}
+              {exam.durationMinutes ? (
+                <>
+                  Duration: <span className="text-white font-bold">{exam.durationMinutes} mins</span> &middot;{" "}
+                </>
+              ) : null}
+              Scheduled End:{" "}
               <span className="text-white font-mono font-semibold">
                 {exam.endAt ? new Date(exam.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : "N/A"}
               </span>
@@ -296,7 +317,9 @@ export default function ExamDetail() {
           { id: "assign", label: "Assign Students" },
           { id: "results", label: "Results & Integrity" },
           { id: "qassign", label: "📋 Question Assignment" },
-        ].map((t) => (
+        ]
+          .filter((t) => !isCoordinator || (t.id !== "assign" && t.id !== "results" && t.id !== "qassign"))
+          .map((t) => (
           <button
             key={t.id}
             onClick={() => handleTabChange(t.id as Tab)}
@@ -329,9 +352,9 @@ export default function ExamDetail() {
           onSwitchToQuestions={() => handleTabChange("questions")}
         />
       )}
-      {tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
-      {tab === "results" && <ResultsTab examId={exam.id} />}
-      {tab === "qassign" && (
+      {!isCoordinator && tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
+      {!isCoordinator && tab === "results" && <ResultsTab examId={exam.id} />}
+      {!isCoordinator && tab === "qassign" && (
         <QuestionAssignTab
           examId={exam.id}
           examName={exam.name}

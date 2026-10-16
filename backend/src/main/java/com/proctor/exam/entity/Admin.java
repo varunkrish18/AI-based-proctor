@@ -34,6 +34,9 @@ public class Admin {
     @Builder.Default
     private String role = "ADMIN";
 
+    @Column(name = "department", length = 100)
+    private String department;
+
     @Column(name = "failed_attempts", nullable = false)
     @Builder.Default
     private Integer failedAttempts = 0;

@@ -66,10 +66,10 @@ public class ExamAdminService {
                 .endAt(req.endAt())
                 .numQuestions(req.numQuestions())
                 .passingMarks(req.passingMarks())
-                .negativeMarking(req.negativeMarking() == null ? java.math.BigDecimal.ZERO : req.negativeMarking())
+                .negativeMarking(req.negativeMarking())
                 .randomizeQuestions(req.randomizeQuestions() == null || req.randomizeQuestions())
                 .randomizeOptions(req.randomizeOptions() == null || req.randomizeOptions())
-                .maxAttempts(req.maxAttempts() == null ? 1 : req.maxAttempts())
+                .maxAttempts(req.maxAttempts())
                 .webcamRequired(req.webcamRequired() == null || req.webcamRequired())
                 .microphoneRequired(req.microphoneRequired() == null || req.microphoneRequired())
                 .screenRequired(req.screenRequired() == null || req.screenRequired())
@@ -163,10 +163,20 @@ public class ExamAdminService {
     public void verifyExamAccess(Exam exam, String staffEmail) {
         if (staffEmail == null || staffEmail.isBlank() || exam == null) return;
         Admin admin = adminRepository.findByEmail(staffEmail.toLowerCase()).orElse(null);
-        if (admin != null && "EXAMINER".equalsIgnoreCase(admin.getRole())) {
-            if (exam.getCreatedBy() == null || !exam.getCreatedBy().equals(admin.getId())) {
-                throw new ApiException(HttpStatus.FORBIDDEN,
-                        "Access denied: As an Examiner, you can only view and manage exams created by you.");
+        if (admin != null) {
+            if ("EXAMINER".equalsIgnoreCase(admin.getRole()) || "FACULTY".equalsIgnoreCase(admin.getRole())) {
+                if (exam.getCreatedBy() == null || !exam.getCreatedBy().equals(admin.getId())) {
+                    throw new ApiException(HttpStatus.FORBIDDEN,
+                            "Access denied: As an Examiner / Faculty, you can only view and manage exams created by you.");
+                }
+            } else if ("COURSE_COORDINATOR".equalsIgnoreCase(admin.getRole())) {
+                if (exam.getCreatedBy() != null && !exam.getCreatedBy().equals(admin.getId())) {
+                    Admin creator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
+                    if (creator == null || creator.getDepartment() == null || !creator.getDepartment().equalsIgnoreCase(admin.getDepartment())) {
+                        throw new ApiException(HttpStatus.FORBIDDEN,
+                                "Access denied: As a Course Coordinator, you can only access exams within your department.");
+                    }
+                }
             }
         }
     }
@@ -178,8 +188,23 @@ public class ExamAdminService {
     public List<Exam> listExamsForUser(String staffEmail) {
         if (staffEmail != null && !staffEmail.isBlank()) {
             Admin admin = adminRepository.findByEmail(staffEmail.toLowerCase()).orElse(null);
-            if (admin != null && "EXAMINER".equalsIgnoreCase(admin.getRole())) {
-                return examRepository.findByCreatedByOrderByCreatedAtDesc(admin.getId());
+            if (admin != null) {
+                if ("EXAMINER".equalsIgnoreCase(admin.getRole()) || "FACULTY".equalsIgnoreCase(admin.getRole())) {
+                    return examRepository.findByCreatedByOrderByCreatedAtDesc(admin.getId());
+                } else if ("COURSE_COORDINATOR".equalsIgnoreCase(admin.getRole())) {
+                    String dept = admin.getDepartment();
+                    if (dept != null && !dept.isBlank()) {
+                        List<Long> deptStaffIds = adminRepository.findAll().stream()
+                                .filter(u -> dept.equalsIgnoreCase(u.getDepartment()))
+                                .map(Admin::getId)
+                                .toList();
+                        return examRepository.findAll().stream()
+                                .filter(e -> e.getCreatedBy() != null && deptStaffIds.contains(e.getCreatedBy()))
+                                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                                .toList();
+                    }
+                    return examRepository.findByCreatedByOrderByCreatedAtDesc(admin.getId());
+                }
             }
         }
         return examRepository.findAll();

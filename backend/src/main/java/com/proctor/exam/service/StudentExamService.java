@@ -183,7 +183,7 @@ public class StudentExamService {
                     .max()
                     .orElse(0) + 1;
 
-            if (nextAttemptNumber > exam.getMaxAttempts()) {
+            if (exam.getMaxAttempts() != null && nextAttemptNumber > exam.getMaxAttempts()) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Maximum attempts reached for this exam.");
             }
 
@@ -379,7 +379,8 @@ public class StudentExamService {
                 answeredCount++;
                 boolean correct = a.getSelectedOption().equals(q.getCorrectAnswer());
                 a.setIsCorrect(correct);
-                BigDecimal awarded = correct ? q.getMarks() : exam.getNegativeMarking().negate();
+                BigDecimal neg = exam.getNegativeMarking();
+                BigDecimal awarded = correct ? q.getMarks() : (neg != null ? neg.negate() : BigDecimal.ZERO);
                 a.setMarksAwarded(awarded);
                 score = score.add(awarded);
                 answerRepository.save(a);
@@ -472,7 +473,10 @@ public class StudentExamService {
 
         // Live remaining seconds
         long attemptElapsedSeconds = Math.max(0, java.time.temporal.ChronoUnit.SECONDS.between(attempt.getStartTime(), now));
-        long attemptRemaining = Math.max(0, ((long) exam.getDurationMinutes() * 60) - attemptElapsedSeconds);
+        Integer durMins = exam.getDurationMinutes();
+        long attemptRemaining = durMins != null
+                ? Math.max(0, ((long) durMins * 60) - attemptElapsedSeconds)
+                : Long.MAX_VALUE;
 
         long examRemaining = exam.getEndAt() != null
                 ? Math.max(0, java.time.temporal.ChronoUnit.SECONDS.between(now, exam.getEndAt()))

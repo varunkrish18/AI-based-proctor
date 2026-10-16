@@ -214,7 +214,8 @@ export async function downloadFile(
 
 export interface AdminTokenPayload {
   sub: string;
-  role: "ADMIN" | "EXAMINER" | "PROCTOR" | string;
+  role: "ADMIN" | "EXAMINER" | "PROCTOR" | "COURSE_COORDINATOR" | "FACULTY" | string;
+  department?: string;
   type: string;
   exp: number;
 }
@@ -244,13 +245,31 @@ export function getAdminUserRole(): string | null {
   return payload?.role ? payload.role.toUpperCase() : null;
 }
 
+export function getAdminUserDepartment(): string | null {
+  const payload = getAdminTokenPayload();
+  return payload?.department || null;
+}
+
 export function isStaffAuthenticated(): boolean {
   const role = getAdminUserRole();
-  return role === "ADMIN" || role === "EXAMINER";
+  return (
+    role === "ADMIN" ||
+    role === "EXAMINER" ||
+    role === "COURSE_COORDINATOR" ||
+    role === "FACULTY"
+  );
 }
 
 export function isAdminRole(): boolean {
   return getAdminUserRole() === "ADMIN";
+}
+
+export function isCoordinatorRole(): boolean {
+  return getAdminUserRole() === "COURSE_COORDINATOR";
+}
+
+export function isFacultyRole(): boolean {
+  return getAdminUserRole() === "FACULTY";
 }
 
 export function isExaminerRole(): boolean {

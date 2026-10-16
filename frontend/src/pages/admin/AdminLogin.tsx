@@ -32,8 +32,13 @@ export default function AdminLogin() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-16">
-      <h1 className="text-xl font-bold text-slate-900 mb-6">Admin Login</h1>
-      <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+      <div className="text-center mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Staff &amp; Admin Login</h1>
+        <p className="text-xs text-slate-500 mt-1">
+          Access portal for Administrators, Course Coordinators, and Faculty
+        </p>
+      </div>
+      <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         {isExpired && !error && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3 rounded-md mb-4">
             Your admin session expired. Please sign in again.

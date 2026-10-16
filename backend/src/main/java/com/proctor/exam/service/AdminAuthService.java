@@ -78,7 +78,7 @@ public class AdminAuthService {
         admin.setLockedUntil(null);
         adminRepository.save(admin);
 
-        String accessToken = jwtService.generateAdminToken(admin.getEmail(), admin.getRole());
+        String accessToken = jwtService.generateAdminToken(admin.getEmail(), admin.getRole(), admin.getDepartment());
         String rawRefreshToken = issueRefreshToken(admin);
 
         auditLogService.logAdmin(email, "ADMIN_LOGIN_SUCCESS", "Successful login");
@@ -100,7 +100,7 @@ public class AdminAuthService {
         refreshTokenRepository.save(token);
 
         Admin admin = token.getAdmin();
-        String newAccessToken = jwtService.generateAdminToken(admin.getEmail(), admin.getRole());
+        String newAccessToken = jwtService.generateAdminToken(admin.getEmail(), admin.getRole(), admin.getDepartment());
         String newRawRefreshToken = issueRefreshToken(admin);
 
         return new AuthResponse(newAccessToken, newRawRefreshToken, adminAccessMinutes * 60);

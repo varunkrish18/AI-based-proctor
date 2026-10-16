@@ -42,9 +42,16 @@ public class JwtService {
     }
 
     public String generateAdminToken(String email, String role) {
+        return generateAdminToken(email, role, null);
+    }
+
+    public String generateAdminToken(String email, String role, String department) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", role);
         claims.put("type", "ADMIN");
+        if (department != null && !department.isBlank()) {
+            claims.put("department", department);
+        }
         return buildToken(claims, email, adminAccessMinutes * 60);
     }
 

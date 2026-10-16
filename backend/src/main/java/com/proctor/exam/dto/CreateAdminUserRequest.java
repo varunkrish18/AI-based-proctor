@@ -16,5 +16,7 @@ public record CreateAdminUserRequest(
         @NotBlank(message = "Full name is required")
         String fullName,
 
-        String role
+        String role,
+
+        String department
 ) {}

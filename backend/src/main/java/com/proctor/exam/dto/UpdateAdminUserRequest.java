@@ -10,6 +10,8 @@ public record UpdateAdminUserRequest(
 
         String role,
 
+        String department,
+
         String password,
 
         Boolean resetLock

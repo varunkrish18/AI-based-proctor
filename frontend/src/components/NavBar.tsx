@@ -67,10 +67,12 @@ export default function NavBar() {
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ml-1 border ${
                   role === "ADMIN"
                     ? "bg-purple-900/60 text-purple-300 border-purple-700/60"
+                    : role === "COURSE_COORDINATOR"
+                    ? "bg-blue-900/60 text-blue-300 border-blue-700/60"
                     : "bg-emerald-900/60 text-emerald-300 border-emerald-700/60"
                 }`}
               >
-                {role}
+                {role === "COURSE_COORDINATOR" ? "COORDINATOR" : role}
               </span>
               <button
                 onClick={handleLogout}

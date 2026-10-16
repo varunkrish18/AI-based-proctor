@@ -2,11 +2,23 @@ import { useState, useEffect } from "react";
 import { api, getToken } from "../../api/client";
 import type { AdminUser, CreateAdminUserPayload, UpdateAdminUserPayload } from "../../types";
 
+const PRESET_DEPARTMENTS = [
+  "Computer Science & Engineering",
+  "Information Technology",
+  "Electronics & Communication Engineering",
+  "Electrical & Electronics Engineering",
+  "Mechanical Engineering",
+  "Civil Engineering",
+  "Artificial Intelligence & Data Science",
+];
+
 export default function UserManagementTab() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("ALL");
+  const [roleFilter, setRoleFilter] = useState<string>("ALL");
 
   // Visibility states for passwords
   const [visiblePasswords, setVisiblePasswords] = useState<Record<number, boolean>>({});
@@ -19,6 +31,7 @@ export default function UserManagementTab() {
     fullName: "",
     password: "",
     role: "ADMIN",
+    department: "",
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -30,6 +43,7 @@ export default function UserManagementTab() {
     email: "",
     fullName: "",
     role: "ADMIN",
+    department: "",
     password: "",
     resetLock: false,
   });
@@ -105,7 +119,7 @@ export default function UserManagementTab() {
       setUsers((prev) => [...prev, newUser]);
       setShowCreateModal(false);
       setSuccessMsg(`User '${newUser.email}' created successfully! Credentials displayed below.`);
-      setCreateForm({ email: "", fullName: "", password: "", role: "ADMIN" });
+      setCreateForm({ email: "", fullName: "", password: "", role: "ADMIN", department: "" });
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create user.");
@@ -120,6 +134,7 @@ export default function UserManagementTab() {
       email: user.email,
       fullName: user.fullName,
       role: user.role,
+      department: user.department || "",
       password: user.displayPassword || "",
       resetLock: user.locked,
     });
@@ -137,6 +152,7 @@ export default function UserManagementTab() {
         email: editForm.email,
         fullName: editForm.fullName,
         role: editForm.role,
+        department: editForm.department,
         resetLock: editForm.resetLock,
       };
       if (editForm.password && editForm.password.trim() !== "") {
@@ -172,6 +188,28 @@ export default function UserManagementTab() {
     }
   }
 
+  // Extract unique departments from existing users for filter options
+  const allDepartments = Array.from(
+    new Set([
+      ...PRESET_DEPARTMENTS,
+      ...users.map((u) => u.department).filter(Boolean) as string[],
+    ])
+  );
+
+  const filteredUsers = users.filter((u) => {
+    if (selectedDeptFilter !== "ALL") {
+      if (selectedDeptFilter === "NONE") {
+        if (u.department) return false;
+      } else if (u.department !== selectedDeptFilter) {
+        return false;
+      }
+    }
+    if (roleFilter !== "ALL" && u.role !== roleFilter) {
+      return false;
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {/* Top Banner / Actions Bar */}
@@ -179,13 +217,13 @@ export default function UserManagementTab() {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-2xl">👥</span>
-            <h2 className="text-xl font-bold text-slate-900">Admin Users &amp; Login Credentials</h2>
+            <h2 className="text-xl font-bold text-slate-900">User Definitions &amp; Login Credentials</h2>
             <span className="bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-0.5 rounded-full border border-indigo-200">
               {users.length} {users.length === 1 ? "User" : "Users"}
             </span>
           </div>
           <p className="text-slate-500 text-xs mt-1 max-w-2xl leading-relaxed">
-            Manage system administrators, proctors, and examiners. Review active login credentials, reveal passwords, or edit access credentials directly.
+            Manage System Administrators, Course Coordinators, Department Faculty, Examiners, and Proctors. Assign faculty to departments and configure credentials.
           </p>
         </div>
 
@@ -203,7 +241,8 @@ export default function UserManagementTab() {
                 email: "",
                 fullName: "",
                 password: generateRandomPassword(),
-                role: "ADMIN",
+                role: "COURSE_COORDINATOR",
+                department: "Computer Science & Engineering",
               });
               setCreateError(null);
               setShowCreatePassword(true);
@@ -211,8 +250,50 @@ export default function UserManagementTab() {
             }}
             className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
           >
-            <span>+</span> Create Another User
+            <span>+</span> Create User / Assign Faculty
           </button>
+        </div>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-500">Department:</span>
+            <select
+              value={selectedDeptFilter}
+              onChange={(e) => setSelectedDeptFilter(e.target.value)}
+              className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+              <option value="ALL">All Departments ({users.length})</option>
+              <option value="NONE">No Department Assigned</option>
+              {allDepartments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-500">Role:</span>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+              <option value="ALL">All Roles</option>
+              <option value="ADMIN">ADMIN</option>
+              <option value="COURSE_COORDINATOR">COURSE_COORDINATOR</option>
+              <option value="FACULTY">FACULTY</option>
+              <option value="EXAMINER">EXAMINER</option>
+              <option value="PROCTOR">PROCTOR</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="text-slate-400">
+          Showing {filteredUsers.length} of {users.length} accounts
         </div>
       </div>
 
@@ -251,16 +332,16 @@ export default function UserManagementTab() {
       )}
 
       {/* Users Card Grid */}
-      {!loading && users.length === 0 && (
+      {!loading && filteredUsers.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500">
           <span className="text-3xl block mb-2">👤</span>
-          <p className="text-sm font-semibold text-slate-700">No user accounts found</p>
-          <p className="text-xs text-slate-400 mt-1">Create a new user account to get started.</p>
+          <p className="text-sm font-semibold text-slate-700">No matching user accounts found</p>
+          <p className="text-xs text-slate-400 mt-1">Adjust filters or create a new user account.</p>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {users.map((user) => {
+        {filteredUsers.map((user) => {
           const isCurrentUser = currentAdminEmail && user.email.toLowerCase() === currentAdminEmail.toLowerCase();
           const isPasswordVisible = visiblePasswords[user.id] || false;
 
@@ -274,22 +355,35 @@ export default function UserManagementTab() {
               {/* Header inside card */}
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-xs">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-xs ${
+                      user.role === "ADMIN"
+                        ? "bg-gradient-to-tr from-purple-600 to-indigo-600"
+                        : user.role === "COURSE_COORDINATOR"
+                        ? "bg-gradient-to-tr from-blue-600 to-cyan-600"
+                        : "bg-gradient-to-tr from-emerald-600 to-teal-600"
+                    }`}
+                  >
                     {user.fullName ? user.fullName.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-slate-900 text-sm">{user.fullName || "Administrator"}</h3>
+                      <h3 className="font-bold text-slate-900 text-sm">{user.fullName || "User"}</h3>
                       {isCurrentUser && (
                         <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
                           You (Current Session)
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                        Role: {user.role}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                      <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                        {user.role}
                       </span>
+                      {user.department && (
+                        <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 truncate max-w-[170px]" title={user.department}>
+                          🏛️ {user.department}
+                        </span>
+                      )}
                       {user.locked ? (
                         <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1">
                           🔒 Locked
@@ -386,11 +480,11 @@ export default function UserManagementTab() {
       {/* CREATE USER MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-xl">✨</span>
-                <h3 className="text-base font-bold text-slate-900">Create Another User Account</h3>
+                <h3 className="text-base font-bold text-slate-900">Define New User / Faculty</h3>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
@@ -400,7 +494,7 @@ export default function UserManagementTab() {
               </button>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Create an additional administrator, proctor, or examiner account. The credentials will be saved and displayed on the portal.
+              Create an administrator, course coordinator, or department faculty member. Credentials are automatically displayed on the portal.
             </p>
 
             {createError && (
@@ -415,7 +509,7 @@ export default function UserManagementTab() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Exam Proctor / Dr. Alex"
+                  placeholder="e.g. Prof. David Miller"
                   value={createForm.fullName}
                   onChange={(e) => setCreateForm({ ...createForm, fullName: e.target.value })}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -427,7 +521,7 @@ export default function UserManagementTab() {
                 <input
                   type="email"
                   required
-                  placeholder="e.g. proctor2@proctor.com"
+                  placeholder="e.g. dmiller@university.edu"
                   value={createForm.email}
                   onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -470,16 +564,37 @@ export default function UserManagementTab() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Access Role</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">User Definition / Role</label>
                 <select
                   value={createForm.role}
                   onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
                 >
-                  <option value="ADMIN">ADMIN (Full Access)</option>
+                  <option value="COURSE_COORDINATOR">COURSE_COORDINATOR (Course Coordinator)</option>
+                  <option value="FACULTY">FACULTY (Department Faculty)</option>
                   <option value="EXAMINER">EXAMINER (Assessment Reviewer)</option>
                   <option value="PROCTOR">PROCTOR (Live Monitor)</option>
+                  <option value="ADMIN">ADMIN (Full System Administrator)</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Department <span className="font-normal text-slate-400">(Required for Coordinators &amp; Faculty)</span>
+                </label>
+                <input
+                  type="text"
+                  list="preset-departments"
+                  placeholder="Select or enter department name…"
+                  value={createForm.department || ""}
+                  onChange={(e) => setCreateForm({ ...createForm, department: e.target.value })}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                <datalist id="preset-departments">
+                  {PRESET_DEPARTMENTS.map((dept) => (
+                    <option key={dept} value={dept} />
+                  ))}
+                </datalist>
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">
@@ -506,11 +621,11 @@ export default function UserManagementTab() {
       {/* EDIT USER CREDENTIALS MODAL */}
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-xl">✏️</span>
-                <h3 className="text-base font-bold text-slate-900">Edit User Credentials</h3>
+                <h3 className="text-base font-bold text-slate-900">Edit User Details &amp; Credentials</h3>
               </div>
               <button
                 onClick={() => setEditingUser(null)}
@@ -594,10 +709,29 @@ export default function UserManagementTab() {
                   onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
                 >
-                  <option value="ADMIN">ADMIN</option>
+                  <option value="COURSE_COORDINATOR">COURSE_COORDINATOR</option>
+                  <option value="FACULTY">FACULTY</option>
                   <option value="EXAMINER">EXAMINER</option>
                   <option value="PROCTOR">PROCTOR</option>
+                  <option value="ADMIN">ADMIN</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Department</label>
+                <input
+                  type="text"
+                  list="preset-departments-edit"
+                  placeholder="Department name…"
+                  value={editForm.department || ""}
+                  onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                <datalist id="preset-departments-edit">
+                  {PRESET_DEPARTMENTS.map((dept) => (
+                    <option key={dept} value={dept} />
+                  ))}
+                </datalist>
               </div>
 
               {editingUser.locked && (
@@ -647,7 +781,7 @@ export default function UserManagementTab() {
               <span className="text-3xl block mb-2">🗑️</span>
               <h3 className="text-base font-bold text-slate-900">Delete User Account</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Are you sure you want to remove <strong className="text-slate-800">{userToDelete.email}</strong>? They will no longer be able to log into the admin portal.
+                Are you sure you want to remove <strong className="text-slate-800">{userToDelete.email}</strong>? They will no longer be able to log into the portal.
               </p>
             </div>
 

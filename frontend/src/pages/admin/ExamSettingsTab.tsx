@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../../api/client";
+import { api, isCoordinatorRole } from "../../api/client";
 import type { Exam } from "../../types";
 
 function toLocalInputValue(iso?: string | null) {
@@ -17,6 +17,7 @@ interface ExamSettingsTabProps {
 }
 
 export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }: ExamSettingsTabProps) {
+  const isCoordinator = isCoordinatorRole();
   const [form, setForm] = useState<{
     name: string;
     description: string;
@@ -112,11 +113,11 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
     try {
       const payload = {
         ...form,
-        durationMinutes: Math.max(1, Number(form.durationMinutes) || 60),
+        durationMinutes: isCoordinator ? null : (form.durationMinutes ? Math.max(1, Number(form.durationMinutes)) : null),
         numQuestions: Math.max(1, Number(form.numQuestions) || 10),
-        maxAttempts: Math.max(1, Number(form.maxAttempts) || 1),
-        passingMarks: Math.max(0, Number(form.passingMarks) || 0),
-        negativeMarking: Math.max(0, Number(form.negativeMarking) || 0),
+        maxAttempts: isCoordinator ? null : (form.maxAttempts ? Math.max(1, Number(form.maxAttempts)) : null),
+        passingMarks: isCoordinator ? null : (form.passingMarks !== "" && form.passingMarks != null ? Math.max(0, Number(form.passingMarks)) : null),
+        negativeMarking: isCoordinator ? null : (form.negativeMarking !== "" && form.negativeMarking != null ? Math.max(0, Number(form.negativeMarking)) : null),
         audioInputLevel: Math.max(1, Math.min(100, Number(form.audioInputLevel) || 20)),
         startAt: startDate.toISOString(),
         endAt: endDate.toISOString(),
@@ -240,7 +241,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
             <span>⏰</span> Time Window &amp; Duration
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className={`grid grid-cols-1 ${isCoordinator ? "md:grid-cols-2" : "md:grid-cols-3"} gap-4`}>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Start Date/Time *</label>
               <input
@@ -265,23 +266,25 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
               <span className="text-[11px] text-slate-400 mt-0.5 block">Exams strictly close after this moment</span>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Duration (Minutes) *</label>
-              <input
-                type="number"
-                min={1}
-                required
-                value={form.durationMinutes}
-                onChange={(e) => set("durationMinutes", e.target.value)}
-                onBlur={() => {
-                  if (form.durationMinutes === "" || Number(form.durationMinutes) < 1) {
-                    set("durationMinutes", 1);
-                  }
-                }}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-[11px] text-slate-400 mt-0.5 block">Candidate countdown timer length</span>
-            </div>
+            {!isCoordinator && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Duration (Minutes) *</label>
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  value={form.durationMinutes}
+                  onChange={(e) => set("durationMinutes", e.target.value)}
+                  onBlur={() => {
+                    if (form.durationMinutes === "" || Number(form.durationMinutes) < 1) {
+                      set("durationMinutes", 1);
+                    }
+                  }}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-[11px] text-slate-400 mt-0.5 block">Candidate countdown timer length</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -291,7 +294,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
             <span>🎯</span> Questions, Scoring &amp; Attempts
           </h3>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className={`grid grid-cols-1 ${isCoordinator ? "" : "sm:grid-cols-2 md:grid-cols-4"} gap-4`}>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Question Limit *</label>
               <input
@@ -310,58 +313,62 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
               <span className="text-[11px] text-slate-400 mt-0.5 block">Questions served to student</span>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Max Attempts *</label>
-              <input
-                type="number"
-                min={1}
-                required
-                value={form.maxAttempts}
-                onChange={(e) => set("maxAttempts", e.target.value)}
-                onBlur={() => {
-                  if (form.maxAttempts === "" || Number(form.maxAttempts) < 1) {
-                    set("maxAttempts", 1);
-                  }
-                }}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
-              />
-              <span className="text-[11px] text-slate-400 mt-0.5 block">Allowed student retries</span>
-            </div>
+            {!isCoordinator && (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Max Attempts *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={form.maxAttempts}
+                    onChange={(e) => set("maxAttempts", e.target.value)}
+                    onBlur={() => {
+                      if (form.maxAttempts === "" || Number(form.maxAttempts) < 1) {
+                        set("maxAttempts", 1);
+                      }
+                    }}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                  />
+                  <span className="text-[11px] text-slate-400 mt-0.5 block">Allowed student retries</span>
+                </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Passing Marks</label>
-              <input
-                type="number"
-                min={0}
-                value={form.passingMarks}
-                onChange={(e) => set("passingMarks", e.target.value)}
-                onBlur={() => {
-                  if (form.passingMarks === "" || Number(form.passingMarks) < 0) {
-                    set("passingMarks", 0);
-                  }
-                }}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-[11px] text-slate-400 mt-0.5 block">Minimum passing score</span>
-            </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Passing Marks</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.passingMarks}
+                    onChange={(e) => set("passingMarks", e.target.value)}
+                    onBlur={() => {
+                      if (form.passingMarks === "" || Number(form.passingMarks) < 0) {
+                        set("passingMarks", 0);
+                      }
+                    }}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-[11px] text-slate-400 mt-0.5 block">Minimum passing score</span>
+                </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Negative Marking</label>
-              <input
-                type="number"
-                min={0}
-                step="0.25"
-                value={form.negativeMarking}
-                onChange={(e) => set("negativeMarking", e.target.value)}
-                onBlur={() => {
-                  if (form.negativeMarking === "" || Number(form.negativeMarking) < 0) {
-                    set("negativeMarking", 0);
-                  }
-                }}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-[11px] text-slate-400 mt-0.5 block">Deduction per incorrect option</span>
-            </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Negative Marking</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.25"
+                    value={form.negativeMarking}
+                    onChange={(e) => set("negativeMarking", e.target.value)}
+                    onBlur={() => {
+                      if (form.negativeMarking === "" || Number(form.negativeMarking) < 0) {
+                        set("negativeMarking", 0);
+                      }
+                    }}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-[11px] text-slate-400 mt-0.5 block">Deduction per incorrect option</span>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-6 pt-1">
