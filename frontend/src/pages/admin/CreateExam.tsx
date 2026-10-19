@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
-import type { Exam } from "../../types";
+import type { Exam, StudentUser } from "../../types";
+import {
+  type ClassSectionItem,
+  loadSavedClassSections,
+  getStudentsForClassSection,
+  matchesYear,
+} from "../../utils/sectionUtils";
 
 function toLocalInputValue(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -13,6 +19,12 @@ export default function CreateExam() {
   const now = new Date();
   const inOneHour = new Date(now.getTime() + 60 * 60 * 1000);
   const inOneWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const [allStudents, setAllStudents] = useState<StudentUser[]>([]);
+  const [classSections, setClassSections] = useState<ClassSectionItem[]>([]);
+  const [assignSectionImmediately, setAssignSectionImmediately] = useState(false);
+  const [selectedYear, setSelectedYear] = useState<string>("ALL");
+  const [selectedSectionId, setSelectedSectionId] = useState<string>("");
 
   const [form, setForm] = useState<{
     name: string;
@@ -58,6 +70,46 @@ export default function CreateExam() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  useEffect(() => {
+    api
+      .get<StudentUser[]>("/api/admin/students", "admin")
+      .then((data) => {
+        setAllStudents(data);
+        const sections = loadSavedClassSections(data);
+        setClassSections(sections);
+        if (sections.length > 0) setSelectedSectionId(sections[0].id);
+      })
+      .catch(() => {
+        const fallback = loadSavedClassSections();
+        setClassSections(fallback);
+        if (fallback.length > 0) setSelectedSectionId(fallback[0].id);
+      });
+  }, []);
+
+  const availableSections = useMemo(() => {
+    if (selectedYear === "ALL") return classSections;
+    return classSections.filter((s) => matchesYear(s.year, selectedYear));
+  }, [classSections, selectedYear]);
+
+  useEffect(() => {
+    if (availableSections.length > 0) {
+      if (!availableSections.some((s) => s.id === selectedSectionId)) {
+        setSelectedSectionId(availableSections[0].id);
+      }
+    } else {
+      setSelectedSectionId("");
+    }
+  }, [availableSections, selectedSectionId]);
+
+  const activeSection = useMemo(() => {
+    return classSections.find((s) => s.id === selectedSectionId) || null;
+  }, [classSections, selectedSectionId]);
+
+  const sectionStudents = useMemo(() => {
+    if (!activeSection) return [];
+    return getStudentsForClassSection(activeSection, allStudents);
+  }, [activeSection, allStudents]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -75,6 +127,20 @@ export default function CreateExam() {
         endAt: new Date(form.endAt).toISOString(),
       };
       const exam = await api.post<Exam>("/api/admin/exams", payload, "admin");
+
+      if (assignSectionImmediately && activeSection && sectionStudents.length > 0) {
+        const emails = sectionStudents.map((s) => s.email.trim()).filter(Boolean);
+        if (emails.length > 0) {
+          try {
+            await api.post(`/api/admin/exams/${exam.id}/assign`, { emails }, "admin");
+          } catch (assignErr) {
+            console.warn("Could not auto-assign section students", assignErr);
+          }
+        }
+        navigate(`/admin/exams/${exam.id}?tab=assign`);
+        return;
+      }
+
       navigate(`/admin/exams/${exam.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create exam.");
@@ -261,6 +327,85 @@ export default function CreateExam() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Class Section Pre-Assignment */}
+        <div className="pt-3 border-t border-slate-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-700">Assign Class Section (Optional)</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Automatically assign students from a class section upon exam creation.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg transition">
+              <input
+                type="checkbox"
+                checked={assignSectionImmediately}
+                onChange={(e) => setAssignSectionImmediately(e.target.checked)}
+                className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+              />
+              <span>Assign Section</span>
+            </label>
+          </div>
+
+          {assignSectionImmediately && (
+            <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-4 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Select Year:</label>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(e.target.value)}
+                    className="input text-xs w-full bg-white"
+                  >
+                    <option value="ALL">All Years</option>
+                    <option value="1st Year">1st Year (I)</option>
+                    <option value="2nd Year">2nd Year (II)</option>
+                    <option value="3rd Year">3rd Year (III)</option>
+                    <option value="4th Year">4th Year (IV)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Select Section (From Group Student Registry):
+                  </label>
+                  <select
+                    value={selectedSectionId}
+                    onChange={(e) => setSelectedSectionId(e.target.value)}
+                    className="input text-xs w-full bg-white font-medium"
+                  >
+                    {availableSections.length === 0 ? (
+                      <option value="">No sections found for {selectedYear}</option>
+                    ) : (
+                      availableSections.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.className} — {s.department || "Dept"} ({s.startReg || "..."} - {s.endReg || "..."})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {activeSection && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs bg-white border border-slate-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900">{activeSection.className}</span>
+                    <span className="text-slate-500 font-mono text-[11px]">
+                      ({activeSection.startReg} → {activeSection.endReg})
+                    </span>
+                    <span className="text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                      {activeSection.department || "All Depts"}
+                    </span>
+                  </div>
+                  <span className="text-emerald-800 font-bold bg-emerald-100 px-2.5 py-1 rounded text-xs shrink-0">
+                    {sectionStudents.length} students will be assigned
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}

@@ -169,7 +169,42 @@ export const api = {
     request<T>(path, { method: "PATCH", auth, body: body ? JSON.stringify(body) : undefined }),
   delete: <T = void>(path: string, auth?: TokenKind) =>
     request<T>(path, { method: "DELETE", auth }),
+  uploadMultipart: <T>(path: string, formData: FormData, auth?: TokenKind) =>
+    uploadMultipart<T>(path, formData, auth),
 };
+
+export async function uploadMultipart<T>(
+  path: string,
+  formData: FormData,
+  auth?: TokenKind
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "ngrok-skip-browser-warning": "true",
+  };
+  if (auth) {
+    const token = getToken(auth);
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const body = await res.json();
+      message = body.message || message;
+    } catch {
+      /* non-JSON error */
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  return res.json() as Promise<T>;
+}
 
 export async function downloadFile(
   path: string,
@@ -191,6 +226,57 @@ export async function downloadFile(
 
   if (!res.ok) {
     throw new Error(`Export failed with status ${res.status}`);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/html")) {
+    const text = await res.text();
+    if (text.includes("ngrok") || text.includes("Visit Site")) {
+      throw new Error("Tunnel warning intercepted download. Please retry.");
+    }
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function downloadFilePost(
+  path: string,
+  body: unknown,
+  filename: string,
+  auth?: TokenKind
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "true",
+  };
+  if (auth) {
+    const token = getToken(auth);
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    let msg = `Download failed with status ${res.status}`;
+    try {
+      const errJson = await res.json();
+      if (errJson.message) msg = errJson.message;
+    } catch {
+      /* non-JSON error */
+    }
+    throw new Error(msg);
   }
 
   const contentType = res.headers.get("content-type") || "";

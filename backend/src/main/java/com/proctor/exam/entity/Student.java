@@ -27,6 +27,18 @@ public class Student {
     @Column(name = "register_number")
     private String registerNumber;
 
+    @Column(name = "department", length = 100)
+    private String department;
+
+    @Column(name = "year", length = 50)
+    private String year;
+
+    @Column(name = "display_password", length = 100)
+    private String displayPassword;
+
+    @Column(name = "password_hash")
+    private String passwordHash;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

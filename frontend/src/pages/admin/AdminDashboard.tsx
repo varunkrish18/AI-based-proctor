@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, clearToken, getAdminRefreshToken, getToken, getAdminUserRole, isAdminRole } from "../../api/client";
 import type { AdminAttemptSummary, DashboardCharts, DashboardSummary, Exam } from "../../types";
 import UserManagementTab from "./UserManagementTab";
+import StudentManagementTab from "./StudentManagementTab";
 import {
   ResponsiveContainer,
   BarChart,
@@ -51,26 +52,30 @@ export default function AdminDashboard() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabQuery = searchParams.get("tab");
-  const [currentTab, setCurrentTab] = useState<"analytics" | "users">(
-    tabQuery === "users" && isAdmin ? "users" : "analytics"
+  const [currentTab, setCurrentTab] = useState<"analytics" | "users" | "students">(
+    tabQuery === "users" && isAdmin ? "users" : tabQuery === "students" && isAdmin ? "students" : "analytics"
   );
 
   useEffect(() => {
     if (tabQuery === "users" && isAdmin) {
       setCurrentTab("users");
+    } else if (tabQuery === "students" && isAdmin) {
+      setCurrentTab("students");
     } else {
       setCurrentTab("analytics");
-      if (tabQuery === "users" && !isAdmin) {
+      if ((tabQuery === "users" || tabQuery === "students") && !isAdmin) {
         setSearchParams({});
       }
     }
   }, [tabQuery, isAdmin, setSearchParams]);
 
-  const switchTab = (tab: "analytics" | "users") => {
-    if (tab === "users" && !isAdmin) return;
+  const switchTab = (tab: "analytics" | "users" | "students") => {
+    if ((tab === "users" || tab === "students") && !isAdmin) return;
     setCurrentTab(tab);
     if (tab === "users") {
       setSearchParams({ tab: "users" });
+    } else if (tab === "students") {
+      setSearchParams({ tab: "students" });
     } else {
       setSearchParams({});
     }
@@ -400,6 +405,20 @@ export default function AdminDashboard() {
             </button>
           )}
 
+          {/* Student Credentials Management Tab Button (Strictly ADMIN only) */}
+          {isAdmin && (
+            <button
+              onClick={() => switchTab(currentTab === "students" ? "analytics" : "students")}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer ${
+                currentTab === "students"
+                  ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/25"
+                  : "bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-200"
+              }`}
+            >
+              <span>🎓</span> {currentTab === "students" ? "Back to Monitoring" : "Student Credentials"}
+            </button>
+          )}
+
           {/* Create Exam Button (Both Admin and Examiner) */}
           <Link
             to="/admin/exams/new"
@@ -443,10 +462,26 @@ export default function AdminDashboard() {
             <span>👥</span> User Accounts &amp; Login Credentials
           </button>
         )}
+
+        {/* Student Login Credentials tab strictly beside User Accounts & Login Credentials */}
+        {isAdmin && (
+          <button
+            onClick={() => switchTab("students")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              currentTab === "students"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <span>🎓</span> Student Login Credentials
+          </button>
+        )}
       </div>
 
       {currentTab === "users" && isAdmin ? (
         <UserManagementTab />
+      ) : currentTab === "students" && isAdmin ? (
+        <StudentManagementTab />
       ) : (
         <>
           {/* Scope Filter Bar */}

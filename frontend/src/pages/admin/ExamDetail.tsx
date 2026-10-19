@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { api, downloadFile, isCoordinatorRole } from "../../api/client";
@@ -8,6 +8,7 @@ import type {
   Exam,
   ExamAssignmentItem,
   ExamQuestion,
+  StudentUser,
   TestCase,
   RunCodeResponse,
   ProctoringEvent,
@@ -15,6 +16,12 @@ import type {
   RiskTimelineResponse,
   WarningResponse,
 } from "../../types";
+import {
+  type ClassSectionItem,
+  loadSavedClassSections,
+  getStudentsForClassSection,
+  matchesYear,
+} from "../../utils/sectionUtils";
 
 type Tab = "questions" | "settings" | "assign" | "results" | "qassign";
 
@@ -2878,6 +2885,121 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
   const [copiedPasswordId, setCopiedPasswordId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Class Section & Year state (strictly from Group Student registry)
+  const [assignMode, setAssignMode] = useState<"section" | "manual" | "file">("section");
+  const [allStudents, setAllStudents] = useState<StudentUser[]>([]);
+  const [classSections, setClassSections] = useState<ClassSectionItem[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>("ALL");
+  const [selectedSectionId, setSelectedSectionId] = useState<string>("");
+  const [previewSearch, setPreviewSearch] = useState<string>("");
+
+  useEffect(() => {
+    api
+      .get<StudentUser[]>("/api/admin/students", "admin")
+      .then((data) => {
+        setAllStudents(data);
+        const sections = loadSavedClassSections(data);
+        setClassSections(sections);
+        if (sections.length > 0) {
+          setSelectedSectionId(sections[0].id);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load students for class sections", err);
+        const fallback = loadSavedClassSections();
+        setClassSections(fallback);
+        if (fallback.length > 0) {
+          setSelectedSectionId(fallback[0].id);
+        }
+      });
+  }, []);
+
+  // Listen for storage changes from the Group Student page
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "proctor_class_sections_registry_v2") {
+        const sections = loadSavedClassSections(allStudents);
+        setClassSections(sections);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [allStudents]);
+
+  const availableSections = useMemo(() => {
+    if (selectedYear === "ALL") return classSections;
+    return classSections.filter((s) => matchesYear(s.year, selectedYear));
+  }, [classSections, selectedYear]);
+
+  // Keep selectedSectionId valid when availableSections change
+  useEffect(() => {
+    if (availableSections.length > 0) {
+      if (!availableSections.some((s) => s.id === selectedSectionId)) {
+        setSelectedSectionId(availableSections[0].id);
+      }
+    } else {
+      setSelectedSectionId("");
+    }
+  }, [availableSections, selectedSectionId]);
+
+  const activeSection = useMemo(() => {
+    return classSections.find((s) => s.id === selectedSectionId) || null;
+  }, [classSections, selectedSectionId]);
+
+  const sectionStudents = useMemo(() => {
+    if (!activeSection) return [];
+    return getStudentsForClassSection(activeSection, allStudents);
+  }, [activeSection, allStudents]);
+
+  const assignedEmailSet = useMemo(() => {
+    return new Set(assignments.map((a) => (a.studentEmail || "").toLowerCase().trim()));
+  }, [assignments]);
+
+  const sectionNewStudents = useMemo(() => {
+    return sectionStudents.filter((s) => !assignedEmailSet.has((s.email || "").toLowerCase().trim()));
+  }, [sectionStudents, assignedEmailSet]);
+
+  const filteredPreviewStudents = useMemo(() => {
+    const q = previewSearch.toLowerCase().trim();
+    if (!q) return sectionStudents;
+    return sectionStudents.filter(
+      (s) =>
+        (s.registerNumber || "").toLowerCase().includes(q) ||
+        (s.fullName || "").toLowerCase().includes(q) ||
+        (s.email || "").toLowerCase().includes(q)
+    );
+  }, [sectionStudents, previewSearch]);
+
+  async function assignSectionStudents() {
+    if (!activeSection) return;
+    const emailsToAssign = sectionStudents.map((s) => s.email.trim()).filter(Boolean);
+    if (emailsToAssign.length === 0) {
+      setStatus(`No registered students found in Section "${activeSection.className}" to assign.`);
+      return;
+    }
+    setSubmitting(true);
+    setStatus(null);
+    try {
+      const res = await api.post<{
+        assigned: number;
+        skipped: number;
+        credentials?: Array<{ email: string; password: string }>;
+      }>(`/api/admin/exams/${examId}/assign`, { emails: emailsToAssign }, "admin");
+
+      setStatus(
+        `✓ Assigned ${res.assigned} student(s) from Section "${activeSection.className}" (${res.skipped} already assigned). Random passwords generated.`
+      );
+      if (res.credentials && res.credentials.length > 0) {
+        setRecentCredentials(res.credentials);
+      }
+      loadAssignments();
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Failed to assign students from section.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const studentLink = `${window.location.origin}/exam/${exam.id}`;
 
   useEffect(() => {
@@ -3248,78 +3370,366 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Assign Form */}
-      <form onSubmit={submit} className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 h-fit shadow-xs">
-        <div>
-          <h3 className="font-bold text-slate-900 text-sm">Assign Students by Email</h3>
-          <p className="text-slate-500 text-xs mt-0.5">
-            Enter candidate emails below (one per line, or comma-separated). A random access password will be generated for each student.
-          </p>
+      {/* Assign Options Box */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 h-fit shadow-xs">
+        {/* Assignment Mode Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80">
+          <button
+            type="button"
+            onClick={() => {
+              setAssignMode("section");
+              setStatus(null);
+            }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              assignMode === "section"
+                ? "bg-white text-blue-700 shadow-xs border border-slate-200"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <span>🏫</span>
+            <span>By Class & Section</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAssignMode("manual");
+              setStatus(null);
+            }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              assignMode === "manual"
+                ? "bg-white text-blue-700 shadow-xs border border-slate-200"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <span>✉️</span>
+            <span>Manual Emails</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAssignMode("file");
+              setStatus(null);
+            }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              assignMode === "file"
+                ? "bg-white text-blue-700 shadow-xs border border-slate-200"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <span>📄</span>
+            <span>Upload File</span>
+          </button>
         </div>
-        <textarea
-          rows={4}
-          placeholder="student1@example.com&#10;student2@example.com"
-          value={emails}
-          onChange={(e) => setEmails(e.target.value)}
-          className="input font-mono text-xs w-full"
-        />
 
-        {/* Excel / CSV File Upload Feature */}
-        <div className="border border-dashed border-slate-300 rounded-xl p-4 bg-slate-50/70 hover:bg-slate-50 transition-colors">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-base">📄</span>
-            <h4 className="font-bold text-slate-800 text-xs">
-              Upload Excel or CSV File
-            </h4>
+        {/* MODE 1: BY CLASS SECTION & YEAR */}
+        {assignMode === "section" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Assign by Class Section & Year</h3>
+                <p className="text-slate-500 text-xs mt-0.5">
+                  Select the Year and Section of the class. Only sections configured in the Group Student registry are available.
+                </p>
+              </div>
+              <Link
+                to="/admin?tab=students"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition shrink-0"
+                title="Open Group Student Page in new tab to add or configure sections"
+              >
+                <span>⚙️ Group Registry</span>
+                <span className="text-[10px]">↗</span>
+              </Link>
+            </div>
+
+            {/* Step 1: Select Year */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                1. Select Class Year:
+              </label>
+              <div className="grid grid-cols-5 gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                {[
+                  { id: "ALL", label: "All Years" },
+                  { id: "1st Year", label: "1st Year (I)" },
+                  { id: "2nd Year", label: "2nd Year (II)" },
+                  { id: "3rd Year", label: "3rd Year (III)" },
+                  { id: "4th Year", label: "4th Year (IV)" },
+                ].map((y) => (
+                  <button
+                    key={y.id}
+                    type="button"
+                    onClick={() => setSelectedYear(y.id)}
+                    className={`py-1.5 px-1 rounded-lg text-[11px] font-bold text-center transition-all cursor-pointer ${
+                      selectedYear === y.id
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                    }`}
+                  >
+                    {y.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Step 2: Select Section (Strictly from Group Student page) */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                2. Select Class Section:
+                <span className="text-[11px] font-normal text-slate-500 ml-1.5">
+                  ({availableSections.length} section{availableSections.length === 1 ? "" : "s"} available for {selectedYear === "ALL" ? "all years" : selectedYear})
+                </span>
+              </label>
+
+              {availableSections.length === 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                  <p className="font-semibold">⚠️ No sections registered for {selectedYear}.</p>
+                  <p className="mt-0.5 text-[11px]">
+                    Go to the <Link to="/admin?tab=students" target="_blank" className="underline font-bold">Group Student page</Link> to configure class sections.
+                  </p>
+                </div>
+              ) : (
+                <select
+                  value={selectedSectionId}
+                  onChange={(e) => setSelectedSectionId(e.target.value)}
+                  className="input text-xs w-full font-medium py-2 bg-white"
+                >
+                  {availableSections.map((sec) => (
+                    <option key={sec.id} value={sec.id}>
+                      {sec.className} — {sec.department || "Dept"} ({sec.startReg || "..."} to {sec.endReg || "..."})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Step 3: Section Details & Matching Students Preview Card */}
+            {activeSection && (
+              <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-sm">
+                        {activeSection.className}
+                      </span>
+                      <span className="text-[11px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">
+                        {activeSection.year || "Year"}
+                      </span>
+                      <span className="text-[11px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">
+                        {activeSection.department || "All Depts"}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-600 mt-1 flex items-center gap-2">
+                      <span>Register Range:</span>
+                      <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800 font-bold">
+                        {activeSection.startReg || "Start"} → {activeSection.endReg || "End"}
+                      </code>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                    <span className="text-[11px] bg-emerald-100 text-emerald-800 font-bold px-2 py-1 rounded">
+                      {sectionStudents.length} Students Enrolled
+                    </span>
+                  </div>
+                </div>
+
+                {/* Assignment Status Pill Breakdown */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-slate-500 block text-[11px]">Ready to Assign:</span>
+                    <span className="font-bold text-emerald-600 text-sm">{sectionNewStudents.length}</span>
+                    <span className="text-[11px] text-slate-400 ml-1">students</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-slate-500 block text-[11px]">Already Assigned:</span>
+                    <span className="font-bold text-slate-700 text-sm">{sectionStudents.length - sectionNewStudents.length}</span>
+                    <span className="text-[11px] text-slate-400 ml-1">students</span>
+                  </div>
+                </div>
+
+                {/* Students Preview List with Search */}
+                {sectionStudents.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-slate-700">
+                        Class List Preview ({filteredPreviewStudents.length}/{sectionStudents.length}):
+                      </span>
+                      {sectionStudents.length > 5 && (
+                        <input
+                          type="text"
+                          placeholder="Search in section..."
+                          value={previewSearch}
+                          onChange={(e) => setPreviewSearch(e.target.value)}
+                          className="input text-[11px] py-0.5 px-2 w-36 bg-white"
+                        />
+                      )}
+                    </div>
+
+                    <div className="max-h-40 overflow-y-auto divide-y divide-slate-200/80 bg-white rounded-lg border border-slate-200 text-xs">
+                      {filteredPreviewStudents.map((st) => {
+                        const isAssigned = assignedEmailSet.has((st.email || "").toLowerCase().trim());
+                        return (
+                          <div key={st.id} className="flex items-center justify-between px-3 py-1.5">
+                            <div className="flex items-center gap-2 truncate pr-2">
+                              <span className="font-mono text-blue-700 font-bold shrink-0">
+                                {st.registerNumber}
+                              </span>
+                              <span className="text-slate-800 font-medium truncate">{st.fullName}</span>
+                              <span className="text-slate-400 text-[11px] truncate">({st.email})</span>
+                            </div>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded font-bold shrink-0 ${
+                                isAssigned
+                                  ? "bg-slate-100 text-slate-600 border border-slate-200"
+                                  : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                              }`}
+                            >
+                              {isAssigned ? "Assigned" : "Ready"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                    <p className="font-semibold">ℹ️ No registered students match this section range.</p>
+                    <p className="mt-0.5 text-[11px] text-amber-700">
+                      Students registered in the database whose register numbers fall between <strong>{activeSection.startReg}</strong> and <strong>{activeSection.endReg}</strong> ({activeSection.year}) will appear here automatically.
+                    </p>
+                  </div>
+                )}
+
+                {/* Section Assign Action Button */}
+                <button
+                  type="button"
+                  onClick={assignSectionStudents}
+                  disabled={submitting || sectionStudents.length === 0}
+                  className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-xs flex items-center justify-center gap-2"
+                >
+                  {submitting ? (
+                    "Assigning Section & Generating Passwords…"
+                  ) : (
+                    <>
+                      <span>🏫</span>
+                      <span>
+                        Assign {sectionStudents.length} Students from {activeSection.className}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
-          <p className="text-[11px] text-slate-500 mb-2.5">
-            The file should contain only one column of mail IDs. Emails will be extracted automatically.
-          </p>
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleFileUpload}
-              className="hidden"
-              id="assign-file-input"
+        )}
+
+        {/* MODE 2: ENTER EMAILS MANUALLY */}
+        {assignMode === "manual" && (
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm">Assign Students by Email</h3>
+              <p className="text-slate-500 text-xs mt-0.5">
+                Enter candidate emails below (one per line, or comma-separated). A random access password will be generated for each student.
+              </p>
+            </div>
+            <textarea
+              rows={5}
+              placeholder="student1@example.com&#10;student2@example.com"
+              value={emails}
+              onChange={(e) => setEmails(e.target.value)}
+              className="input font-mono text-xs w-full"
             />
-            <label
-              htmlFor="assign-file-input"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer shadow-2xs transition"
+            <button
+              type="submit"
+              disabled={submitting || (!emails.trim())}
+              className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
             >
-              <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              {fileUploading ? "Reading file…" : "Choose .xlsx, .xls or .csv"}
-            </label>
-          </div>
-          {fileSuccessMsg && (
-            <p className="text-[11px] font-medium text-emerald-700 mt-2 bg-emerald-50 border border-emerald-200 p-2 rounded-lg">
-              {fileSuccessMsg}
-            </p>
-          )}
-        </div>
+              {submitting ? "Assigning & Generating Passwords…" : "Assign Students"}
+            </button>
+          </form>
+        )}
 
+        {/* MODE 3: UPLOAD EXCEL / CSV FILE */}
+        {assignMode === "file" && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm">Upload Excel or CSV File</h3>
+              <p className="text-slate-500 text-xs mt-0.5">
+                Upload a spreadsheet containing student email addresses. Emails will be extracted automatically.
+              </p>
+            </div>
+
+            <div className="border border-dashed border-slate-300 rounded-xl p-5 bg-slate-50/70 hover:bg-slate-50 transition-colors text-center">
+              <span className="text-2xl block mb-2">📄</span>
+              <p className="text-xs font-semibold text-slate-700 mb-1">
+                Select your spreadsheet (.xlsx, .xls, .csv)
+              </p>
+              <p className="text-[11px] text-slate-500 mb-3">
+                The file can contain a column of student email addresses.
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="assign-file-input"
+              />
+              <label
+                htmlFor="assign-file-input"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer shadow-2xs transition"
+              >
+                <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                {fileUploading ? "Reading file…" : "Choose .xlsx, .xls or .csv"}
+              </label>
+
+              {fileSuccessMsg && (
+                <div className="text-[11px] font-medium text-emerald-700 mt-3 bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg text-left">
+                  {fileSuccessMsg}
+                </div>
+              )}
+            </div>
+
+            {emails.trim() && (
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Extracted Emails ({emails.split(/[\n,]+/).filter(Boolean).length}):
+                </label>
+                <textarea
+                  rows={3}
+                  value={emails}
+                  onChange={(e) => setEmails(e.target.value)}
+                  className="input font-mono text-xs w-full bg-slate-50"
+                />
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={submitting}
+                  className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                >
+                  {submitting ? "Assigning & Generating Passwords…" : `Assign Extracted Students`}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Global Status Message */}
         {status && (
           <p
             className={`text-xs font-medium p-2.5 rounded-lg ${
               status.startsWith("✓")
                 ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                : "bg-red-50 text-red-700"
+                : "bg-red-50 text-red-700 border border-red-200"
             }`}
           >
             {status}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={submitting || (!emails.trim())}
-          className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
-        >
-          {submitting ? "Assigning & Generating Passwords…" : "Assign Students"}
-        </button>
-      </form>
+      </div>
 
       {/* Assigned Students List */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4 shadow-xs">

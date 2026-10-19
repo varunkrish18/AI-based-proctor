@@ -77,15 +77,23 @@ public class StudentExamService {
             return new VerifyStudentResponse(false, null, "This exam is not assigned to this email address.", false, false, false, false);
         }
 
-        // Verify assignment access password if present
+        Student student = studentRepository.findByEmail(email).orElse(null);
+
+        // Verify assignment access password if present, or student credentials password
         if (assignmentOpt.isPresent()) {
             ExamAssignment assignment = assignmentOpt.get();
             if (assignment.getAccessPassword() != null && !assignment.getAccessPassword().isBlank()) {
                 if (rawPassword == null || rawPassword.trim().isBlank()) {
                     return new VerifyStudentResponse(false, null, "Exam access password is required.", false, false, false, false);
                 }
-                if (!assignment.getAccessPassword().trim().equalsIgnoreCase(rawPassword.trim())) {
-                    return new VerifyStudentResponse(false, null, "Invalid access password. Please check your assigned exam password and try again.", false, false, false, false);
+                boolean matchesAssignment = assignment.getAccessPassword().trim().equalsIgnoreCase(rawPassword.trim());
+                boolean matchesStudentPwd = (student != null && student.getDisplayPassword() != null && !student.getDisplayPassword().isBlank() && student.getDisplayPassword().trim().equalsIgnoreCase(rawPassword.trim()));
+                if (!matchesAssignment && !matchesStudentPwd) {
+                    return new VerifyStudentResponse(false, null, "Invalid access password. Please check your assigned exam or student password and try again.", false, false, false, false);
+                }
+            } else if (student != null && student.getDisplayPassword() != null && !student.getDisplayPassword().isBlank()) {
+                if (rawPassword == null || rawPassword.trim().isBlank() || !student.getDisplayPassword().trim().equalsIgnoreCase(rawPassword.trim())) {
+                    return new VerifyStudentResponse(false, null, "Invalid student password. Please check your student credentials.", false, false, false, false);
                 }
             }
         } else if (isOpen) {
@@ -106,7 +114,6 @@ public class StudentExamService {
             return new VerifyStudentResponse(false, null, "This exam has already ended.", false, false, false, false);
         }
 
-        Student student = studentRepository.findByEmail(email).orElse(null);
         if (student == null) {
             student = Student.builder()
                     .email(email)
@@ -116,11 +123,11 @@ public class StudentExamService {
             student = studentRepository.save(student);
         } else {
             boolean updated = false;
-            if (rawName != null && !rawName.trim().isBlank()) {
+            if (rawName != null && !rawName.trim().isBlank() && (student.getFullName() == null || student.getFullName().isBlank())) {
                 student.setFullName(rawName.trim());
                 updated = true;
             }
-            if (rawRegisterNumber != null && !rawRegisterNumber.trim().isBlank()) {
+            if (rawRegisterNumber != null && !rawRegisterNumber.trim().isBlank() && (student.getRegisterNumber() == null || student.getRegisterNumber().isBlank())) {
                 student.setRegisterNumber(rawRegisterNumber.trim());
                 updated = true;
             }

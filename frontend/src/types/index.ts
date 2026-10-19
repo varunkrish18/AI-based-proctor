@@ -339,3 +339,42 @@ export interface UpdateAdminUserPayload {
   password?: string;
   resetLock?: boolean;
 }
+
+export interface StudentUser {
+  id: number;
+  fullName: string;
+  department?: string | null;
+  registerNumber: string;
+  year?: string | null;
+  email: string;
+  displayPassword?: string | null;
+  createdAt?: string;
+}
+
+export interface CreateStudentPayload {
+  fullName: string;
+  department?: string;
+  registerNumber: string;
+  year?: string;
+  email: string;
+  password?: string;
+}
+
+export interface UpdateStudentPayload {
+  fullName: string;
+  department?: string;
+  registerNumber: string;
+  year?: string;
+  email: string;
+  password?: string;
+}
+
+export interface BulkStudentUploadResult {
+  totalProcessed: number;
+  createdCount: number;
+  updatedCount: number;
+  errors: string[];
+  students: StudentUser[];
+}
+
+
