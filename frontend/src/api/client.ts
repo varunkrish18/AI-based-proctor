@@ -342,7 +342,8 @@ export function isStaffAuthenticated(): boolean {
     role === "ADMIN" ||
     role === "EXAMINER" ||
     role === "COURSE_COORDINATOR" ||
-    role === "FACULTY"
+    role === "FACULTY" ||
+    role === "PROFESSOR"
   );
 }
 
@@ -360,4 +361,8 @@ export function isFacultyRole(): boolean {
 
 export function isExaminerRole(): boolean {
   return getAdminUserRole() === "EXAMINER";
+}
+
+export function isProfessorRole(): boolean {
+  return getAdminUserRole() === "PROFESSOR";
 }

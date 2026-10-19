@@ -377,4 +377,41 @@ export interface BulkStudentUploadResult {
   students: StudentUser[];
 }
 
+export interface ProfessorUser {
+  id: number;
+  fullName: string;
+  department?: string | null;
+  staffCode?: string | null;
+  year?: string | null;
+  email: string;
+  displayPassword?: string | null;
+  createdAt?: string;
+}
+
+export interface CreateProfessorPayload {
+  fullName: string;
+  department?: string;
+  staffCode?: string;
+  year?: string;
+  email: string;
+  password?: string;
+}
+
+export interface UpdateProfessorPayload {
+  fullName: string;
+  department?: string;
+  staffCode?: string;
+  year?: string;
+  email: string;
+  password?: string;
+}
+
+export interface BulkProfessorUploadResult {
+  totalProcessed: number;
+  createdCount: number;
+  updatedCount: number;
+  errors: string[];
+  professors: ProfessorUser[];
+}
+
 

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, clearToken, getAdminRefreshToken, getToken, getAdminUserRole, isAdminRole } from "../../api/client";
 import type { AdminAttemptSummary, DashboardCharts, DashboardSummary, Exam } from "../../types";
 import UserManagementTab from "./UserManagementTab";
+import ProfessorManagementTab from "./ProfessorManagementTab";
 import StudentManagementTab from "./StudentManagementTab";
 import {
   ResponsiveContainer,
@@ -52,28 +53,38 @@ export default function AdminDashboard() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabQuery = searchParams.get("tab");
-  const [currentTab, setCurrentTab] = useState<"analytics" | "users" | "students">(
-    tabQuery === "users" && isAdmin ? "users" : tabQuery === "students" && isAdmin ? "students" : "analytics"
+  const [currentTab, setCurrentTab] = useState<"analytics" | "users" | "professors" | "students">(
+    tabQuery === "users" && isAdmin
+      ? "users"
+      : tabQuery === "professors" && isAdmin
+      ? "professors"
+      : tabQuery === "students" && isAdmin
+      ? "students"
+      : "analytics"
   );
 
   useEffect(() => {
     if (tabQuery === "users" && isAdmin) {
       setCurrentTab("users");
+    } else if (tabQuery === "professors" && isAdmin) {
+      setCurrentTab("professors");
     } else if (tabQuery === "students" && isAdmin) {
       setCurrentTab("students");
     } else {
       setCurrentTab("analytics");
-      if ((tabQuery === "users" || tabQuery === "students") && !isAdmin) {
+      if ((tabQuery === "users" || tabQuery === "professors" || tabQuery === "students") && !isAdmin) {
         setSearchParams({});
       }
     }
   }, [tabQuery, isAdmin, setSearchParams]);
 
-  const switchTab = (tab: "analytics" | "users" | "students") => {
-    if ((tab === "users" || tab === "students") && !isAdmin) return;
+  const switchTab = (tab: "analytics" | "users" | "professors" | "students") => {
+    if ((tab === "users" || tab === "professors" || tab === "students") && !isAdmin) return;
     setCurrentTab(tab);
     if (tab === "users") {
       setSearchParams({ tab: "users" });
+    } else if (tab === "professors") {
+      setSearchParams({ tab: "professors" });
     } else if (tab === "students") {
       setSearchParams({ tab: "students" });
     } else {
@@ -463,6 +474,20 @@ export default function AdminDashboard() {
           </button>
         )}
 
+        {/* Professor Login Credentials tab strictly beside User Accounts & Login Credentials */}
+        {isAdmin && (
+          <button
+            onClick={() => switchTab("professors")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              currentTab === "professors"
+                ? "bg-violet-600 text-white shadow-sm"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <span>👨‍🏫</span> Professor Login Credentials
+          </button>
+        )}
+
         {/* Student Login Credentials tab strictly beside User Accounts & Login Credentials */}
         {isAdmin && (
           <button
@@ -480,6 +505,8 @@ export default function AdminDashboard() {
 
       {currentTab === "users" && isAdmin ? (
         <UserManagementTab />
+      ) : currentTab === "professors" && isAdmin ? (
+        <ProfessorManagementTab />
       ) : currentTab === "students" && isAdmin ? (
         <StudentManagementTab />
       ) : (
