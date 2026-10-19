@@ -43,9 +43,9 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public: landing page data, exam listing, network time, student verification, admin login
+                // Public: landing page data, exam listing, network time, student verification, admin login, unified auth
                 .requestMatchers(HttpMethod.GET, "/", "/api/exams/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/admin/auth/login", "/api/admin/auth/refresh").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/admin/auth/login", "/api/admin/auth/refresh", "/api/auth/login", "/api/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/exams/*/verify-student", "/api/exams/run-code").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/ws/**").permitAll() // WebSocket handshake; per-session auth handled at connect time

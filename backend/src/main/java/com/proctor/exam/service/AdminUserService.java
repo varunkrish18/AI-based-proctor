@@ -101,25 +101,18 @@ public class AdminUserService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Password must be at least 6 characters long.");
         }
 
-        String role;
-        String department;
-
         if (isCoordinator) {
-            // Coordinator can only create faculty in their own department
-            role = "FACULTY";
-            department = caller.getDepartment();
-            if (department == null || department.isBlank()) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "Course coordinator does not have an assigned department.");
-            }
-        } else {
-            // Admin can create any role and department
-            role = (request.role() != null && !request.role().isBlank())
-                    ? request.role().trim().toUpperCase()
-                    : "ADMIN";
-            department = (request.department() != null && !request.department().isBlank())
-                    ? request.department().trim()
-                    : null;
+            throw new ApiException(HttpStatus.FORBIDDEN, "Course coordinators cannot assign faculty. Faculty accounts must be assigned by an Administrator in the Admin Dashboard.");
         }
+
+        // Admin can create any role and department
+        String role = (request.role() != null && !request.role().isBlank())
+                ? request.role().trim().toUpperCase()
+                : "ADMIN";
+        String department = (request.department() != null && !request.department().isBlank())
+                ? request.department().trim()
+                : null;
+
 
         Admin admin = Admin.builder()
                 .email(email)
@@ -217,11 +210,9 @@ public class AdminUserService {
 
         boolean isCoordinator = "COURSE_COORDINATOR".equalsIgnoreCase(caller.getRole());
         if (isCoordinator) {
-            String dept = caller.getDepartment();
-            if (!isFacultyRole(target.getRole()) || dept == null || !dept.equalsIgnoreCase(target.getDepartment())) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "You only have access to delete faculty in your department.");
-            }
+            throw new ApiException(HttpStatus.FORBIDDEN, "Course coordinators cannot delete faculty. Faculty accounts are managed by the Administrator.");
         }
+
 
         // Unlink created exams if any exist to maintain database referential integrity
         List<Exam> exams = examRepository.findAll().stream()

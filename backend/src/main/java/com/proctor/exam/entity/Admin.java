@@ -48,6 +48,10 @@ public class Admin {
     @Builder.Default
     private Instant createdAt = Instant.now();
 
+    @Column(name = "must_reset_password", nullable = false)
+    @Builder.Default
+    private Boolean mustResetPassword = true;
+
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private Instant updatedAt = Instant.now();

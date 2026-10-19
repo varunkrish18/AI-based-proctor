@@ -55,6 +55,24 @@ public class JwtService {
         return buildToken(claims, email, adminAccessMinutes * 60);
     }
 
+    public String generateUserToken(String email, String role, String department, String fullName, String identifier, boolean mustResetPassword) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", role);
+        claims.put("type", "USER");
+        if (department != null && !department.isBlank()) {
+            claims.put("department", department);
+        }
+        if (fullName != null && !fullName.isBlank()) {
+            claims.put("fullName", fullName);
+        }
+        if (identifier != null && !identifier.isBlank()) {
+            claims.put("identifier", identifier);
+        }
+        claims.put("mustResetPassword", mustResetPassword);
+        long ttl = "STUDENT".equalsIgnoreCase(role) ? studentSessionMinutes * 60 : adminAccessMinutes * 60;
+        return buildToken(claims, email, ttl);
+    }
+
     public String generateStudentSessionToken(String email, Long examId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("role", "STUDENT");

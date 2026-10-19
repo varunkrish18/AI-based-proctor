@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api, getAdminUserDepartment } from "../../api/client";
-import type { AdminUser, CreateAdminUserPayload, UpdateAdminUserPayload, Exam } from "../../types";
+import type { AdminUser, Exam, ProfessorUser } from "../../types";
 
 function toLocalInputValue(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -24,36 +24,7 @@ export default function CourseCoordinatorDashboard() {
   const [visiblePasswords, setVisiblePasswords] = useState<Record<number, boolean>>({});
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // Add Faculty Modal state
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState<CreateAdminUserPayload>({
-    email: "",
-    fullName: "",
-    password: "",
-    role: "FACULTY",
-  });
-  const [addSubmitting, setAddSubmitting] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
-  const [showAddPassword, setShowAddPassword] = useState(false);
-
-  // Edit Faculty Modal state
-  const [editingFaculty, setEditingFaculty] = useState<AdminUser | null>(null);
-  const [editForm, setEditForm] = useState<UpdateAdminUserPayload>({
-    email: "",
-    fullName: "",
-    password: "",
-    resetLock: false,
-  });
-  const [editSubmitting, setEditSubmitting] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [showEditPassword, setShowEditPassword] = useState(false);
-
-  // Delete Faculty Modal state
-  const [facultyToDelete, setFacultyToDelete] = useState<AdminUser | null>(null);
-  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  // Create Class / Exam form state (matching create exam page features)
+  // Create Class / Exam form state
   const now = new Date();
   const inOneHour = new Date(now.getTime() + 60 * 60 * 1000);
   const inOneWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -101,11 +72,44 @@ export default function CourseCoordinatorDashboard() {
       const meData = await api.get<AdminUser>("/api/admin/users/me", "admin");
       setProfile(meData);
 
-      // 2. Fetch faculties (backend strictly filters to coordinator's department only)
-      const usersData = await api.get<AdminUser[]>("/api/admin/users", "admin");
-      setFaculties(usersData);
+      const dept = meData.department || getAdminUserDepartment();
 
-      // 3. Fetch department classes / exams
+      // 2. Fetch faculties assigned by admin in User Accounts (backend strictly filters to coordinator's department)
+      const usersData = await api.get<AdminUser[]>("/api/admin/users", "admin");
+      let combinedFaculty: AdminUser[] = [...usersData];
+
+      // 3. Also fetch professors assigned to this department in Professor Login Credentials
+      if (dept) {
+        try {
+          const profs = await api.get<ProfessorUser[]>(
+            `/api/admin/professors?department=${encodeURIComponent(dept)}`,
+            "admin"
+          );
+          const existingEmails = new Set(usersData.map((u) => u.email.toLowerCase()));
+          profs.forEach((p) => {
+            if (!existingEmails.has(p.email.toLowerCase())) {
+              combinedFaculty.push({
+                id: -p.id,
+                email: p.email,
+                fullName: p.fullName,
+                role: "PROFESSOR",
+                department: p.department || dept,
+                displayPassword: p.displayPassword || undefined,
+                failedAttempts: 0,
+                locked: false,
+                createdAt: p.createdAt || new Date().toISOString(),
+                updatedAt: p.createdAt || new Date().toISOString(),
+              });
+            }
+          });
+        } catch {
+          // ignore professors query failure if not present
+        }
+      }
+
+      setFaculties(combinedFaculty);
+
+      // 4. Fetch department classes / exams
       const examsData = await api.get<Exam[]>("/api/admin/exams", "admin");
       setClasses(examsData);
     } catch (err) {
@@ -132,97 +136,6 @@ export default function CourseCoordinatorDashboard() {
     setTimeout(() => {
       setCopiedField((curr) => (curr === label ? null : curr));
     }, 2000);
-  }
-
-  function generateRandomPassword() {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
-    let pwd = "";
-    for (let i = 0; i < 10; i++) {
-      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return pwd;
-  }
-
-  async function handleAddFaculty(e: React.FormEvent) {
-    e.preventDefault();
-    setAddError(null);
-    setAddSubmitting(true);
-    try {
-      const payload: CreateAdminUserPayload = {
-        email: addForm.email.trim(),
-        fullName: addForm.fullName.trim(),
-        password: addForm.password.trim(),
-        role: "FACULTY",
-        department: departmentName,
-      };
-
-      const newFaculty = await api.post<AdminUser>("/api/admin/users", payload, "admin");
-      setFaculties((prev) => [...prev, newFaculty]);
-      setShowAddModal(false);
-      setSuccessMsg(`Faculty member '${newFaculty.fullName}' (${newFaculty.email}) assigned successfully to ${departmentName}!`);
-      setAddForm({ email: "", fullName: "", password: "", role: "FACULTY" });
-      setTimeout(() => setSuccessMsg(null), 5000);
-    } catch (err) {
-      setAddError(err instanceof Error ? err.message : "Failed to assign faculty.");
-    } finally {
-      setAddSubmitting(false);
-    }
-  }
-
-  function openEditModal(faculty: AdminUser) {
-    setEditingFaculty(faculty);
-    setEditForm({
-      email: faculty.email,
-      fullName: faculty.fullName,
-      password: faculty.displayPassword || "",
-      resetLock: faculty.locked,
-    });
-    setEditError(null);
-    setShowEditPassword(false);
-  }
-
-  async function handleUpdateFaculty(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingFaculty) return;
-    setEditError(null);
-    setEditSubmitting(true);
-    try {
-      const payload: UpdateAdminUserPayload = {
-        email: editForm.email,
-        fullName: editForm.fullName,
-        resetLock: editForm.resetLock,
-      };
-      if (editForm.password && editForm.password.trim() !== "") {
-        payload.password = editForm.password.trim();
-      }
-
-      const updated = await api.put<AdminUser>(`/api/admin/users/${editingFaculty.id}`, payload, "admin");
-      setFaculties((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
-      setEditingFaculty(null);
-      setSuccessMsg(`Credentials for '${updated.fullName}' updated successfully!`);
-      setTimeout(() => setSuccessMsg(null), 5000);
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Failed to update faculty credentials.");
-    } finally {
-      setEditSubmitting(false);
-    }
-  }
-
-  async function handleDeleteFaculty() {
-    if (!facultyToDelete) return;
-    setDeleteError(null);
-    setDeleteSubmitting(true);
-    try {
-      await api.delete(`/api/admin/users/${facultyToDelete.id}`, "admin");
-      setFaculties((prev) => prev.filter((f) => f.id !== facultyToDelete.id));
-      setSuccessMsg(`Faculty account '${facultyToDelete.email}' was removed.`);
-      setFacultyToDelete(null);
-      setTimeout(() => setSuccessMsg(null), 5000);
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to remove faculty.");
-    } finally {
-      setDeleteSubmitting(false);
-    }
   }
 
   function setClassField<K extends keyof typeof classForm>(key: K, value: (typeof classForm)[K]) {
@@ -252,7 +165,9 @@ export default function CourseCoordinatorDashboard() {
 
       const newExam = await api.post<Exam>("/api/admin/exams", payload, "admin");
       setClasses((prev) => [newExam, ...prev]);
-      setSuccessMsg(`Class / Examination '${newExam.name}' created successfully! You can now configure questions and enroll candidates.`);
+      setSuccessMsg(
+        `Class / Examination '${newExam.name}' created successfully! You can now configure questions and enroll candidates.`
+      );
       setActiveTab("classes");
       setTimeout(() => setSuccessMsg(null), 6000);
     } catch (err) {
@@ -289,7 +204,7 @@ export default function CourseCoordinatorDashboard() {
             </h1>
             <p className="text-slate-300 text-xs md:text-sm leading-relaxed">
               Welcome, <strong className="text-white">{profile?.fullName || "Course Coordinator"}</strong> ({profile?.email}). 
-              Manage department faculties and create proctored classes/examinations with isolated access.
+              Oversee the faculty assigned to your department in the Admin Dashboard and manage proctored classes/examinations.
             </p>
           </div>
 
@@ -300,22 +215,6 @@ export default function CourseCoordinatorDashboard() {
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition cursor-pointer border border-white/10"
             >
               <span className={loading ? "animate-spin" : ""}>🔄</span> Refresh
-            </button>
-            <button
-              onClick={() => {
-                setAddForm({
-                  email: "",
-                  fullName: "",
-                  password: generateRandomPassword(),
-                  role: "FACULTY",
-                });
-                setAddError(null);
-                setShowAddPassword(true);
-                setShowAddModal(true);
-              }}
-              className="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition border border-white/20 flex items-center gap-1.5 cursor-pointer"
-            >
-              <span>+</span> Assign Faculty
             </button>
             <button
               onClick={() => setActiveTab("create-class")}
@@ -330,7 +229,7 @@ export default function CourseCoordinatorDashboard() {
         <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-2 text-[11px] text-blue-200">
           <span>🛡️</span>
           <span>
-            <strong>Isolated Departmental Access:</strong> Administrator credentials and other department faculties are strictly restricted and hidden.
+            <strong>Assigned Department View:</strong> Only faculty assigned to {departmentName} by the Administrator in the Admin Dashboard are visible here.
           </span>
         </div>
       </div>
@@ -340,7 +239,7 @@ export default function CourseCoordinatorDashboard() {
         {/* Total Faculties */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-center justify-between">
           <div>
-            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">Number of Faculties</p>
+            <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">Assigned Faculty</p>
             <h3 className="text-3xl font-black text-slate-900 mt-1">{faculties.length}</h3>
             <p className="text-[11px] text-slate-400 mt-0.5">Assigned to {departmentName}</p>
           </div>
@@ -455,7 +354,7 @@ export default function CourseCoordinatorDashboard() {
       {/* ===================== TAB 1: FACULTIES ===================== */}
       {activeTab === "faculties" && (
         <div className="space-y-4">
-          {/* Action and Search Bar */}
+          {/* Action and Search Bar (NO Assign Faculty button) */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-2 w-full sm:w-80">
               <span className="text-slate-400">🔍</span>
@@ -470,24 +369,8 @@ export default function CourseCoordinatorDashboard() {
 
             <div className="flex items-center gap-3">
               <span className="text-xs text-slate-500">
-                Showing {filteredFaculties.length} of {faculties.length} faculties
+                Showing {filteredFaculties.length} of {faculties.length} assigned faculties
               </span>
-              <button
-                onClick={() => {
-                  setAddForm({
-                    email: "",
-                    fullName: "",
-                    password: generateRandomPassword(),
-                    role: "FACULTY",
-                  });
-                  setAddError(null);
-                  setShowAddPassword(true);
-                  setShowAddModal(true);
-                }}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>+</span> Assign Faculty
-              </button>
             </div>
           </div>
 
@@ -499,35 +382,18 @@ export default function CourseCoordinatorDashboard() {
             </div>
           )}
 
-          {/* Empty state */}
+          {/* Empty state (NO Assign First Faculty button) */}
           {!loading && faculties.length === 0 && (
             <div className="bg-white border border-slate-200 rounded-3xl p-16 text-center text-slate-500 max-w-lg mx-auto">
               <span className="text-4xl block mb-3">👨‍🏫</span>
               <h3 className="text-base font-bold text-slate-800">No faculty members assigned yet</h3>
-              <p className="text-xs text-slate-500 mt-1 mb-6">
-                You haven't assigned any faculty to <strong className="text-slate-700">{departmentName}</strong>. 
-                Click below to add your first faculty member.
+              <p className="text-xs text-slate-500 mt-1">
+                Faculty members assigned to <strong className="text-slate-700">{departmentName}</strong> by the Administrator in the Admin Dashboard will appear here.
               </p>
-              <button
-                onClick={() => {
-                  setAddForm({
-                    email: "",
-                    fullName: "",
-                    password: generateRandomPassword(),
-                    role: "FACULTY",
-                  });
-                  setAddError(null);
-                  setShowAddPassword(true);
-                  setShowAddModal(true);
-                }}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm inline-flex items-center gap-2 cursor-pointer"
-              >
-                <span>+</span> Assign First Faculty Member
-              </button>
             </div>
           )}
 
-          {/* Faculty Cards Grid (NO Faculty ID displayed) */}
+          {/* Faculty Cards Grid (Read-Only credentials and details view) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {filteredFaculties.map((faculty) => {
               const isPasswordVisible = visiblePasswords[faculty.id] || false;
@@ -563,23 +429,6 @@ export default function CourseCoordinatorDashboard() {
                           )}
                         </div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => openEditModal(faculty)}
-                        className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
-                        title="Edit faculty credentials and details"
-                      >
-                        ✏️ Edit Credentials
-                      </button>
-                      <button
-                        onClick={() => setFacultyToDelete(faculty)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                        title="Remove faculty from department"
-                      >
-                        🗑️
-                      </button>
                     </div>
                   </div>
 
@@ -627,12 +476,11 @@ export default function CourseCoordinatorDashboard() {
                     </div>
                   </div>
 
-                  {/* Card footer without Faculty ID */}
+                  {/* Card footer */}
                   <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-                    <span className="text-slate-500 font-medium">Department Faculty</span>
+                    <span className="text-slate-500 font-medium">Assigned in Admin Dashboard</span>
                     <span>
-                      Updated: {new Date(faculty.updatedAt || faculty.createdAt).toLocaleDateString()}{" "}
-                      {new Date(faculty.updatedAt || faculty.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(faculty.updatedAt || faculty.createdAt).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
@@ -748,503 +596,185 @@ export default function CourseCoordinatorDashboard() {
         <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-xs max-w-3xl mx-auto space-y-6">
           <div className="border-b border-slate-200 pb-4 flex justify-between items-start">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Create Class / Examination</h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Configure full proctoring settings, timing, question bank limits, and passing criteria for {departmentName}.
+              <h2 className="text-lg font-black text-slate-900">Create New Class / Examination</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Configure an assessment for <strong className="text-slate-700">{departmentName}</strong> with proctoring parameters.
               </p>
             </div>
             <button
               onClick={() => setActiveTab("classes")}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              className="text-xs font-semibold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
             >
-              ✕ Cancel
+              Cancel
             </button>
           </div>
 
           {classError && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3.5 rounded-2xl font-medium">
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3.5 rounded-xl font-medium">
               {classError}
             </div>
           )}
 
-          <form onSubmit={handleCreateClass} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Class / Examination Name <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. CS301 - Data Structures & Algorithms (Midterm)"
-                value={classForm.name}
-                onChange={(e) => setClassField("name", e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
+          <form onSubmit={handleCreateClass} className="space-y-6">
+            {/* General Info */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Class Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Class / Examination Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. CS201: Data Structures Midterm Examination"
+                    value={classForm.name}
+                    onChange={(e) => setClassField("name", e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Description &amp; Guidelines</label>
-              <textarea
-                rows={3}
-                placeholder="Enter syllabus details, assessment instructions, or department guidelines…"
-                value={classForm.description}
-                onChange={(e) => setClassField("description", e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Subject / Domain *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={departmentName}
+                    value={classForm.subject}
+                    onChange={(e) => setClassField("subject", e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Subject / Course Code</label>
-                <input
-                  type="text"
-                  placeholder={`e.g. ${departmentName}`}
-                  value={classForm.subject}
-                  onChange={(e) => setClassField("subject", e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Number of Questions *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    required
+                    value={classForm.numQuestions}
+                    onChange={(e) => setClassField("numQuestions", e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Number of Questions</label>
-                <input
-                  type="number"
-                  min={1}
-                  required
-                  value={classForm.numQuestions}
-                  onChange={(e) => setClassField("numQuestions", e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Start Date &amp; Time</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={classForm.startAt}
-                  onChange={(e) => setClassField("startAt", e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">End Date &amp; Time</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={classForm.endAt}
-                  onChange={(e) => setClassField("endAt", e.target.value)}
-                  className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Description / Notes</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Optional syllabus topics, scoring instructions, or candidate guidelines…"
+                    value={classForm.description}
+                    onChange={(e) => setClassField("description", e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-6 pt-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={classForm.randomizeQuestions}
-                  onChange={(e) => setClassField("randomizeQuestions", e.target.checked)}
-                  className="rounded text-blue-600 focus:ring-blue-500"
-                />
-                Randomize question order for each candidate
-              </label>
+            {/* Schedule */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Exam Window</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Starts At *</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={classForm.startAt}
+                    onChange={(e) => setClassField("startAt", e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
 
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={classForm.randomizeOptions}
-                  onChange={(e) => setClassField("randomizeOptions", e.target.checked)}
-                  className="rounded text-blue-600 focus:ring-blue-500"
-                />
-                Randomize multiple choice options
-              </label>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Ends At *</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={classForm.endAt}
+                    onChange={(e) => setClassField("endAt", e.target.value)}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
             </div>
 
-            {/* Proctoring Requirements Section */}
-            <div className="pt-4 border-t border-slate-200">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-                AI &amp; Browser Proctoring Lockdown
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+            {/* Assessment Integrity / Proctoring Options */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Proctoring Safeguards</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <label className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={classForm.webcamRequired}
                     onChange={(e) => setClassField("webcamRequired", e.target.checked)}
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
-                  Require Webcam Face &amp; Gaze Monitoring
+                  <div>
+                    <p className="font-semibold text-slate-800">📷 Webcam Monitoring</p>
+                    <p className="text-[10px] text-slate-500">Live facial presence &amp; multi-face detection</p>
+                  </div>
                 </label>
 
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                <label className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={classForm.microphoneRequired}
                     onChange={(e) => setClassField("microphoneRequired", e.target.checked)}
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
-                  Require Microphone Audio Speech Detection
+                  <div>
+                    <p className="font-semibold text-slate-800">🎤 Audio Surveillance</p>
+                    <p className="text-[10px] text-slate-500">Monitors ambient decibels &amp; conversation spikes</p>
+                  </div>
                 </label>
 
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                <label className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={classForm.screenRequired}
                     onChange={(e) => setClassField("screenRequired", e.target.checked)}
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
-                  Require Full Screen Browser Lockdown
+                  <div>
+                    <p className="font-semibold text-slate-800">🖥️ Screen Capture &amp; Lock</p>
+                    <p className="text-[10px] text-slate-500">Tracks tab switches &amp; full-screen enforcement</p>
+                  </div>
                 </label>
 
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                <label className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={classForm.locationRequired}
-                    onChange={(e) => setClassField("locationRequired", e.target.checked)}
+                    checked={classForm.randomizeQuestions}
+                    onChange={(e) => setClassField("randomizeQuestions", e.target.checked)}
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
-                  Require Candidate Geo-Location Check
-                </label>
-
-                {classForm.microphoneRequired && (
-                  <div className="sm:col-span-2 mt-2 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs font-semibold text-slate-700">Microphone Input Level / Sensitivity Gain</span>
-                      <span className="text-xs font-mono font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-lg">
-                        {classForm.audioInputLevel}%
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min={5}
-                        max={100}
-                        step={1}
-                        value={Number(classForm.audioInputLevel) || 20}
-                        onChange={(e) => setClassField("audioInputLevel", Number(e.target.value))}
-                        className="w-full accent-blue-600 cursor-pointer"
-                      />
-                      <input
-                        type="number"
-                        min={5}
-                        max={100}
-                        value={classForm.audioInputLevel}
-                        onChange={(e) => setClassField("audioInputLevel", e.target.value)}
-                        className="w-16 px-2 py-1 text-xs border border-slate-300 rounded-lg text-center font-bold"
-                      />
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Configures candidate microphone gain applied during speech detection. Default 20% is recommended.
-                    </p>
+                  <div>
+                    <p className="font-semibold text-slate-800">🔀 Shuffle Questions</p>
+                    <p className="text-[10px] text-slate-500">Randomizes question order per candidate</p>
                   </div>
-                )}
+                </label>
               </div>
             </div>
 
-            <div className="pt-4 flex items-center justify-end gap-3">
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setActiveTab("classes")}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={classSubmitting}
-                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-md shadow-blue-600/30 cursor-pointer disabled:opacity-50"
+                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {classSubmitting ? "Creating Class…" : "Create Class / Exam (Draft)"}
               </button>
             </div>
           </form>
-        </div>
-      )}
-
-      {/* ASSIGN FACULTY MODAL */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">👨‍🏫</span>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Assign Faculty Member</h3>
-                  <p className="text-[11px] text-blue-600 font-semibold">{departmentName}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Create and assign login credentials for a faculty member in your department. They will be able to sign in and manage assessments.
-            </p>
-
-            {addError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium">
-                {addError}
-              </div>
-            )}
-
-            <form onSubmit={handleAddFaculty} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Faculty Full Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Dr. Robert Vance"
-                  value={addForm.fullName}
-                  onChange={(e) => setAddForm({ ...addForm, fullName: e.target.value })}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Faculty Email (Login ID)</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="e.g. rvance@university.edu"
-                  value={addForm.email}
-                  onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-slate-700">Initial Password</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newPwd = generateRandomPassword();
-                      setAddForm({ ...addForm, password: newPwd });
-                      setShowAddPassword(true);
-                    }}
-                    className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
-                  >
-                    🎲 Suggest Strong Pwd
-                  </button>
-                </div>
-                <div className="relative">
-                  <input
-                    type={showAddPassword ? "text" : "password"}
-                    required
-                    minLength={6}
-                    placeholder="Minimum 6 characters"
-                    value={addForm.password}
-                    onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs pr-14 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowAddPassword(!showAddPassword)}
-                    className="absolute right-2 top-2 text-[11px] text-slate-500 hover:text-slate-700 font-medium px-1 cursor-pointer"
-                  >
-                    {showAddPassword ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Department</label>
-                <input
-                  type="text"
-                  disabled
-                  value={departmentName}
-                  className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-600 font-semibold cursor-not-allowed"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Locked to your designated department.</p>
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={addSubmitting}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm cursor-pointer disabled:opacity-50"
-                >
-                  {addSubmitting ? "Assigning…" : "Save & Assign Faculty"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT FACULTY CREDENTIALS MODAL */}
-      {editingFaculty && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">✏️</span>
-                <h3 className="text-base font-bold text-slate-900">Edit Faculty Details &amp; Credentials</h3>
-              </div>
-              <button
-                onClick={() => setEditingFaculty(null)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-xs text-slate-500">
-              Modifying credentials for <strong className="text-slate-800 font-mono">{editingFaculty.email}</strong>.
-            </p>
-
-            {editError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium">
-                {editError}
-              </div>
-            )}
-
-            <form onSubmit={handleUpdateFaculty} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Faculty Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={editForm.fullName}
-                  onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Faculty Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-slate-700">
-                    Update Password <span className="font-normal text-slate-400">(leave blank to keep current)</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newPwd = generateRandomPassword();
-                      setEditForm({ ...editForm, password: newPwd });
-                      setShowEditPassword(true);
-                    }}
-                    className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold cursor-pointer"
-                  >
-                    🎲 Suggest New Pwd
-                  </button>
-                </div>
-                <div className="relative">
-                  <input
-                    type={showEditPassword ? "text" : "password"}
-                    placeholder="Enter new password to update"
-                    value={editForm.password || ""}
-                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs pr-14 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowEditPassword(!showEditPassword)}
-                    className="absolute right-2 top-2 text-[11px] text-slate-500 hover:text-slate-700 font-medium px-1 cursor-pointer"
-                  >
-                    {showEditPassword ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
-
-              {editingFaculty.locked && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
-                  <div className="text-xs text-amber-800">
-                    <p className="font-bold">Faculty account is locked</p>
-                    <p className="text-[11px]">Due to repeated failed sign-in attempts.</p>
-                  </div>
-                  <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-900 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(editForm.resetLock)}
-                      onChange={(e) => setEditForm({ ...editForm, resetLock: e.target.checked })}
-                      className="rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    Unlock Account
-                  </label>
-                </div>
-              )}
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingFaculty(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={editSubmitting}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm cursor-pointer disabled:opacity-50"
-                >
-                  {editSubmitting ? "Saving…" : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* DELETE FACULTY MODAL */}
-      {facultyToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-4">
-            <div className="text-center">
-              <span className="text-3xl block mb-2">🗑️</span>
-              <h3 className="text-base font-bold text-slate-900">Remove Faculty Account</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Are you sure you want to remove <strong className="text-slate-800">{facultyToDelete.fullName}</strong> ({facultyToDelete.email}) from {departmentName}?
-              </p>
-            </div>
-
-            {deleteError && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl font-medium">
-                {deleteError}
-              </div>
-            )}
-
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setFacultyToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteFaculty}
-                disabled={deleteSubmitting}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                {deleteSubmitting ? "Removing…" : "Confirm Remove"}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

@@ -414,4 +414,28 @@ export interface BulkProfessorUploadResult {
   professors: ProfessorUser[];
 }
 
+export type UserRole = "ADMIN" | "COURSE_COORDINATOR" | "PROFESSOR" | "STUDENT" | "EXAMINER" | "FACULTY";
+
+export interface UnifiedAuthUser {
+  role: UserRole | string;
+  email: string;
+  fullName: string;
+  department?: string | null;
+  identifier?: string | null;
+  mustResetPassword: boolean;
+}
+
+export interface UnifiedAuthResponse {
+  accessToken: string;
+  refreshToken?: string | null;
+  role: string;
+  email: string;
+  fullName: string;
+  department?: string | null;
+  identifier?: string | null;
+  mustResetPassword: boolean;
+  expiresInSeconds?: number;
+}
+
+
 

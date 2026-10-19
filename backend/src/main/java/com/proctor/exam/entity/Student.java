@@ -42,4 +42,8 @@ public class Student {
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();
+
+    @Column(name = "must_reset_password", nullable = false)
+    @Builder.Default
+    private Boolean mustResetPassword = true;
 }

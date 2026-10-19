@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import NavBar from "./components/NavBar";
-import Landing from "./pages/Landing";
+import Home from "./pages/Home";
+import SignIn from "./pages/SignIn";
+import ResetPassword from "./pages/ResetPassword";
 import Exams from "./pages/Exams";
 import Instructions from "./pages/Instructions";
 import About from "./pages/About";
@@ -8,7 +10,6 @@ import ExamVerify from "./pages/student/ExamVerify";
 import SystemCheck from "./pages/student/SystemCheck";
 import ExamTake from "./pages/student/ExamTake";
 import ExamSubmitted from "./pages/student/ExamSubmitted";
-import AdminLogin from "./pages/admin/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import CourseCoordinatorDashboard from "./pages/admin/CourseCoordinatorDashboard";
 import CreateExam from "./pages/admin/CreateExam";
@@ -16,15 +17,64 @@ import ExamDetail from "./pages/admin/ExamDetail";
 import AdminReportView from "./pages/admin/AdminReportView";
 import MobileDeviceBlocker from "./components/MobileDeviceBlocker";
 import OnlineIde from "./pages/OnlineIde";
-import { isStaffAuthenticated, isCoordinatorRole } from "./api/client";
+import {
+  isUserAuthenticated,
+  getMustResetPassword,
+  isStaffAuthenticated,
+  isCoordinatorRole,
+} from "./api/client";
+
+/**
+ * Route protection for authenticated users.
+ * Redirects to /sign-in if unauthenticated, or to /reset-password if initial reset is pending.
+ */
+function AuthRoute({ children }: { children: React.ReactNode }) {
+  if (!isUserAuthenticated()) {
+    return <Navigate to="/sign-in" replace />;
+  }
+  if (getMustResetPassword()) {
+    return <Navigate to="/reset-password" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * Route protection for the Sign In page.
+ * If already authenticated, routes to /reset-password or / (Home).
+ */
+function SignInRoute() {
+  if (isUserAuthenticated()) {
+    if (getMustResetPassword()) {
+      return <Navigate to="/reset-password" replace />;
+    }
+    return <Navigate to="/" replace />;
+  }
+  return <SignIn />;
+}
+
+/**
+ * Route protection for the Reset Password page.
+ * Only accessible if the user is authenticated AND mustResetPassword is true.
+ */
+function ResetPasswordRoute() {
+  if (!isUserAuthenticated()) {
+    return <Navigate to="/sign-in" replace />;
+  }
+  if (!getMustResetPassword()) {
+    return <Navigate to="/" replace />;
+  }
+  return <ResetPassword />;
+}
 
 /**
  * Route protection for Admin, Examiner, Course Coordinator, and Faculty staff members.
- * Unauthenticated users or non-staff are redirected to staff login.
  */
 function StaffRoute({ children }: { children: React.ReactNode }) {
   if (!isStaffAuthenticated()) {
-    return <Navigate to="/admin/login?unauthorized=true" replace />;
+    return <Navigate to="/sign-in?unauthorized=true" replace />;
+  }
+  if (getMustResetPassword()) {
+    return <Navigate to="/reset-password" replace />;
   }
   return <>{children}</>;
 }
@@ -41,50 +91,107 @@ export default function App() {
     <BrowserRouter>
       <NavBar />
       <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/exams" element={<Exams />} />
-        <Route path="/instructions" element={<Instructions />} />
+        {/* Authentication & Onboarding Routes */}
+        <Route path="/sign-in" element={<SignInRoute />} />
+        <Route path="/reset-password" element={<ResetPasswordRoute />} />
+
+        {/* Unified Home Page for Admin, Coordinator, Professor, and Student */}
+        <Route
+          path="/"
+          element={
+            <AuthRoute>
+              <Home />
+            </AuthRoute>
+          }
+        />
+
+        {/* Examination & Candidate Features */}
+        <Route
+          path="/exams"
+          element={
+            <AuthRoute>
+              <Exams />
+            </AuthRoute>
+          }
+        />
+        <Route
+          path="/instructions"
+          element={
+            <AuthRoute>
+              <Instructions />
+            </AuthRoute>
+          }
+        />
         <Route path="/about" element={<About />} />
-        <Route path="/ide" element={<OnlineIde />} />
-        <Route path="/online-ide" element={<OnlineIde />} />
+        <Route
+          path="/ide"
+          element={
+            <AuthRoute>
+              <OnlineIde />
+            </AuthRoute>
+          }
+        />
+        <Route
+          path="/online-ide"
+          element={
+            <AuthRoute>
+              <OnlineIde />
+            </AuthRoute>
+          }
+        />
 
         {/* Student assessment flow (Blocked on Mobile / Tablets even in Desktop Mode) */}
         <Route
           path="/exam/:examId/verify"
           element={
-            <MobileDeviceBlocker>
-              <ExamVerify />
-            </MobileDeviceBlocker>
+            <AuthRoute>
+              <MobileDeviceBlocker>
+                <ExamVerify />
+              </MobileDeviceBlocker>
+            </AuthRoute>
           }
         />
         <Route
           path="/exam/:examId/system-check"
           element={
-            <MobileDeviceBlocker>
-              <SystemCheck />
-            </MobileDeviceBlocker>
+            <AuthRoute>
+              <MobileDeviceBlocker>
+                <SystemCheck />
+              </MobileDeviceBlocker>
+            </AuthRoute>
           }
         />
         <Route
           path="/exam/:examId/system_check"
           element={
-            <MobileDeviceBlocker>
-              <SystemCheck />
-            </MobileDeviceBlocker>
+            <AuthRoute>
+              <MobileDeviceBlocker>
+                <SystemCheck />
+              </MobileDeviceBlocker>
+            </AuthRoute>
           }
         />
         <Route
           path="/exam/:examId/take"
           element={
-            <MobileDeviceBlocker>
-              <ExamTake />
-            </MobileDeviceBlocker>
+            <AuthRoute>
+              <MobileDeviceBlocker>
+                <ExamTake />
+              </MobileDeviceBlocker>
+            </AuthRoute>
           }
         />
-        <Route path="/exam/:examId/submitted" element={<ExamSubmitted />} />
+        <Route
+          path="/exam/:examId/submitted"
+          element={
+            <AuthRoute>
+              <ExamSubmitted />
+            </AuthRoute>
+          }
+        />
 
-        {/* Staff authentication */}
-        <Route path="/admin/login" element={<AdminLogin />} />
+        {/* Staff authentication alias */}
+        <Route path="/admin/login" element={<Navigate to="/sign-in" replace />} />
 
         {/* Staff-only Admin, Examiner, and Coordinator Management & Proctoring Portal */}
         <Route

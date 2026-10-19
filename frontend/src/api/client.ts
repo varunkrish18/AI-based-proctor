@@ -1,6 +1,8 @@
+import type { UnifiedAuthResponse, UnifiedAuthUser } from "../types";
+
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
-type TokenKind = "admin" | "student";
+type TokenKind = "admin" | "student" | "user";
 
 let memoryAdminRefreshToken: string | null = null;
 
@@ -18,11 +20,20 @@ export function getAdminRefreshToken(): string | null {
 }
 
 function tokenKey(kind: TokenKind) {
-  return kind === "admin" ? "aeps.adminToken" : "aeps.studentToken";
+  if (kind === "admin") return "aeps.adminToken";
+  if (kind === "student") return "aeps.studentToken";
+  return "aeps.authToken";
 }
 
-export function getToken(kind: TokenKind): string | null {
-  return sessionStorage.getItem(tokenKey(kind));
+export function getToken(kind?: TokenKind): string | null {
+  if (!kind || kind === "user") {
+    return (
+      sessionStorage.getItem("aeps.authToken") ||
+      sessionStorage.getItem("aeps.adminToken") ||
+      sessionStorage.getItem("aeps.studentToken")
+    );
+  }
+  return sessionStorage.getItem(tokenKey(kind)) || sessionStorage.getItem("aeps.authToken");
 }
 
 export function setToken(kind: TokenKind, token: string) {
@@ -36,6 +47,7 @@ export function clearToken(kind: TokenKind) {
     sessionStorage.removeItem("aeps.adminRefreshToken");
   }
 }
+
 
 export class ApiError extends Error {
   status: number;
@@ -307,7 +319,7 @@ export interface AdminTokenPayload {
 }
 
 export function getAdminTokenPayload(): AdminTokenPayload | null {
-  const token = getToken("admin");
+  const token = getToken("admin") || getToken();
   if (!token) return null;
   try {
     const parts = token.split(".");
@@ -326,12 +338,139 @@ export function getAdminTokenPayload(): AdminTokenPayload | null {
   }
 }
 
+export function saveUnifiedAuth(data: UnifiedAuthResponse) {
+  sessionStorage.setItem("aeps.authToken", data.accessToken);
+  if (data.refreshToken) {
+    setAdminRefreshToken(data.refreshToken);
+  }
+  const roleUpper = data.role ? data.role.toUpperCase() : "";
+  const isStaff = ["ADMIN", "EXAMINER", "COURSE_COORDINATOR", "FACULTY", "PROFESSOR"].includes(roleUpper);
+  if (isStaff) {
+    sessionStorage.setItem("aeps.adminToken", data.accessToken);
+  } else {
+    sessionStorage.setItem("aeps.studentToken", data.accessToken);
+  }
+  const user: UnifiedAuthUser = {
+    role: data.role,
+    email: data.email,
+    fullName: data.fullName,
+    department: data.department,
+    identifier: data.identifier,
+    mustResetPassword: !!data.mustResetPassword,
+  };
+  sessionStorage.setItem("aeps.currentUser", JSON.stringify(user));
+}
+
+export function getCurrentUser(): UnifiedAuthUser | null {
+  const raw = sessionStorage.getItem("aeps.currentUser");
+  if (raw) {
+    try {
+      return JSON.parse(raw) as UnifiedAuthUser;
+    } catch {
+      // parse error, fallback
+    }
+  }
+  const adminPayload = getAdminTokenPayload();
+  if (adminPayload) {
+    return {
+      role: adminPayload.role || "ADMIN",
+      email: adminPayload.sub,
+      fullName: "System User",
+      department: adminPayload.department,
+      mustResetPassword: false,
+    };
+  }
+  return null;
+}
+
+export function updateCurrentUserMustResetPassword(mustReset: boolean) {
+  const current = getCurrentUser();
+  if (current) {
+    current.mustResetPassword = mustReset;
+    sessionStorage.setItem("aeps.currentUser", JSON.stringify(current));
+  }
+}
+
+export function isUserAuthenticated(): boolean {
+  return !!(
+    sessionStorage.getItem("aeps.authToken") ||
+    sessionStorage.getItem("aeps.adminToken") ||
+    sessionStorage.getItem("aeps.studentToken")
+  );
+}
+
+export function getMustResetPassword(): boolean {
+  const user = getCurrentUser();
+  return !!user?.mustResetPassword;
+}
+
+export function clearAllAuth() {
+  sessionStorage.removeItem("aeps.authToken");
+  sessionStorage.removeItem("aeps.currentUser");
+  clearToken("admin");
+  clearToken("student");
+}
+
+export async function unifiedLogin(identifier: string, password: string): Promise<UnifiedAuthResponse> {
+  const res = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "ngrok-skip-browser-warning": "true",
+    },
+    body: JSON.stringify({ identifier, password }),
+  });
+  if (!res.ok) {
+    let msg = "Invalid login credentials";
+    try {
+      const err = await res.json();
+      msg = err.message || msg;
+    } catch {
+      // non-json
+    }
+    throw new ApiError(res.status, msg);
+  }
+  const data = (await res.json()) as UnifiedAuthResponse;
+  saveUnifiedAuth(data);
+  return data;
+}
+
+export async function resetInitialPassword(newPassword: string): Promise<{ success: boolean; message: string }> {
+  const token = getToken();
+  const res = await fetch(`${BASE_URL}/api/auth/reset-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "ngrok-skip-browser-warning": "true",
+    },
+    body: JSON.stringify({ newPassword }),
+  });
+  if (!res.ok) {
+    let msg = "Failed to update password";
+    try {
+      const err = await res.json();
+      msg = err.message || msg;
+    } catch {
+      // non-json
+    }
+    throw new ApiError(res.status, msg);
+  }
+  const data = await res.json();
+  updateCurrentUserMustResetPassword(false);
+  return data;
+}
+
 export function getAdminUserRole(): string | null {
+  const user = getCurrentUser();
+  if (user?.role) return user.role.toUpperCase();
   const payload = getAdminTokenPayload();
   return payload?.role ? payload.role.toUpperCase() : null;
 }
 
 export function getAdminUserDepartment(): string | null {
+  const user = getCurrentUser();
+  if (user?.department) return user.department;
   const payload = getAdminTokenPayload();
   return payload?.department || null;
 }
@@ -366,3 +505,8 @@ export function isExaminerRole(): boolean {
 export function isProfessorRole(): boolean {
   return getAdminUserRole() === "PROFESSOR";
 }
+
+export function isStudentRole(): boolean {
+  return getAdminUserRole() === "STUDENT";
+}
+
