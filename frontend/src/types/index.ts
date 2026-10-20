@@ -11,6 +11,7 @@ export interface ExamSummary {
   assignedProfessorEmail?: string | null;
   assignedProfessorName?: string | null;
   isClass?: boolean;
+  openToAll?: boolean;
 }
 
 export interface Exam extends ExamSummary {
@@ -53,6 +54,9 @@ export interface ExamQuestion {
   allowedLanguages?: string;
   constraints?: string;
   testCases?: TestCase[];
+  createdBy?: number;
+  createdByRole?: string;
+  createdByCoordinator?: boolean;
 }
 
 export interface ExamAssignmentItem {

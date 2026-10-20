@@ -28,7 +28,7 @@ export default function Home() {
     // Fetch exams for student / faculty display
     setLoadingExams(true);
     api
-      .get<ExamSummary[]>("/api/exams/public")
+      .get<ExamSummary[]>("/api/exams/public", "user")
       .then((data) => setExams(data || []))
       .catch(() => setExams([]))
       .finally(() => setLoadingExams(false));
@@ -418,7 +418,7 @@ export default function Home() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">My Academic Examinations</h2>
+                <h2 className="text-xl font-bold text-slate-900">My Assigned Examinations &amp; Classes</h2>
                 <p className="text-xs text-slate-500">
                   Registered Register No: <span className="font-mono text-amber-600 font-bold">{user?.identifier || "N/A"}</span>
                   {user?.department ? ` • ${user.department}` : ""}
@@ -443,14 +443,14 @@ export default function Home() {
             {/* Assessment Quick Launch Cards */}
             {loadingExams ? (
               <div className="p-8 text-center text-slate-500 text-xs">
-                Loading available examinations...
+                Loading assigned and open examinations...
               </div>
             ) : exams.length === 0 ? (
               <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
                 <span className="text-3xl mb-2 block">📋</span>
-                <p className="text-sm font-semibold text-slate-800">No Examinations Scheduled</p>
+                <p className="text-sm font-semibold text-slate-800">No Examinations Available</p>
                 <p className="text-xs text-slate-500 mt-1">
-                  There are currently no active or upcoming exams published for your cohort. Please check back later.
+                  You are not currently assigned to any active assessments, and there are no open university examinations at this time.
                 </p>
               </div>
             ) : (
@@ -468,24 +468,39 @@ export default function Home() {
                       className="bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-5 shadow-sm hover:shadow-md flex flex-col justify-between transition-all"
                     >
                       <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                              isOpen
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : isUpcoming
-                                ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                : "bg-slate-100 text-slate-600 border border-slate-200"
-                            }`}
-                          >
-                            {isOpen ? "● OPEN NOW" : isUpcoming ? "UPCOMING" : "CLOSED"}
-                          </span>
+                        <div className="flex items-center justify-between mb-3 gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                isOpen
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : isUpcoming
+                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                  : "bg-slate-100 text-slate-600 border border-slate-200"
+                              }`}
+                            >
+                              {isOpen ? "● OPEN NOW" : isUpcoming ? "UPCOMING" : "CLOSED"}
+                            </span>
+                            {exam.openToAll ? (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                🌐 Open to All
+                              </span>
+                            ) : exam.isClass ? (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                🏫 Class
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                                🎯 Assigned
+                              </span>
+                            )}
+                          </div>
                           {exam.durationMinutes ? (
-                            <span className="text-xs text-slate-500 font-mono">
+                            <span className="text-xs text-slate-500 font-mono whitespace-nowrap">
                               ⏱️ {exam.durationMinutes} mins
                             </span>
                           ) : (
-                            <span className="text-xs text-indigo-600 font-medium font-mono">
+                            <span className="text-xs text-indigo-600 font-medium font-mono whitespace-nowrap">
                               ♾️ Untimed Class
                             </span>
                           )}

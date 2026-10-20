@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
-import { api, downloadFile, isCoordinatorRole } from "../../api/client";
+import { api, downloadFile, isCoordinatorRole, isAdminRole } from "../../api/client";
 import ExamSettingsTab from "./ExamSettingsTab";
 import type {
   AdminAttemptSummary,
@@ -30,12 +30,16 @@ export default function ExamDetail() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const isCoordinator = isCoordinatorRole();
+  const isAdmin = isAdminRole();
+  const isProfessorUser = !isCoordinator && !isAdmin;
   const allowedTabs: Tab[] = isCoordinator
     ? ["questions", "settings"]
     : ["questions", "settings", "assign", "results", "qassign"];
 
   const queryTab = searchParams.get("tab") as Tab | null;
   const [exam, setExam] = useState<Exam | null>(null);
+  const isClassMode = Boolean(exam?.isClass);
+  const isClassSettingsLocked = isClassMode && isProfessorUser;
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [tab, setTab] = useState<Tab>(() => {
     if (queryTab && allowedTabs.includes(queryTab)) return queryTab;
@@ -194,7 +198,7 @@ export default function ExamDetail() {
             <span className={questions.length > exam.numQuestions ? "text-amber-700 font-semibold" : ""}>
               {questions.length}/{exam.numQuestions} questions added
             </span>
-            {questions.length > exam.numQuestions && (
+            {!isClassSettingsLocked && questions.length > exam.numQuestions && (
               <button
                 type="button"
                 onClick={() => handleUpdateLimit(questions.length)}
@@ -204,13 +208,15 @@ export default function ExamDetail() {
                 Sync limit to {questions.length}
               </button>
             )}
-            <button
-              type="button"
-              onClick={promptChangeLimit}
-              className="text-xs text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
-            >
-              Edit Limit
-            </button>
+            {!isClassSettingsLocked && (
+              <button
+                type="button"
+                onClick={promptChangeLimit}
+                className="text-xs text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
+              >
+                Edit Limit
+              </button>
+            )}
             <span>&middot;</span>
             <span>status: {exam.status}</span>
           </div>
@@ -225,20 +231,22 @@ export default function ExamDetail() {
                 : "border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100"
             }`}
           >
-            <span>⚙️</span> Edit Exam Settings
+            <span>⚙️</span> {isClassSettingsLocked ? "View Class Settings 🔒" : "Edit Exam Settings"}
           </button>
-          {exam.status === "DRAFT" && (
+          {!isClassSettingsLocked && exam.status === "DRAFT" && (
             <button onClick={publish} className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 cursor-pointer">
               Publish Exam
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setShowDeleteModal(true)}
-            className="border border-rose-300 text-rose-600 hover:bg-rose-50 px-3.5 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer"
-          >
-            Delete Exam
-          </button>
+          {!isClassSettingsLocked && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(true)}
+              className="border border-rose-300 text-rose-600 hover:bg-rose-50 px-3.5 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer"
+            >
+              Delete Exam
+            </button>
+          )}
         </div>
       </div>
 
@@ -305,7 +313,11 @@ export default function ExamDetail() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          {exam.status !== "CLOSED" ? (
+          {isClassSettingsLocked ? (
+            <div className="flex items-center gap-1.5 bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-700/60 text-indigo-300 text-xs font-medium">
+              <span>🏫 Class Managed by Course Coordinator (Active)</span>
+            </div>
+          ) : exam.status !== "CLOSED" ? (
             <>
               {exam.durationMinutes ? (
                 <div className="flex items-center gap-1.5 bg-slate-800/90 p-1.5 rounded-xl border border-slate-700/80">
@@ -669,8 +681,12 @@ if __name__ == '__main__':
     }
   }
 
-  const isLimitReached = questions.length >= exam.numQuestions;
-  const isOverLimit = questions.length > exam.numQuestions;
+  const isCoordinator = isCoordinatorRole();
+  const isAdmin = isAdminRole();
+  const isProfessorUser = !isCoordinator && !isAdmin;
+  const isClassMode = Boolean(exam.isClass);
+  const isLimitReached = !isClassMode && questions.length >= exam.numQuestions;
+  const isOverLimit = !isClassMode && questions.length > exam.numQuestions;
 
   async function handleQuickIncrease() {
     setIncreasingLimit(true);
@@ -1496,6 +1512,11 @@ public class Solution {
   }
 
   function startEditing(q: ExamQuestion) {
+    const isCoordinatorQuestion = Boolean(q.createdByCoordinator) || q.createdByRole === "COURSE_COORDINATOR";
+    if (isClassMode && isProfessorUser && isCoordinatorQuestion) {
+      alert("This question was provided by the Course Coordinator and cannot be modified.");
+      return;
+    }
     setEditingQuestion(q);
     setEditForm({
       questionType: (q.questionType as "MCQ" | "CODING") || "MCQ",
@@ -1575,6 +1596,14 @@ public class Solution {
   }
 
   async function handleDeleteQuestion(qId: number) {
+    const targetQ = questions.find((q) => q.id === qId);
+    if (targetQ) {
+      const isCoordinatorQuestion = Boolean(targetQ.createdByCoordinator) || targetQ.createdByRole === "COURSE_COORDINATOR";
+      if (isClassMode && isProfessorUser && isCoordinatorQuestion) {
+        alert("This question was provided by the Course Coordinator and cannot be deleted.");
+        return;
+      }
+    }
     if (!window.confirm("Are you sure you want to delete this question?")) return;
     setDeletingQuestionId(qId);
     try {
@@ -2306,10 +2335,13 @@ public class Solution {
 
         {questions.map((q, idx) => {
           const isCoding = q.questionType === "CODING";
+          const isCoordinatorQuestion = Boolean(q.createdByCoordinator) || q.createdByRole === "COURSE_COORDINATOR";
+          const isProtectedFromProf = isClassMode && isProfessorUser && isCoordinatorQuestion;
+
           return (
             <div key={q.id} className="bg-white border border-slate-200 rounded-xl p-4 text-sm shadow-xs space-y-3">
               <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
                     Q{idx + 1}
                   </span>
@@ -2325,23 +2357,41 @@ public class Solution {
                   <span className="text-xs text-slate-400 font-medium">
                     {q.marks} mark{q.marks !== 1 ? "s" : ""}
                   </span>
+                  {isCoordinatorQuestion && (
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded flex items-center gap-1 shadow-2xs">
+                      <span>🔒</span> Provided by Course Coordinator
+                    </span>
+                  )}
+                  {!isCoordinatorQuestion && isClassMode && (
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded flex items-center gap-1 shadow-2xs">
+                      <span>✍️</span> Added by Faculty
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => startEditing(q)}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded transition-colors cursor-pointer"
-                  >
-                    Edit / Correct
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteQuestion(q.id)}
-                    disabled={deletingQuestionId === q.id}
-                    className="text-xs font-medium text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {deletingQuestionId === q.id ? "…" : "Delete"}
-                  </button>
+                  {isProtectedFromProf ? (
+                    <span className="text-[11px] font-semibold text-slate-400 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded select-none flex items-center gap-1" title="Coordinator questions cannot be modified by assigned professors">
+                      <span>🔒</span> Locked
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => startEditing(q)}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded transition-colors cursor-pointer"
+                      >
+                        Edit / Correct
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteQuestion(q.id)}
+                        disabled={deletingQuestionId === q.id}
+                        className="text-xs font-medium text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        {deletingQuestionId === q.id ? "…" : "Delete"}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 

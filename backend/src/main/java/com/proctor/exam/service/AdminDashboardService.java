@@ -7,10 +7,12 @@ import com.proctor.exam.dto.DashboardStatsResponse;
 import com.proctor.exam.dto.DashboardSummaryResponse;
 import com.proctor.exam.entity.Admin;
 import com.proctor.exam.entity.Exam;
+import com.proctor.exam.entity.Professor;
 import com.proctor.exam.exception.ApiException;
 import com.proctor.exam.repository.AdminRepository;
 import com.proctor.exam.repository.ExamAttemptRepository;
 import com.proctor.exam.repository.ExamRepository;
+import com.proctor.exam.repository.ProfessorRepository;
 import com.proctor.exam.repository.ProctoringEventRepository;
 import com.proctor.exam.repository.ProctoringSessionRepository;
 import com.proctor.exam.repository.WarningRepository;
@@ -31,28 +33,43 @@ public class AdminDashboardService {
     private final ProctoringSessionRepository sessionRepository;
     private final WarningRepository warningRepository;
     private final AdminRepository adminRepository;
+    private final ProfessorRepository professorRepository;
 
     public AdminDashboardService(ExamRepository examRepository,
                                  ExamAttemptRepository attemptRepository,
                                  ProctoringEventRepository eventRepository,
                                  ProctoringSessionRepository sessionRepository,
                                  WarningRepository warningRepository,
-                                 AdminRepository adminRepository) {
+                                 AdminRepository adminRepository,
+                                 ProfessorRepository professorRepository) {
         this.examRepository = examRepository;
         this.attemptRepository = attemptRepository;
         this.eventRepository = eventRepository;
         this.sessionRepository = sessionRepository;
         this.warningRepository = warningRepository;
         this.adminRepository = adminRepository;
+        this.professorRepository = professorRepository;
     }
 
-    private Admin getStaffUser(String staffEmail) {
+    private List<Long> getProfessorOrExaminerExamIds(String staffEmail) {
         if (staffEmail == null || staffEmail.isBlank()) return null;
-        return adminRepository.findByEmail(staffEmail.toLowerCase()).orElse(null);
-    }
+        String email = staffEmail.trim().toLowerCase();
+        Admin admin = adminRepository.findByEmail(email).orElse(null);
+        Professor prof = professorRepository.findByEmailIgnoreCase(email).orElse(null);
 
-    private boolean isExaminer(Admin admin) {
-        return admin != null && "EXAMINER".equalsIgnoreCase(admin.getRole());
+        boolean isProfessorRole = (admin != null && ("EXAMINER".equalsIgnoreCase(admin.getRole()) || "FACULTY".equalsIgnoreCase(admin.getRole()) || "PROFESSOR".equalsIgnoreCase(admin.getRole())))
+                || (prof != null);
+        if (!isProfessorRole) return null;
+
+        Long adminId = admin != null ? admin.getId() : null;
+        Long profId = prof != null ? prof.getId() : null;
+
+        return examRepository.findAll().stream()
+                .filter(e -> (adminId != null && e.getCreatedBy() != null && e.getCreatedBy().equals(adminId))
+                        || (e.getAssignedProfessorEmail() != null && e.getAssignedProfessorEmail().equalsIgnoreCase(email))
+                        || (e.getAssignedProfessorId() != null && ((adminId != null && e.getAssignedProfessorId().equals(adminId)) || (profId != null && e.getAssignedProfessorId().equals(profId)))))
+                .map(Exam::getId)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -62,14 +79,12 @@ public class AdminDashboardService {
 
     @Transactional(readOnly = true)
     public DashboardSummaryResponse getSummary(String staffEmail) {
-        Admin admin = getStaffUser(staffEmail);
-        if (isExaminer(admin)) {
-            Long examinerId = admin.getId();
-            List<Exam> examinerExams = examRepository.findByCreatedBy(examinerId);
-            if (examinerExams.isEmpty()) {
+        List<Long> examIds = getProfessorOrExaminerExamIds(staffEmail);
+        if (examIds != null) {
+            if (examIds.isEmpty()) {
                 return new DashboardSummaryResponse(0, 0, 0, 0, 0, 0);
             }
-            List<Long> examIds = examinerExams.stream().map(Exam::getId).toList();
+            List<Exam> examinerExams = examRepository.findAllById(examIds);
             long totalExams = examinerExams.size();
             long activeExams = examinerExams.stream().filter(e -> "PUBLISHED".equalsIgnoreCase(e.getStatus())).count();
             long completedAttempts = attemptRepository.countByExamIdInAndStatus(examIds, "SUBMITTED");
@@ -107,14 +122,12 @@ public class AdminDashboardService {
 
     @Transactional(readOnly = true)
     public DashboardStatsResponse getStats(String staffEmail) {
-        Admin admin = getStaffUser(staffEmail);
-        if (isExaminer(admin)) {
-            Long examinerId = admin.getId();
-            List<Exam> examinerExams = examRepository.findByCreatedBy(examinerId);
-            if (examinerExams.isEmpty()) {
+        List<Long> examIds = getProfessorOrExaminerExamIds(staffEmail);
+        if (examIds != null) {
+            if (examIds.isEmpty()) {
                 return new DashboardStatsResponse(0, 0, 0, 0.0);
             }
-            List<Long> examIds = examinerExams.stream().map(Exam::getId).toList();
+            List<Exam> examinerExams = examRepository.findAllById(examIds);
             long activeExams = examinerExams.stream().filter(e -> "PUBLISHED".equalsIgnoreCase(e.getStatus())).count();
             long totalAttempts = attemptRepository.countByExamIdIn(examIds);
             long highRiskSessionsFlagged = attemptRepository.countByExamIdInAndFlaggedForReviewTrue(examIds);
@@ -141,26 +154,21 @@ public class AdminDashboardService {
 
     @Transactional(readOnly = true)
     public DashboardChartsResponse getCharts(Long examId, String staffEmail) {
-        Admin admin = getStaffUser(staffEmail);
-        boolean isExaminerRole = isExaminer(admin);
-
-        if (isExaminerRole) {
-            Long examinerId = admin.getId();
-            List<Exam> examinerExams = examRepository.findByCreatedBy(examinerId);
-            if (examinerExams.isEmpty()) {
-                // If examiner has no exams created, all chart metrics must be empty
+        List<Long> examIds = getProfessorOrExaminerExamIds(staffEmail);
+        if (examIds != null) {
+            if (examIds.isEmpty()) {
+                // If professor has no exams created or assigned, all chart metrics must be empty
                 return new DashboardChartsResponse(List.of(), List.of(), List.of(), List.of());
             }
-            List<Long> examinerExamIds = examinerExams.stream().map(Exam::getId).toList();
 
             if (examId != null) {
-                if (!examinerExamIds.contains(examId)) {
+                if (!examIds.contains(examId)) {
                     throw new ApiException(HttpStatus.FORBIDDEN,
-                            "Access denied: As an Examiner, you can only view exams created by you.");
+                            "Access denied: As a Professor / Faculty, you can only view exams assigned to or created by you.");
                 }
                 return getChartsForSingleExam(examId);
             } else {
-                return getChartsForExamIds(examinerExamIds);
+                return getChartsForExamIds(examIds);
             }
         }
 

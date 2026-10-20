@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, setToken } from "../../api/client";
+import { api, getCurrentUser, setToken } from "../../api/client";
 
 interface VerifyResponse {
   verified: boolean;
@@ -32,9 +32,10 @@ interface PublicExamDetails {
 export default function ExamVerify() {
   const { examId } = useParams();
   const navigate = useNavigate();
-  const [name, setName] = useState("");
-  const [registerNumber, setRegisterNumber] = useState("");
-  const [email, setEmail] = useState("");
+  const currentUser = getCurrentUser();
+  const [name, setName] = useState(currentUser?.fullName || "");
+  const [registerNumber, setRegisterNumber] = useState(currentUser?.identifier || "");
+  const [email, setEmail] = useState(currentUser?.email || "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +45,7 @@ export default function ExamVerify() {
   useEffect(() => {
     if (!examId) return;
     api
-      .get<PublicExamDetails>(`/api/exams/${examId}`)
+      .get<PublicExamDetails>(`/api/exams/${examId}`, "user")
       .then((data) => {
         setExamMeta(data);
         sessionStorage.setItem(
@@ -57,7 +58,9 @@ export default function ExamVerify() {
           })
         );
       })
-      .catch(() => {});
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "You are not assigned to this examination or class.");
+      });
   }, [examId]);
 
   async function handleSubmit(e: React.FormEvent) {

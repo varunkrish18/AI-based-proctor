@@ -126,6 +126,7 @@ public class ExamAdminService {
     public Exam updateExam(Long examId, UpdateExamRequest req, String adminEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
+        checkClassSettingModificationAllowed(exam, adminEmail);
 
         Instant newStartAt = req.startAt() != null ? req.startAt() : exam.getStartAt();
         Instant newEndAt = req.endAt() != null ? req.endAt() : exam.getEndAt();
@@ -229,6 +230,7 @@ public class ExamAdminService {
     public Exam assignProfessor(Long examId, AssignProfessorRequest req, String adminEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
+        checkClassSettingModificationAllowed(exam, adminEmail);
 
         Long profId = req.professorId();
         String profEmail = req.professorEmail();
@@ -273,41 +275,86 @@ public class ExamAdminService {
 
     public void verifyExamAccess(Exam exam, String staffEmail) {
         if (staffEmail == null || staffEmail.isBlank() || exam == null) return;
-        Admin admin = adminRepository.findByEmail(staffEmail.toLowerCase()).orElse(null);
-        if (admin != null) {
-            String role = admin.getRole();
-            if ("EXAMINER".equalsIgnoreCase(role) || "FACULTY".equalsIgnoreCase(role) || "PROFESSOR".equalsIgnoreCase(role)) {
-                boolean isCreator = exam.getCreatedBy() != null && exam.getCreatedBy().equals(admin.getId());
-                boolean isAssignedByEmail = exam.getAssignedProfessorEmail() != null && exam.getAssignedProfessorEmail().equalsIgnoreCase(admin.getEmail());
-                boolean isAssignedById = exam.getAssignedProfessorId() != null && exam.getAssignedProfessorId().equals(admin.getId());
-                if (!isCreator && !isAssignedByEmail && !isAssignedById) {
-                    Professor prof = professorRepository.findByEmailIgnoreCase(admin.getEmail()).orElse(null);
-                    if (prof != null && exam.getAssignedProfessorId() != null && exam.getAssignedProfessorId().equals(prof.getId())) {
-                        isAssignedById = true;
-                    }
-                }
-                if (!isCreator && !isAssignedByEmail && !isAssignedById) {
-                    throw new ApiException(HttpStatus.FORBIDDEN,
-                            "Access denied: As a Professor / Faculty, you can only view and manage exams assigned to or created by you.");
-                }
-            } else if ("COURSE_COORDINATOR".equalsIgnoreCase(role)) {
-                if (exam.getCreatedBy() != null && !exam.getCreatedBy().equals(admin.getId())) {
-                    Admin creator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
-                    if (creator == null || creator.getDepartment() == null || !creator.getDepartment().equalsIgnoreCase(admin.getDepartment())) {
-                        // Also check if assigned professor is in coordinator's department
-                        boolean inSameDept = false;
-                        if (exam.getAssignedProfessorEmail() != null) {
-                            Professor p = professorRepository.findByEmailIgnoreCase(exam.getAssignedProfessorEmail()).orElse(null);
-                            if (p != null && admin.getDepartment().equalsIgnoreCase(p.getDepartment())) {
-                                inSameDept = true;
-                            }
-                        }
-                        if (!inSameDept) {
-                            throw new ApiException(HttpStatus.FORBIDDEN,
-                                    "Access denied: As a Course Coordinator, you can only access exams within your department.");
+        String email = staffEmail.trim().toLowerCase();
+        Admin admin = adminRepository.findByEmail(email).orElse(null);
+        Professor prof = professorRepository.findByEmailIgnoreCase(email).orElse(null);
+
+        boolean isProfessorRole = (admin != null && ("EXAMINER".equalsIgnoreCase(admin.getRole()) || "FACULTY".equalsIgnoreCase(admin.getRole()) || "PROFESSOR".equalsIgnoreCase(admin.getRole())))
+                || (prof != null);
+
+        if (isProfessorRole) {
+            Long adminId = admin != null ? admin.getId() : null;
+            Long profEntityId = prof != null ? prof.getId() : null;
+
+            boolean isCreator = adminId != null && exam.getCreatedBy() != null && exam.getCreatedBy().equals(adminId);
+            boolean isAssignedByEmail = exam.getAssignedProfessorEmail() != null && exam.getAssignedProfessorEmail().equalsIgnoreCase(email);
+            boolean isAssignedById = exam.getAssignedProfessorId() != null &&
+                    ((adminId != null && exam.getAssignedProfessorId().equals(adminId)) || (profEntityId != null && exam.getAssignedProfessorId().equals(profEntityId)));
+
+            if (!isCreator && !isAssignedByEmail && !isAssignedById) {
+                throw new ApiException(HttpStatus.FORBIDDEN,
+                        "Access denied: As a Professor / Faculty, you can only view and manage exams assigned to or created by you.");
+            }
+        } else if (admin != null && "COURSE_COORDINATOR".equalsIgnoreCase(admin.getRole())) {
+            if (exam.getCreatedBy() != null && !exam.getCreatedBy().equals(admin.getId())) {
+                Admin creator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
+                if (creator == null || creator.getDepartment() == null || !creator.getDepartment().equalsIgnoreCase(admin.getDepartment())) {
+                    // Also check if assigned professor is in coordinator's department
+                    boolean inSameDept = false;
+                    if (exam.getAssignedProfessorEmail() != null) {
+                        Professor p = professorRepository.findByEmailIgnoreCase(exam.getAssignedProfessorEmail()).orElse(null);
+                        if (p != null && admin.getDepartment().equalsIgnoreCase(p.getDepartment())) {
+                            inSameDept = true;
                         }
                     }
+                    if (!inSameDept) {
+                        throw new ApiException(HttpStatus.FORBIDDEN,
+                                "Access denied: As a Course Coordinator, you can only access exams within your department.");
+                    }
                 }
+            }
+        }
+    }
+
+    public boolean isProfessorUser(String staffEmail) {
+        if (staffEmail == null || staffEmail.isBlank()) return false;
+        String email = staffEmail.trim().toLowerCase();
+        Admin admin = adminRepository.findByEmail(email).orElse(null);
+        Professor prof = professorRepository.findByEmailIgnoreCase(email).orElse(null);
+        return (admin != null && ("EXAMINER".equalsIgnoreCase(admin.getRole()) || "FACULTY".equalsIgnoreCase(admin.getRole()) || "PROFESSOR".equalsIgnoreCase(admin.getRole())))
+                || (prof != null);
+    }
+
+    public void checkClassSettingModificationAllowed(Exam exam, String staffEmail) {
+        if (exam == null || staffEmail == null || staffEmail.isBlank()) return;
+        if (Boolean.TRUE.equals(exam.getIsClass()) && isProfessorUser(staffEmail)) {
+            throw new ApiException(HttpStatus.FORBIDDEN,
+                    "Access denied: Class settings are configured and locked by the Course Coordinator. Assigned professors cannot modify class settings.");
+        }
+    }
+
+    public void checkQuestionModificationAllowed(Exam exam, ExamQuestion q, String staffEmail) {
+        if (staffEmail == null || staffEmail.isBlank() || q == null) return;
+        if (isProfessorUser(staffEmail)) {
+            boolean isCoordinatorQuestion = Boolean.TRUE.equals(q.getCreatedByCoordinator())
+                    || "COURSE_COORDINATOR".equalsIgnoreCase(q.getCreatedByRole());
+
+            if (!isCoordinatorQuestion && exam != null && exam.getCreatedBy() != null) {
+                Admin examCreator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
+                if (examCreator != null && "COURSE_COORDINATOR".equalsIgnoreCase(examCreator.getRole())) {
+                    String email = staffEmail.trim().toLowerCase();
+                    Admin callerAdmin = adminRepository.findByEmail(email).orElse(null);
+                    Professor callerProf = professorRepository.findByEmailIgnoreCase(email).orElse(null);
+                    Long callerId = callerProf != null ? callerProf.getId() : (callerAdmin != null ? callerAdmin.getId() : null);
+                    if (q.getCreatedBy() == null || !q.getCreatedBy().equals(callerId) || !"PROFESSOR".equalsIgnoreCase(q.getCreatedByRole())) {
+                        isCoordinatorQuestion = true;
+                    }
+                }
+            }
+
+            if (isCoordinatorQuestion) {
+                throw new ApiException(HttpStatus.FORBIDDEN,
+                        "Access denied: As an assigned Professor, you cannot edit or delete questions provided by the Course Coordinator. You can only edit or delete questions you added.");
             }
         }
     }
@@ -318,37 +365,38 @@ public class ExamAdminService {
 
     public List<Exam> listExamsForUser(String staffEmail) {
         if (staffEmail != null && !staffEmail.isBlank()) {
-            Admin admin = adminRepository.findByEmail(staffEmail.toLowerCase()).orElse(null);
-            if (admin != null) {
-                String role = admin.getRole();
-                if ("EXAMINER".equalsIgnoreCase(role) || "FACULTY".equalsIgnoreCase(role) || "PROFESSOR".equalsIgnoreCase(role)) {
-                    Professor prof = professorRepository.findByEmailIgnoreCase(admin.getEmail()).orElse(null);
-                    Long profEntityId = prof != null ? prof.getId() : null;
-                    String email = admin.getEmail().toLowerCase();
-                    Long adminId = admin.getId();
+            String email = staffEmail.trim().toLowerCase();
+            Admin admin = adminRepository.findByEmail(email).orElse(null);
+            Professor prof = professorRepository.findByEmailIgnoreCase(email).orElse(null);
 
+            boolean isProfessorRole = (admin != null && ("EXAMINER".equalsIgnoreCase(admin.getRole()) || "FACULTY".equalsIgnoreCase(admin.getRole()) || "PROFESSOR".equalsIgnoreCase(admin.getRole())))
+                    || (prof != null);
+
+            if (isProfessorRole) {
+                Long profEntityId = prof != null ? prof.getId() : null;
+                Long adminId = admin != null ? admin.getId() : null;
+
+                return examRepository.findAll().stream()
+                        .filter(e -> (adminId != null && e.getCreatedBy() != null && e.getCreatedBy().equals(adminId))
+                                || (e.getAssignedProfessorEmail() != null && e.getAssignedProfessorEmail().equalsIgnoreCase(email))
+                                || (e.getAssignedProfessorId() != null && ((adminId != null && e.getAssignedProfessorId().equals(adminId)) || (profEntityId != null && e.getAssignedProfessorId().equals(profEntityId)))))
+                        .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                        .toList();
+            } else if (admin != null && "COURSE_COORDINATOR".equalsIgnoreCase(admin.getRole())) {
+                String dept = admin.getDepartment();
+                if (dept != null && !dept.isBlank()) {
+                    List<Long> deptStaffIds = adminRepository.findAll().stream()
+                            .filter(u -> dept.equalsIgnoreCase(u.getDepartment()))
+                            .map(Admin::getId)
+                            .toList();
                     return examRepository.findAll().stream()
-                            .filter(e -> (e.getCreatedBy() != null && e.getCreatedBy().equals(adminId))
-                                    || (e.getAssignedProfessorEmail() != null && e.getAssignedProfessorEmail().equalsIgnoreCase(email))
-                                    || (e.getAssignedProfessorId() != null && (e.getAssignedProfessorId().equals(adminId) || (profEntityId != null && e.getAssignedProfessorId().equals(profEntityId)))))
+                            .filter(e -> (e.getCreatedBy() != null && (deptStaffIds.contains(e.getCreatedBy()) || e.getCreatedBy().equals(admin.getId())))
+                                    || (e.getSubject() != null && e.getSubject().equalsIgnoreCase(dept))
+                                    || (e.getAssignedProfessorEmail() != null && isProfessorInDept(e.getAssignedProfessorEmail(), dept)))
                             .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
                             .toList();
-                } else if ("COURSE_COORDINATOR".equalsIgnoreCase(role)) {
-                    String dept = admin.getDepartment();
-                    if (dept != null && !dept.isBlank()) {
-                        List<Long> deptStaffIds = adminRepository.findAll().stream()
-                                .filter(u -> dept.equalsIgnoreCase(u.getDepartment()))
-                                .map(Admin::getId)
-                                .toList();
-                        return examRepository.findAll().stream()
-                                .filter(e -> (e.getCreatedBy() != null && (deptStaffIds.contains(e.getCreatedBy()) || e.getCreatedBy().equals(admin.getId())))
-                                        || (e.getSubject() != null && e.getSubject().equalsIgnoreCase(dept))
-                                        || (e.getAssignedProfessorEmail() != null && isProfessorInDept(e.getAssignedProfessorEmail(), dept)))
-                                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
-                                .toList();
-                    }
-                    return examRepository.findByCreatedByOrderByCreatedAtDesc(admin.getId());
                 }
+                return examRepository.findByCreatedByOrderByCreatedAtDesc(admin.getId());
             }
         }
         return examRepository.findAll();
@@ -377,6 +425,7 @@ public class ExamAdminService {
     public Exam publish(Long examId, String adminEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
+        checkClassSettingModificationAllowed(exam, adminEmail);
         long questionCount = questionRepository.countByExamId(examId);
         if (questionCount < exam.getNumQuestions()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
@@ -398,9 +447,15 @@ public class ExamAdminService {
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
         long currentCount = questionRepository.countByExamId(examId);
-        if (currentCount >= exam.getNumQuestions()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST,
-                    "Exam question limit reached (" + exam.getNumQuestions() + " max questions). Increase the exam question limit or delete an existing question.");
+        int maxQ = exam.getNumQuestions() != null ? exam.getNumQuestions() : 0;
+        if (currentCount >= maxQ) {
+            if (Boolean.TRUE.equals(exam.getIsClass())) {
+                exam.setNumQuestions((int) currentCount + 1);
+                examRepository.save(exam);
+            } else {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        "Exam question limit reached (" + maxQ + " max questions). Increase the exam question limit or delete an existing question.");
+            }
         }
         int order = (int) currentCount;
         String qType = req.questionType() != null && !req.questionType().isBlank() ? req.questionType().toUpperCase() : "MCQ";
@@ -412,6 +467,37 @@ public class ExamAdminService {
         } else {
             if (req.optionA() == null || req.optionB() == null || req.optionC() == null || req.optionD() == null || req.correctAnswer() == null) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "MCQ questions require 4 options (A, B, C, D) and a valid correct answer (0-3).");
+            }
+        }
+
+        Long creatorId = null;
+        String creatorRole = "PROFESSOR";
+        boolean coordinatorFlag = false;
+
+        if (adminEmail != null && !adminEmail.isBlank()) {
+            String email = adminEmail.trim().toLowerCase();
+            Admin callerAdmin = adminRepository.findByEmail(email).orElse(null);
+            Professor callerProf = professorRepository.findByEmailIgnoreCase(email).orElse(null);
+            if (callerAdmin != null) {
+                creatorId = callerAdmin.getId();
+                creatorRole = callerAdmin.getRole() != null ? callerAdmin.getRole().toUpperCase() : "ADMIN";
+                if ("COURSE_COORDINATOR".equalsIgnoreCase(callerAdmin.getRole())) {
+                    coordinatorFlag = true;
+                }
+            } else if (callerProf != null) {
+                creatorId = callerProf.getId();
+                creatorRole = "PROFESSOR";
+                coordinatorFlag = false;
+            }
+        }
+
+        if (!coordinatorFlag && !isProfessorUser(adminEmail) && exam.getCreatedBy() != null) {
+            Admin examCreator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
+            if (examCreator != null && "COURSE_COORDINATOR".equalsIgnoreCase(examCreator.getRole())) {
+                coordinatorFlag = true;
+                if (creatorRole == null || "PROFESSOR".equals(creatorRole)) {
+                    creatorRole = "COURSE_COORDINATOR";
+                }
             }
         }
 
@@ -430,6 +516,9 @@ public class ExamAdminService {
                 .constraints(req.constraints())
                 .marks(req.marks())
                 .displayOrder(order)
+                .createdBy(creatorId)
+                .createdByRole(creatorRole)
+                .createdByCoordinator(coordinatorFlag)
                 .build();
 
         if ("CODING".equals(qType) && req.testCases() != null) {
@@ -595,6 +684,7 @@ public class ExamAdminService {
         }
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
+        checkClassSettingModificationAllowed(exam, adminEmail);
         exam.setNumQuestions(numQuestions);
         Exam saved = examRepository.save(exam);
         auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "EXAM_LIMIT_UPDATED",
@@ -673,6 +763,7 @@ public class ExamAdminService {
     public Exam setOpenToAll(Long examId, boolean openToAll, String adminEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
+        checkClassSettingModificationAllowed(exam, adminEmail);
         exam.setOpenToAll(openToAll);
         Exam saved = examRepository.save(exam);
         auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "EXAM_OPEN_TO_ALL_UPDATED",
@@ -689,6 +780,7 @@ public class ExamAdminService {
     public void deleteExam(Long examId, String adminEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
+        checkClassSettingModificationAllowed(exam, adminEmail);
 
         // Safely cascade delete all related entities in proper foreign key order
         entityManager.createNativeQuery("DELETE FROM warnings WHERE attempt_id IN (SELECT id FROM exam_attempts WHERE exam_id = :examId)")
@@ -752,6 +844,7 @@ public class ExamAdminService {
         verifyExamAccess(exam, adminEmail);
         ExamQuestion q = questionRepository.findByIdAndExamId(questionId, examId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Question not found."));
+        checkQuestionModificationAllowed(exam, q, adminEmail);
 
         String qType = req.questionType() != null && !req.questionType().isBlank() ? req.questionType().toUpperCase() : q.getQuestionType();
         q.setQuestionType(qType);
@@ -803,6 +896,7 @@ public class ExamAdminService {
         verifyExamAccess(exam, adminEmail);
         ExamQuestion q = questionRepository.findByIdAndExamId(questionId, examId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Question not found."));
+        checkQuestionModificationAllowed(exam, q, adminEmail);
 
         // If answers exist referencing this question, delete them first
         entityManager.createNativeQuery("DELETE FROM exam_answers WHERE question_id = :qid")
@@ -1048,6 +1142,7 @@ public class ExamAdminService {
     public Exam terminateExamImmediately(Long examId, String adminEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
+        checkClassSettingModificationAllowed(exam, adminEmail);
 
         Instant now = Instant.now();
         exam.setStatus("CLOSED");
@@ -1077,6 +1172,7 @@ public class ExamAdminService {
     public Exam adjustExamTiming(Long examId, Integer addMinutes, Instant newEndAt, Integer newDurationMinutes, String adminEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, adminEmail);
+        checkClassSettingModificationAllowed(exam, adminEmail);
 
         if (addMinutes != null && addMinutes != 0) {
             int newDur = Math.max(1, exam.getDurationMinutes() + addMinutes);

@@ -111,9 +111,9 @@ async function request<T>(
     ...(headers as Record<string, string>),
   };
 
-  if (auth) {
-    const token = getToken(auth);
-    if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
+  const token = getToken(auth || "user");
+  if (token) {
+    finalHeaders["Authorization"] = `Bearer ${token}`;
   }
 
   let res: Response;

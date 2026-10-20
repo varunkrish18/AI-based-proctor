@@ -77,6 +77,16 @@ public class ExamQuestion {
     @Builder.Default
     private Integer displayOrder = 0;
 
+    @Column(name = "created_by")
+    private Long createdBy;
+
+    @Column(name = "created_by_role", length = 50)
+    private String createdByRole;
+
+    @Column(name = "created_by_coordinator", nullable = false)
+    @Builder.Default
+    private Boolean createdByCoordinator = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

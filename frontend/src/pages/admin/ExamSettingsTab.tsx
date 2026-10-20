@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, isCoordinatorRole } from "../../api/client";
+import { api, isCoordinatorRole, isAdminRole } from "../../api/client";
 import type { Exam } from "../../types";
 
 function toLocalInputValue(iso?: string | null) {
@@ -18,6 +18,9 @@ interface ExamSettingsTabProps {
 
 export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }: ExamSettingsTabProps) {
   const isCoordinator = isCoordinatorRole();
+  const isAdmin = isAdminRole();
+  const isProfessorUser = !isCoordinator && !isAdmin;
+  const isClassSettingsLocked = Boolean(exam.isClass) && isProfessorUser;
   const isClassPolicy = isCoordinator || Boolean(exam.isClass);
   const [form, setForm] = useState<{
     name: string;
@@ -174,6 +177,18 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
         </div>
       )}
 
+      {isClassSettingsLocked && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs text-amber-950 flex items-start gap-3 shadow-xs">
+          <span className="text-xl">🔒</span>
+          <div className="space-y-1">
+            <p className="font-bold text-amber-900">Class Settings Locked by Course Coordinator</p>
+            <p className="text-amber-850 leading-relaxed">
+              As an assigned Professor, you cannot modify class settings (dates, duration, passing marks, or proctoring parameters). You can add new questions and assign students in their respective tabs.
+            </p>
+          </div>
+        </div>
+      )}
+
       {saveSuccess && (
         <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
           <span className="flex items-center gap-2 font-medium">
@@ -197,6 +212,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        <fieldset disabled={isClassSettingsLocked} className="space-y-6 disabled:opacity-80">
         {/* SECTION 1: General Details */}
         <div className="space-y-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 pb-2 border-b border-slate-100 flex items-center gap-2">
@@ -501,32 +517,52 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
             </div>
           )}
         </div>
+        </fieldset>
 
         {/* Action Buttons */}
         <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={saving}
-            className="px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
-          >
-            Discard Unsaved Changes
-          </button>
+          {isClassSettingsLocked ? (
+            <div className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+              <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                <span>🔒</span> Read-Only Mode: Class settings can only be altered by the Course Coordinator
+              </span>
+              {onSwitchToQuestions && (
+                <button
+                  type="button"
+                  onClick={onSwitchToQuestions}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Manage Questions &rarr;
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={saving}
+                className="px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Discard Unsaved Changes
+              </button>
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
-          >
-            {saving ? (
-              <>
-                <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Saving Changes…
-              </>
-            ) : (
-              "Save Exam Changes ✓"
-            )}
-          </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                {saving ? (
+                  <>
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Saving Changes…
+                  </>
+                ) : (
+                  "Save Exam Changes ✓"
+                )}
+              </button>
+            </>
+          )}
         </div>
       </form>
     </div>
