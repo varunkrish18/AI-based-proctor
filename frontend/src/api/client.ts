@@ -506,7 +506,13 @@ export function isProfessorRole(): boolean {
   return getAdminUserRole() === "PROFESSOR";
 }
 
+export function isProfessorUserRole(): boolean {
+  const role = getAdminUserRole();
+  return role === "PROFESSOR" || role === "FACULTY" || role === "EXAMINER";
+}
+
 export function isStudentRole(): boolean {
   return getAdminUserRole() === "STUDENT";
 }
+
 

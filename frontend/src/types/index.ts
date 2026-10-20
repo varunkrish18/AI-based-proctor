@@ -111,6 +111,8 @@ export interface StartExamResponse {
   screenRequired?: boolean;
   locationRequired?: boolean;
   audioInputLevel?: number;
+  savedAnswers?: Record<number, number>;
+  savedCodingAnswers?: Record<number, { code: string; language: string }>;
 }
 
 export interface AttemptResult {

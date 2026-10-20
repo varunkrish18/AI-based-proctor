@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, isCoordinatorRole, isAdminRole } from "../../api/client";
+import { api, isCoordinatorRole, isAdminRole, isProfessorUserRole } from "../../api/client";
 import type { Exam } from "../../types";
 
 function toLocalInputValue(iso?: string | null) {
@@ -19,7 +19,32 @@ interface ExamSettingsTabProps {
 export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }: ExamSettingsTabProps) {
   const isCoordinator = isCoordinatorRole();
   const isAdmin = isAdminRole();
-  const isProfessorUser = !isCoordinator && !isAdmin;
+  const isProfessorUser = isProfessorUserRole() || (!isCoordinator && !isAdmin);
+
+  if (isProfessorUser) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs text-center max-w-2xl mx-auto my-8">
+        <div className="w-16 h-16 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-center mx-auto mb-4 text-3xl">
+          🔒
+        </div>
+        <h2 className="text-xl font-bold text-slate-900 mb-2">Exam Settings &amp; Timing Locked</h2>
+        <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+          Exam settings, question limits, timing, and security parameters are strictly managed by your Course Coordinator.
+          As an assigned Professor, you can add questions and assign students in their respective tabs.
+        </p>
+        {onSwitchToQuestions && (
+          <button
+            type="button"
+            onClick={onSwitchToQuestions}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-sm cursor-pointer"
+          >
+            ← Go to Questions Tab
+          </button>
+        )}
+      </div>
+    );
+  }
+
   const isClassSettingsLocked = Boolean(exam.isClass) && isProfessorUser;
   const isClassPolicy = isCoordinator || Boolean(exam.isClass);
   const [form, setForm] = useState<{

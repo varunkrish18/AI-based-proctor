@@ -64,6 +64,11 @@ public class AdminExamController {
         return examAdminService.assignProfessor(examId, request, auth != null ? auth.getName() : "admin");
     }
 
+    @PostMapping("/{examId}/assign-all-professors")
+    public List<Exam> assignAllProfessors(@PathVariable Long examId, Authentication auth) {
+        return examAdminService.assignAllProfessors(examId, auth != null ? auth.getName() : "admin");
+    }
+
     @PostMapping("/{examId}/publish")
     public Exam publish(@PathVariable Long examId, Authentication auth) {
         return examAdminService.publish(examId, auth != null ? auth.getName() : "admin");
@@ -229,5 +234,31 @@ public class AdminExamController {
 
         return examAdminService.adjustExamTiming(
                 examId, addMinutes, newEndAt, newDurationMinutes, auth != null ? auth.getName() : "admin");
+    }
+
+    /**
+     * Report generation for Course Coordinator:
+     * Table of all students, assigned professor, department, total coordinator questions,
+     * completed questions, and incomplete questions.
+     */
+    @GetMapping("/{examId}/coordinator-student-report")
+    public CoordinatorStudentReportResponse getCoordinatorStudentReport(
+            @PathVariable Long examId,
+            Authentication auth) {
+        return examAdminService.getCoordinatorStudentReport(
+                examId, auth != null ? auth.getName() : "admin");
+    }
+
+    /**
+     * Report generation for Professor:
+     * Table of all students assigned to this professor's exam/section.
+     * Total number of questions = Coordinator-assigned questions + questions added by the professor himself.
+     */
+    @GetMapping("/{examId}/professor-student-report")
+    public ProfessorStudentReportResponse getProfessorStudentReport(
+            @PathVariable Long examId,
+            Authentication auth) {
+        return examAdminService.getProfessorStudentReport(
+                examId, auth != null ? auth.getName() : "admin");
     }
 }

@@ -164,6 +164,7 @@ export default function CourseCoordinatorDashboard() {
 
     setClassSubmitting(true);
     try {
+      const isAssignAll = classForm.assignedProfessorEmail === "ALL_PROFESSORS";
       const payload = {
         name: classForm.name,
         description: classForm.description,
@@ -172,9 +173,9 @@ export default function CourseCoordinatorDashboard() {
         durationMinutes: null, // Untimed class: No fixed time duration like 60 min
         maxAttempts: null, // Infinite attempts
         isClass: true,
-        assignedProfessorId: classForm.assignedProfessorId ? Math.abs(Number(classForm.assignedProfessorId)) : undefined,
-        assignedProfessorEmail: classForm.assignedProfessorEmail || undefined,
-        assignedProfessorName: classForm.assignedProfessorName || undefined,
+        assignedProfessorId: isAssignAll ? undefined : (classForm.assignedProfessorId ? Math.abs(Number(classForm.assignedProfessorId)) : undefined),
+        assignedProfessorEmail: isAssignAll ? undefined : (classForm.assignedProfessorEmail || undefined),
+        assignedProfessorName: isAssignAll ? undefined : (classForm.assignedProfessorName || undefined),
         randomizeQuestions: classForm.randomizeQuestions,
         randomizeOptions: classForm.randomizeOptions,
         webcamRequired: classForm.webcamRequired,
@@ -187,10 +188,22 @@ export default function CourseCoordinatorDashboard() {
       };
 
       const newExam = await api.post<Exam>("/api/admin/exams", payload, "admin");
-      setClasses((prev) => [newExam, ...prev]);
-      setSuccessMsg(
-        `Class '${newExam.name}' created with infinite attempts and assigned to ${newExam.assignedProfessorName || classForm.assignedProfessorName || "selected professor"}!`
-      );
+      if (isAssignAll) {
+        await api.post<{ assignedCount: number; message: string }>(
+          `/api/admin/exams/${newExam.id}/assign-all-professors`,
+          undefined,
+          "admin"
+        );
+        await loadData();
+        setSuccessMsg(
+          `Class '${newExam.name}' created and assigned to ALL department faculty (${faculties.length} professors)!`
+        );
+      } else {
+        setClasses((prev) => [newExam, ...prev]);
+        setSuccessMsg(
+          `Class '${newExam.name}' created with infinite attempts and assigned to ${newExam.assignedProfessorName || classForm.assignedProfessorName || "selected professor"}!`
+        );
+      }
       setActiveTab("classes");
       setTimeout(() => setSuccessMsg(null), 6000);
     } catch (err) {
@@ -200,9 +213,39 @@ export default function CourseCoordinatorDashboard() {
     }
   }
 
+  async function handleAssignAllProfessors(examToAssign: Exam) {
+    if (
+      !window.confirm(
+        `Assign class '${examToAssign.name}' to ALL professors in ${departmentName} (${faculties.length} professors)?\n\nEach professor will receive an independent copy with base coordinator questions and can manage questions separately.`
+      )
+    ) {
+      return;
+    }
+    setReassignSubmitting(true);
+    try {
+      const res = await api.post<{ assignedCount: number; message: string }>(
+        `/api/admin/exams/${examToAssign.id}/assign-all-professors`,
+        undefined,
+        "admin"
+      );
+      setSuccessMsg(`✓ Successfully assigned class to all ${res.assignedCount || faculties.length} professors in ${departmentName}!`);
+      setReassigningExam(null);
+      await loadData();
+      setTimeout(() => setSuccessMsg(null), 6000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to assign all professors.");
+    } finally {
+      setReassignSubmitting(false);
+    }
+  }
+
   async function handleReassignProfessor(e: React.FormEvent) {
     e.preventDefault();
     if (!reassigningExam || !reassignProfEmail) return;
+    if (reassignProfEmail === "ALL_PROFESSORS") {
+      await handleAssignAllProfessors(reassigningExam);
+      return;
+    }
     setReassignSubmitting(true);
     try {
       const selectedProf = faculties.find((f) => f.email === reassignProfEmail);
@@ -621,15 +664,24 @@ export default function CourseCoordinatorDashboard() {
                               </span>
                             )}
                           </div>
-                          <button
-                            onClick={() => {
-                              setReassigningExam(c);
-                              setReassignProfEmail(c.assignedProfessorEmail || "");
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-[10px] font-bold shrink-0 transition cursor-pointer shadow-xs"
-                          >
-                            Change
-                          </button>
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            <button
+                              onClick={() => {
+                                setReassigningExam(c);
+                                setReassignProfEmail(c.assignedProfessorEmail || "");
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-[10px] font-bold transition cursor-pointer shadow-xs"
+                            >
+                              Change
+                            </button>
+                            <button
+                              onClick={() => handleAssignAllProfessors(c)}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-[10px] font-bold transition cursor-pointer shadow-xs"
+                              title="Assign this class to all department professors at once"
+                            >
+                              👥 All Profs
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between gap-2">
@@ -641,15 +693,24 @@ export default function CourseCoordinatorDashboard() {
                               Assign professor to lead this class
                             </span>
                           </div>
-                          <button
-                            onClick={() => {
-                              setReassigningExam(c);
-                              setReassignProfEmail("");
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold shrink-0 transition cursor-pointer shadow-xs"
-                          >
-                            + Assign Prof
-                          </button>
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            <button
+                              onClick={() => {
+                                setReassigningExam(c);
+                                setReassignProfEmail("");
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold transition cursor-pointer shadow-xs"
+                            >
+                              + Assign Prof
+                            </button>
+                            <button
+                              onClick={() => handleAssignAllProfessors(c)}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition cursor-pointer shadow-xs"
+                              title="Assign this class to all department professors at once"
+                            >
+                              👥 All Profs
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -743,12 +804,39 @@ export default function CourseCoordinatorDashboard() {
                       className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-800"
                     >
                       <option value="">-- Choose a Professor from {departmentName} --</option>
+                      {faculties.length > 0 && (
+                        <option value="ALL_PROFESSORS" className="font-bold text-indigo-700 bg-indigo-50">
+                          👥 Assign to ALL Department Faculty ({faculties.length} Professors at once)
+                        </option>
+                      )}
                       {faculties.map((f) => (
                         <option key={f.id} value={f.email}>
                           {f.fullName} ({f.email}) {f.role ? `• ${f.role}` : ""}
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                        <span>👥</span> Multi-Professor Batch Assignment
+                      </span>
+                      <span className="text-[10px] bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full">
+                        {faculties.length} Faculty
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-indigo-800 leading-relaxed">
+                      Assign this class to all faculty at once. Each professor gets their own independent section with base coordinator questions and can manage questions separately.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={reassignSubmitting || faculties.length === 0}
+                      onClick={() => handleAssignAllProfessors(reassigningExam)}
+                      className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <span>👥</span> Assign All Professors At Once ({faculties.length})
+                    </button>
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -885,7 +973,17 @@ export default function CourseCoordinatorDashboard() {
                     required
                     value={classForm.assignedProfessorEmail}
                     onChange={(e) => {
-                      const selectedProf = faculties.find((f) => f.email === e.target.value);
+                      const val = e.target.value;
+                      if (val === "ALL_PROFESSORS") {
+                        setClassForm((prev) => ({
+                          ...prev,
+                          assignedProfessorId: "",
+                          assignedProfessorEmail: "ALL_PROFESSORS",
+                          assignedProfessorName: `All Department Faculty (${faculties.length} Professors)`,
+                        }));
+                        return;
+                      }
+                      const selectedProf = faculties.find((f) => f.email === val);
                       if (selectedProf) {
                         setClassForm((prev) => ({
                           ...prev,
@@ -905,6 +1003,11 @@ export default function CourseCoordinatorDashboard() {
                     className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-800"
                   >
                     <option value="">-- Choose Professor / Faculty Member from {departmentName} --</option>
+                    {faculties.length > 0 && (
+                      <option value="ALL_PROFESSORS" className="font-bold text-indigo-700 bg-indigo-50">
+                        👥 Assign to ALL Department Faculty ({faculties.length} Professors at once)
+                      </option>
+                    )}
                     {faculties.map((f) => (
                       <option key={f.id} value={f.email}>
                         {f.fullName} ({f.email}) {f.role ? `• ${f.role}` : ""}

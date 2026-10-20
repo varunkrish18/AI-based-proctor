@@ -190,7 +190,8 @@ public class StudentExamService {
                     .max()
                     .orElse(0) + 1;
 
-            if (exam.getMaxAttempts() != null && nextAttemptNumber > exam.getMaxAttempts()) {
+            boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
+            if (!isClass && exam.getMaxAttempts() != null && nextAttemptNumber > exam.getMaxAttempts()) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Maximum attempts reached for this exam.");
             }
 
@@ -212,8 +213,9 @@ public class StudentExamService {
                 // Fall back to fresh random selection from the full bank
                 List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
                 List<ExamQuestion> selected = new ArrayList<>(bank);
-                // Always shuffle the question bank so whoever enters the exam gets a random question set
-                Collections.shuffle(selected);
+                if (Boolean.TRUE.equals(exam.getRandomizeQuestions())) {
+                    Collections.shuffle(selected);
+                }
                 int take = (exam.getNumQuestions() != null && exam.getNumQuestions() > 0)
                         ? Math.min(exam.getNumQuestions(), selected.size())
                         : selected.size();
@@ -255,6 +257,24 @@ public class StudentExamService {
             questions.add(toStudentQuestion(q, randomizeOptions));
         }
 
+        // Load any previously saved answers for this attempt (so completed questions can be reviewed/redone)
+        Map<Long, Integer> savedAnswers = new HashMap<>();
+        Map<Long, StartExamResponse.SavedCodeAnswer> savedCodingAnswers = new HashMap<>();
+        List<ExamAnswer> existingAnswers = answerRepository.findByAttemptId(attempt.getId());
+        if (existingAnswers != null) {
+            for (ExamAnswer ea : existingAnswers) {
+                if (ea.getQuestion() != null) {
+                    Long qid = ea.getQuestion().getId();
+                    if (ea.getSelectedOption() != null) {
+                        savedAnswers.put(qid, ea.getSelectedOption().intValue());
+                    }
+                    if (ea.getCodeSubmission() != null && !ea.getCodeSubmission().isBlank()) {
+                        savedCodingAnswers.put(qid, new StartExamResponse.SavedCodeAnswer(ea.getCodeSubmission(), ea.getCodeLanguage()));
+                    }
+                }
+            }
+        }
+
         // Open or resume proctoring session
         proctoringSessionService.openSession(attempt.getId());
 
@@ -267,7 +287,9 @@ public class StudentExamService {
                 exam.getMicrophoneRequired() == null || exam.getMicrophoneRequired(),
                 exam.getScreenRequired() == null || exam.getScreenRequired(),
                 Boolean.TRUE.equals(exam.getLocationRequired()),
-                exam.getAudioInputLevel()
+                exam.getAudioInputLevel(),
+                savedAnswers,
+                savedCodingAnswers
         );
     }
 
@@ -315,7 +337,17 @@ public class StudentExamService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Question not found."));
 
         ExamAnswer answer = answerRepository.findByAttemptIdAndQuestionId(attemptId, req.questionId())
-                .orElse(ExamAnswer.builder().attempt(attempt).question(question).build());
+                .orElse(null);
+
+        if (answer != null) {
+            // Once a question is completed by student, it cannot be attempted or modified again
+            if (answer.getSelectedOption() != null && req.selectedOption() != null && !answer.getSelectedOption().equals(req.selectedOption())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Question " + req.questionId() + " has already been completed and locked. It cannot be modified or attempted again.");
+            }
+        } else {
+            answer = ExamAnswer.builder().attempt(attempt).question(question).build();
+        }
+
         if (req.selectedOption() != null) {
             answer.setSelectedOption(req.selectedOption());
         }

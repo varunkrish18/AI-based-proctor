@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class ExamAdminService {
@@ -29,6 +30,8 @@ public class ExamAdminService {
     private final StudentQuestionAssignmentRepository sqaRepository;
     private final ExamAttemptRepository examAttemptRepository;
     private final ProfessorRepository professorRepository;
+    private final StudentRepository studentRepository;
+    private final ExamAnswerRepository answerRepository;
 
     public ExamAdminService(ExamRepository examRepository,
                             ExamQuestionRepository questionRepository,
@@ -39,7 +42,9 @@ public class ExamAdminService {
                             AiProxyService aiProxyService,
                             StudentQuestionAssignmentRepository sqaRepository,
                             ExamAttemptRepository examAttemptRepository,
-                            ProfessorRepository professorRepository) {
+                            ProfessorRepository professorRepository,
+                            StudentRepository studentRepository,
+                            ExamAnswerRepository answerRepository) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
@@ -50,6 +55,8 @@ public class ExamAdminService {
         this.sqaRepository = sqaRepository;
         this.examAttemptRepository = examAttemptRepository;
         this.professorRepository = professorRepository;
+        this.studentRepository = studentRepository;
+        this.answerRepository = answerRepository;
     }
 
     @Transactional
@@ -92,6 +99,8 @@ public class ExamAdminService {
 
         boolean isClassMode = Boolean.TRUE.equals(req.isClass()) || "COURSE_COORDINATOR".equalsIgnoreCase(admin.getRole());
 
+        Integer effectiveMaxAttempts = isClassMode ? null : req.maxAttempts();
+
         Exam exam = Exam.builder()
                 .name(req.name())
                 .description(req.description())
@@ -104,7 +113,7 @@ public class ExamAdminService {
                 .negativeMarking(req.negativeMarking())
                 .randomizeQuestions(req.randomizeQuestions() == null || req.randomizeQuestions())
                 .randomizeOptions(req.randomizeOptions() == null || req.randomizeOptions())
-                .maxAttempts(req.maxAttempts())
+                .maxAttempts(effectiveMaxAttempts)
                 .webcamRequired(req.webcamRequired() == null || req.webcamRequired())
                 .microphoneRequired(req.microphoneRequired() == null || req.microphoneRequired())
                 .screenRequired(req.screenRequired() == null || req.screenRequired())
@@ -167,7 +176,9 @@ public class ExamAdminService {
         if (req.randomizeOptions() != null) {
             exam.setRandomizeOptions(req.randomizeOptions());
         }
-        if (req.maxAttempts() != null) {
+        if (Boolean.TRUE.equals(exam.getIsClass()) || Boolean.TRUE.equals(req.isClass())) {
+            exam.setMaxAttempts(null);
+        } else if (req.maxAttempts() != null) {
             exam.setMaxAttempts(req.maxAttempts());
         }
         if (req.webcamRequired() != null) {
@@ -325,11 +336,184 @@ public class ExamAdminService {
                 || (prof != null);
     }
 
+    public record ProfessorSummary(Long id, String email, String fullName, String department) {}
+
+    public List<ProfessorSummary> findAllProfessorsInDepartment(String dept) {
+        Map<String, ProfessorSummary> profMap = new LinkedHashMap<>();
+
+        // 1. From professorRepository
+        List<Professor> pList = professorRepository.findAll();
+        for (Professor p : pList) {
+            if (dept == null || dept.isBlank() || "ALL".equalsIgnoreCase(dept)
+                    || (p.getDepartment() != null && dept.equalsIgnoreCase(p.getDepartment()))) {
+                if (p.getEmail() != null && !p.getEmail().isBlank()) {
+                    profMap.put(p.getEmail().toLowerCase().trim(),
+                            new ProfessorSummary(p.getId(), p.getEmail().trim(), p.getFullName(), p.getDepartment()));
+                }
+            }
+        }
+
+        // 2. From adminRepository (users with role PROFESSOR, FACULTY, EXAMINER)
+        List<Admin> aList = adminRepository.findAll();
+        for (Admin a : aList) {
+            String role = a.getRole() != null ? a.getRole().toUpperCase() : "";
+            if (List.of("PROFESSOR", "FACULTY", "EXAMINER").contains(role)) {
+                if (dept == null || dept.isBlank() || "ALL".equalsIgnoreCase(dept)
+                        || (a.getDepartment() != null && dept.equalsIgnoreCase(a.getDepartment()))) {
+                    if (a.getEmail() != null && !a.getEmail().isBlank()) {
+                        String key = a.getEmail().toLowerCase().trim();
+                        if (!profMap.containsKey(key)) {
+                            profMap.put(key, new ProfessorSummary(a.getId(), a.getEmail().trim(), a.getFullName(), a.getDepartment()));
+                        }
+                    }
+                }
+            }
+        }
+
+        return new ArrayList<>(profMap.values());
+    }
+
+    @Transactional
+    public List<Exam> assignAllProfessors(Long examId, String adminEmail) {
+        Exam baseExam = getById(examId);
+        verifyExamAccess(baseExam, adminEmail);
+        checkClassSettingModificationAllowed(baseExam, adminEmail);
+
+        String dept = null;
+        if (adminEmail != null && !adminEmail.isBlank()) {
+            Admin admin = adminRepository.findByEmail(adminEmail.trim().toLowerCase()).orElse(null);
+            if (admin != null) {
+                dept = admin.getDepartment();
+            }
+        }
+        if (dept == null || dept.isBlank()) {
+            dept = baseExam.getSubject();
+        }
+
+        List<ProfessorSummary> profs = findAllProfessorsInDepartment(dept);
+        if (profs.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "No professors or faculty members found in department: " + (dept != null ? dept : "any"));
+        }
+
+        List<Exam> resultList = new ArrayList<>();
+        List<ExamQuestion> baseQuestions = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+
+        // Check if baseExam is already assigned to a professor
+        boolean baseAssigned = baseExam.getAssignedProfessorEmail() != null && !baseExam.getAssignedProfessorEmail().isBlank();
+        int startIndex = 0;
+
+        if (!baseAssigned) {
+            ProfessorSummary firstProf = profs.get(0);
+            baseExam.setAssignedProfessorId(firstProf.id());
+            baseExam.setAssignedProfessorEmail(firstProf.email());
+            baseExam.setAssignedProfessorName(firstProf.fullName());
+            baseExam.setIsClass(true);
+            baseExam.setMaxAttempts(null);
+            baseExam.setUpdatedAt(Instant.now());
+            Exam savedBase = examRepository.save(baseExam);
+            resultList.add(savedBase);
+            startIndex = 1;
+        } else {
+            resultList.add(baseExam);
+        }
+
+        // For all other professors, ensure each has an independent section with copies of coordinator questions
+        for (int i = startIndex; i < profs.size(); i++) {
+            ProfessorSummary prof = profs.get(i);
+            if (prof.email().equalsIgnoreCase(baseExam.getAssignedProfessorEmail())) {
+                continue;
+            }
+
+            // Check if there is already an exam for this professor cloned from this base class
+            Optional<Exam> existingExam = examRepository.findAll().stream()
+                    .filter(e -> Boolean.TRUE.equals(e.getIsClass())
+                            && prof.email().equalsIgnoreCase(e.getAssignedProfessorEmail())
+                            && (e.getName().equals(baseExam.getName()) || e.getName().startsWith(baseExam.getName() + " - ")))
+                    .findFirst();
+
+            if (existingExam.isPresent()) {
+                resultList.add(existingExam.get());
+                continue;
+            }
+
+            Exam clonedExam = Exam.builder()
+                    .name(baseExam.getName() + " - " + prof.fullName())
+                    .description(baseExam.getDescription())
+                    .subject(baseExam.getSubject())
+                    .durationMinutes(baseExam.getDurationMinutes())
+                    .startAt(baseExam.getStartAt())
+                    .endAt(baseExam.getEndAt())
+                    .numQuestions(baseExam.getNumQuestions())
+                    .passingMarks(baseExam.getPassingMarks())
+                    .negativeMarking(baseExam.getNegativeMarking())
+                    .randomizeQuestions(baseExam.getRandomizeQuestions())
+                    .randomizeOptions(baseExam.getRandomizeOptions())
+                    .maxAttempts(Boolean.TRUE.equals(baseExam.getIsClass()) ? null : baseExam.getMaxAttempts())
+                    .webcamRequired(baseExam.getWebcamRequired())
+                    .microphoneRequired(baseExam.getMicrophoneRequired())
+                    .screenRequired(baseExam.getScreenRequired())
+                    .locationRequired(baseExam.getLocationRequired())
+                    .proctoringConfig(baseExam.getProctoringConfig())
+                    .status(baseExam.getStatus())
+                    .isClass(true)
+                    .createdBy(baseExam.getCreatedBy())
+                    .assignedProfessorId(prof.id())
+                    .assignedProfessorEmail(prof.email())
+                    .assignedProfessorName(prof.fullName())
+                    .build();
+
+            Exam savedCloned = examRepository.save(clonedExam);
+
+            // Clone base coordinator questions so prof starts with coordinator's questions
+            for (ExamQuestion bq : baseQuestions) {
+                ExamQuestion cq = ExamQuestion.builder()
+                        .exam(savedCloned)
+                        .questionType(bq.getQuestionType())
+                        .problemTitle(bq.getProblemTitle())
+                        .questionText(bq.getQuestionText())
+                        .optionA(bq.getOptionA())
+                        .optionB(bq.getOptionB())
+                        .optionC(bq.getOptionC())
+                        .optionD(bq.getOptionD())
+                        .correctAnswer(bq.getCorrectAnswer())
+                        .codeTemplate(bq.getCodeTemplate())
+                        .allowedLanguages(bq.getAllowedLanguages())
+                        .constraints(bq.getConstraints())
+                        .marks(bq.getMarks())
+                        .displayOrder(bq.getDisplayOrder())
+                        .createdBy(bq.getCreatedBy())
+                        .createdByRole("COURSE_COORDINATOR")
+                        .createdByCoordinator(true)
+                        .build();
+
+                if ("CODING".equals(bq.getQuestionType()) && bq.getTestCases() != null) {
+                    for (ExamQuestionTestCase btc : bq.getTestCases()) {
+                        ExamQuestionTestCase ctc = ExamQuestionTestCase.builder()
+                                .question(cq)
+                                .input(btc.getInput())
+                                .expectedOutput(btc.getExpectedOutput())
+                                .isHidden(btc.getIsHidden())
+                                .explanation(btc.getExplanation())
+                                .displayOrder(btc.getDisplayOrder())
+                                .build();
+                        cq.getTestCases().add(ctc);
+                    }
+                }
+                questionRepository.save(cq);
+            }
+            resultList.add(savedCloned);
+        }
+
+        auditLogService.logAdmin(adminEmail, "ALL_PROFESSORS_ASSIGNED",
+                "Assigned all " + profs.size() + " professors in department '" + dept + "' to class '" + baseExam.getName() + "'");
+        return resultList;
+    }
+
     public void checkClassSettingModificationAllowed(Exam exam, String staffEmail) {
         if (exam == null || staffEmail == null || staffEmail.isBlank()) return;
-        if (Boolean.TRUE.equals(exam.getIsClass()) && isProfessorUser(staffEmail)) {
+        if (isProfessorUser(staffEmail)) {
             throw new ApiException(HttpStatus.FORBIDDEN,
-                    "Access denied: Class settings are configured and locked by the Course Coordinator. Assigned professors cannot modify class settings.");
+                    "Access denied: Exam configuration, settings, question limits, and schedule timing are completely locked for professors. Modifications can only be performed by the Course Coordinator or Administrator.");
         }
     }
 
@@ -1198,6 +1382,319 @@ public class ExamAdminService {
         );
 
         return exam;
+    }
+
+    public CoordinatorStudentReportResponse getCoordinatorStudentReport(Long examId, String staffEmail) {
+        Exam baseExam = getById(examId);
+        verifyExamAccess(baseExam, staffEmail);
+
+        // 1. Identify all coordinator-assigned questions in baseExam
+        // Coordinator questions have createdByCoordinator == true or createdByRole == "COURSE_COORDINATOR"
+        List<ExamQuestion> baseQuestions = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+        List<ExamQuestion> coordinatorQuestions = baseQuestions.stream()
+                .filter(q -> Boolean.TRUE.equals(q.getCreatedByCoordinator()) || "COURSE_COORDINATOR".equalsIgnoreCase(q.getCreatedByRole()))
+                .toList();
+
+        // If no questions are explicitly tagged (e.g. legacy exams), all base exam questions not created by a prof are coordinator questions
+        if (coordinatorQuestions.isEmpty() && !baseQuestions.isEmpty()) {
+            coordinatorQuestions = baseQuestions.stream()
+                    .filter(q -> !"PROFESSOR".equalsIgnoreCase(q.getCreatedByRole()))
+                    .toList();
+            if (coordinatorQuestions.isEmpty()) {
+                coordinatorQuestions = baseQuestions;
+            }
+        }
+
+        final int totalCoordinatorQuestions = coordinatorQuestions.size();
+
+        // 2. Identify all related exams (base exam + cloned section exams for professors)
+        List<Exam> relatedExams = new ArrayList<>();
+        relatedExams.add(baseExam);
+
+        List<Exam> otherClasses = examRepository.findAll().stream()
+                .filter(e -> !e.getId().equals(baseExam.getId()) && Boolean.TRUE.equals(e.getIsClass())
+                        && (e.getName().equals(baseExam.getName()) || e.getName().startsWith(baseExam.getName() + " - ")))
+                .toList();
+        relatedExams.addAll(otherClasses);
+
+        // Map examId -> Set of question IDs that are coordinator questions
+        Map<Long, Set<Long>> examCoordinatorQids = new HashMap<>();
+        Set<String> coordQuestionSignatures = new HashSet<>();
+        for (ExamQuestion cq : coordinatorQuestions) {
+            String sig = (cq.getProblemTitle() != null ? cq.getProblemTitle().trim().toLowerCase() : "") + ":::"
+                    + (cq.getQuestionText() != null ? cq.getQuestionText().trim().toLowerCase() : "");
+            coordQuestionSignatures.add(sig);
+        }
+
+        for (Exam ex : relatedExams) {
+            List<ExamQuestion> exQuestions = questionRepository.findByExamIdOrderByDisplayOrderAsc(ex.getId());
+            Set<Long> qids = new HashSet<>();
+            for (ExamQuestion eq : exQuestions) {
+                // Must be coordinator question: NOT created by professor of his wish!
+                boolean isCoordinator = Boolean.TRUE.equals(eq.getCreatedByCoordinator())
+                        || "COURSE_COORDINATOR".equalsIgnoreCase(eq.getCreatedByRole());
+                if (!isCoordinator) {
+                    String sig = (eq.getProblemTitle() != null ? eq.getProblemTitle().trim().toLowerCase() : "") + ":::"
+                            + (eq.getQuestionText() != null ? eq.getQuestionText().trim().toLowerCase() : "");
+                    if (coordQuestionSignatures.contains(sig) && !"PROFESSOR".equalsIgnoreCase(eq.getCreatedByRole())) {
+                        isCoordinator = true;
+                    }
+                }
+                if (isCoordinator) {
+                    qids.add(eq.getId());
+                }
+            }
+            examCoordinatorQids.put(ex.getId(), qids);
+        }
+
+        // 3. Collect all students across all related exams
+        Map<String, CoordinatorStudentReportItem> reportMap = new LinkedHashMap<>();
+
+        Map<String, Student> studentCache = new HashMap<>();
+        for (Student s : studentRepository.findAll()) {
+            if (s.getEmail() != null) {
+                studentCache.put(s.getEmail().trim().toLowerCase(), s);
+            }
+        }
+
+        for (Exam ex : relatedExams) {
+            String profName = ex.getAssignedProfessorName();
+            if (profName == null || profName.isBlank()) {
+                profName = baseExam.getAssignedProfessorName();
+            }
+            if (profName == null || profName.isBlank()) {
+                profName = "Course Coordinator";
+            }
+
+            // A) Collect from assignments
+            List<ExamAssignment> assignments = assignmentRepository.findByExamIdOrderByCreatedAtDesc(ex.getId());
+            Set<String> studentEmails = new LinkedHashSet<>();
+            for (ExamAssignment a : assignments) {
+                if (a.getStudentEmail() != null && !a.getStudentEmail().isBlank()) {
+                    studentEmails.add(a.getStudentEmail().trim().toLowerCase());
+                }
+            }
+
+            // B) Collect from attempts
+            List<ExamAttempt> attempts = examAttemptRepository.findByExamId(ex.getId());
+            for (ExamAttempt at : attempts) {
+                if (at.getStudentEmail() != null && !at.getStudentEmail().isBlank()) {
+                    studentEmails.add(at.getStudentEmail().trim().toLowerCase());
+                }
+            }
+
+            Set<Long> coordQidsForThisExam = examCoordinatorQids.getOrDefault(ex.getId(), Collections.emptySet());
+
+            for (String email : studentEmails) {
+                Student s = studentCache.get(email);
+                if (s == null) {
+                    s = studentRepository.findByEmailIgnoreCase(email).orElse(null);
+                    if (s != null) studentCache.put(email, s);
+                }
+
+                String regNo = (s != null && s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank())
+                        ? s.getRegisterNumber().trim()
+                        : (email.contains("@") ? email.substring(0, email.indexOf("@")).toUpperCase() : email.toUpperCase());
+
+                String sName = (s != null && s.getFullName() != null && !s.getFullName().isBlank())
+                        ? s.getFullName().trim()
+                        : email;
+
+                String dept = (s != null && s.getDepartment() != null && !s.getDepartment().isBlank())
+                        ? s.getDepartment().trim()
+                        : (ex.getSubject() != null && !ex.getSubject().isBlank() ? ex.getSubject() : "Computer Science");
+
+                // Check attempts for completed coordinator questions
+                List<ExamAttempt> studentAttempts = examAttemptRepository
+                        .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(ex.getId(), email);
+
+                int completed = 0;
+                if (!studentAttempts.isEmpty()) {
+                    ExamAttempt bestAttempt = studentAttempts.get(0);
+                    List<ExamAnswer> answers = answerRepository.findByAttemptId(bestAttempt.getId());
+                    for (ExamAnswer ans : answers) {
+                        if (ans.getQuestion() != null && coordQidsForThisExam.contains(ans.getQuestion().getId())) {
+                            boolean isDone = ans.getSelectedOption() != null
+                                    || (ans.getCodeSubmission() != null && !ans.getCodeSubmission().trim().isEmpty());
+                            if (isDone) {
+                                completed++;
+                            }
+                        }
+                    }
+                }
+
+                completed = Math.min(completed, totalCoordinatorQuestions);
+                int incomplete = Math.max(0, totalCoordinatorQuestions - completed);
+
+                if (reportMap.containsKey(email)) {
+                    CoordinatorStudentReportItem existing = reportMap.get(email);
+                    if (completed > existing.completedQuestions()) {
+                        reportMap.put(email, new CoordinatorStudentReportItem(
+                                s != null ? s.getId() : existing.studentId(),
+                                regNo,
+                                sName,
+                                profName,
+                                dept,
+                                totalCoordinatorQuestions,
+                                completed,
+                                incomplete
+                        ));
+                    }
+                } else {
+                    reportMap.put(email, new CoordinatorStudentReportItem(
+                            s != null ? s.getId() : null,
+                            regNo,
+                            sName,
+                            profName,
+                            dept,
+                            totalCoordinatorQuestions,
+                            completed,
+                            incomplete
+                    ));
+                }
+            }
+        }
+
+        // If class has no assigned students yet, include all enrolled students in the database as demo/incomplete rows
+        if (reportMap.isEmpty()) {
+            List<Student> allStudents = studentRepository.findAll();
+            for (Student s : allStudents) {
+                String regNo = s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank()
+                        ? s.getRegisterNumber()
+                        : "REG-" + s.getId();
+                String sName = s.getFullName() != null && !s.getFullName().isBlank() ? s.getFullName() : s.getEmail();
+                String dept = s.getDepartment() != null && !s.getDepartment().isBlank() ? s.getDepartment() : "Computer Science";
+                String profName = baseExam.getAssignedProfessorName() != null ? baseExam.getAssignedProfessorName() : "Course Coordinator";
+
+                reportMap.put(s.getEmail().toLowerCase(), new CoordinatorStudentReportItem(
+                        s.getId(),
+                        regNo,
+                        sName,
+                        profName,
+                        dept,
+                        totalCoordinatorQuestions,
+                        0,
+                        totalCoordinatorQuestions
+                ));
+            }
+        }
+
+        List<CoordinatorStudentReportItem> items = new ArrayList<>(reportMap.values());
+        return new CoordinatorStudentReportResponse(baseExam.getId(), baseExam.getName(), totalCoordinatorQuestions, items);
+    }
+
+    public ProfessorStudentReportResponse getProfessorStudentReport(Long examId, String staffEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, staffEmail);
+
+        // All questions in this exam: coordinator-assigned questions + questions given by the prof himself
+        List<ExamQuestion> examQuestions = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+        int totalQuestions = examQuestions.size();
+
+        int coordCount = (int) examQuestions.stream()
+                .filter(q -> Boolean.TRUE.equals(q.getCreatedByCoordinator()) || "COURSE_COORDINATOR".equalsIgnoreCase(q.getCreatedByRole()))
+                .count();
+        int profCount = Math.max(0, totalQuestions - coordCount);
+
+        Set<Long> allQuestionIds = examQuestions.stream()
+                .map(ExamQuestion::getId)
+                .collect(Collectors.toSet());
+
+        // Students assigned to this professor's exam/section
+        Map<String, ProfessorStudentReportItem> reportMap = new LinkedHashMap<>();
+
+        Map<String, Student> studentCache = new HashMap<>();
+        for (Student s : studentRepository.findAll()) {
+            if (s.getEmail() != null) {
+                studentCache.put(s.getEmail().trim().toLowerCase(), s);
+            }
+        }
+
+        // 1. From ExamAssignment on this exam
+        List<ExamAssignment> assignments = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
+        Set<String> assignedEmails = new LinkedHashSet<>();
+        for (ExamAssignment a : assignments) {
+            if (a.getStudentEmail() != null && !a.getStudentEmail().isBlank()) {
+                assignedEmails.add(a.getStudentEmail().trim().toLowerCase());
+            }
+        }
+
+        // 2. From ExamAttempt on this exam
+        List<ExamAttempt> attempts = examAttemptRepository.findByExamId(examId);
+        for (ExamAttempt at : attempts) {
+            if (at.getStudentEmail() != null && !at.getStudentEmail().isBlank()) {
+                assignedEmails.add(at.getStudentEmail().trim().toLowerCase());
+            }
+        }
+
+        for (String email : assignedEmails) {
+            Student s = studentCache.get(email);
+            if (s == null) {
+                s = studentRepository.findByEmailIgnoreCase(email).orElse(null);
+                if (s != null) studentCache.put(email, s);
+            }
+
+            String regNo = (s != null && s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank())
+                    ? s.getRegisterNumber().trim()
+                    : (email.contains("@") ? email.substring(0, email.indexOf("@")).toUpperCase() : email.toUpperCase());
+
+            String sName = (s != null && s.getFullName() != null && !s.getFullName().isBlank())
+                    ? s.getFullName().trim()
+                    : email;
+
+            List<ExamAttempt> studentAttempts = examAttemptRepository
+                    .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(examId, email);
+
+            int completed = 0;
+            if (!studentAttempts.isEmpty()) {
+                ExamAttempt bestAttempt = studentAttempts.get(0);
+                List<ExamAnswer> answers = answerRepository.findByAttemptId(bestAttempt.getId());
+                for (ExamAnswer ans : answers) {
+                    if (ans.getQuestion() != null && allQuestionIds.contains(ans.getQuestion().getId())) {
+                        boolean isDone = ans.getSelectedOption() != null
+                                || (ans.getCodeSubmission() != null && !ans.getCodeSubmission().trim().isEmpty());
+                        if (isDone) {
+                            completed++;
+                        }
+                    }
+                }
+            }
+
+            completed = Math.min(completed, totalQuestions);
+            int incomplete = Math.max(0, totalQuestions - completed);
+
+            reportMap.put(email, new ProfessorStudentReportItem(
+                    s != null ? s.getId() : null,
+                    regNo,
+                    sName,
+                    totalQuestions,
+                    completed,
+                    incomplete
+            ));
+        }
+
+        // If no students explicitly assigned yet, show registered students in the system as demo rows
+        if (reportMap.isEmpty()) {
+            List<Student> allStudents = studentRepository.findAll();
+            for (Student s : allStudents) {
+                String regNo = s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank()
+                        ? s.getRegisterNumber()
+                        : "REG-" + s.getId();
+                String sName = s.getFullName() != null && !s.getFullName().isBlank() ? s.getFullName() : s.getEmail();
+
+                reportMap.put(s.getEmail().toLowerCase(), new ProfessorStudentReportItem(
+                        s.getId(),
+                        regNo,
+                        sName,
+                        totalQuestions,
+                        0,
+                        totalQuestions
+                ));
+            }
+        }
+
+        List<ProfessorStudentReportItem> items = new ArrayList<>(reportMap.values());
+        return new ProfessorStudentReportResponse(exam.getId(), exam.getName(), totalQuestions, coordCount, profCount, items);
     }
 
     private static String truncate(String text, int maxLen) {

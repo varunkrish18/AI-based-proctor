@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
-import { api, downloadFile, isCoordinatorRole, isAdminRole } from "../../api/client";
+import { api, downloadFile, isCoordinatorRole, isAdminRole, isProfessorUserRole } from "../../api/client";
 import ExamSettingsTab from "./ExamSettingsTab";
+import CoordinatorStudentReportTab from "./CoordinatorStudentReportTab";
+import ProfessorStudentReportTab from "./ProfessorStudentReportTab";
 import type {
   AdminAttemptSummary,
   Exam,
@@ -23,7 +25,7 @@ import {
   matchesYear,
 } from "../../utils/sectionUtils";
 
-type Tab = "questions" | "settings" | "assign" | "results" | "qassign";
+type Tab = "questions" | "settings" | "coordinator-report" | "professor-report" | "assign" | "results" | "qassign";
 
 export default function ExamDetail() {
   const { examId } = useParams();
@@ -31,15 +33,16 @@ export default function ExamDetail() {
   const [searchParams, setSearchParams] = useSearchParams();
   const isCoordinator = isCoordinatorRole();
   const isAdmin = isAdminRole();
-  const isProfessorUser = !isCoordinator && !isAdmin;
+  const isProfessorUser = isProfessorUserRole() || (!isCoordinator && !isAdmin);
   const allowedTabs: Tab[] = isCoordinator
-    ? ["questions", "settings"]
-    : ["questions", "settings", "assign", "results", "qassign"];
+    ? ["questions", "settings", "coordinator-report"]
+    : isProfessorUser
+    ? ["questions", "professor-report", "assign", "results", "qassign"]
+    : ["questions", "settings", "coordinator-report", "professor-report", "assign", "results", "qassign"];
 
   const queryTab = searchParams.get("tab") as Tab | null;
   const [exam, setExam] = useState<Exam | null>(null);
-  const isClassMode = Boolean(exam?.isClass);
-  const isClassSettingsLocked = isClassMode && isProfessorUser;
+  const isClassSettingsLocked = isProfessorUser;
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [tab, setTab] = useState<Tab>(() => {
     if (queryTab && allowedTabs.includes(queryTab)) return queryTab;
@@ -93,7 +96,10 @@ export default function ExamDetail() {
   }
 
   function handleTabChange(nextTab: Tab) {
-    if (isCoordinator && (nextTab === "assign" || nextTab === "results" || nextTab === "qassign")) {
+    if (isCoordinator && (nextTab === "assign" || nextTab === "results" || nextTab === "qassign" || nextTab === "professor-report")) {
+      nextTab = "questions";
+    }
+    if (isProfessorUser && (nextTab === "settings" || nextTab === "coordinator-report")) {
       nextTab = "questions";
     }
     setTab(nextTab);
@@ -101,11 +107,15 @@ export default function ExamDetail() {
   }
 
   useEffect(() => {
-    if (isCoordinator && (tab === "assign" || tab === "results" || tab === "qassign")) {
+    if (isCoordinator && (tab === "assign" || tab === "results" || tab === "qassign" || tab === "professor-report")) {
       setTab("questions");
       setSearchParams({ tab: "questions" });
     }
-  }, [isCoordinator, tab, setSearchParams]);
+    if (isProfessorUser && (tab === "settings" || tab === "coordinator-report")) {
+      setTab("questions");
+      setSearchParams({ tab: "questions" });
+    }
+  }, [isCoordinator, isProfessorUser, tab, setSearchParams]);
 
   function reload() {
     Promise.all([
@@ -198,7 +208,7 @@ export default function ExamDetail() {
             <span className={questions.length > exam.numQuestions ? "text-amber-700 font-semibold" : ""}>
               {questions.length}/{exam.numQuestions} questions added
             </span>
-            {!isClassSettingsLocked && questions.length > exam.numQuestions && (
+            {!isProfessorUser && questions.length > exam.numQuestions && (
               <button
                 type="button"
                 onClick={() => handleUpdateLimit(questions.length)}
@@ -208,7 +218,7 @@ export default function ExamDetail() {
                 Sync limit to {questions.length}
               </button>
             )}
-            {!isClassSettingsLocked && (
+            {!isProfessorUser && (
               <button
                 type="button"
                 onClick={promptChangeLimit}
@@ -222,23 +232,55 @@ export default function ExamDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleTabChange("settings")}
-            className={`px-3.5 py-2 rounded-md text-sm font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
-              tab === "settings"
-                ? "bg-blue-600 text-white shadow-xs"
-                : "border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100"
-            }`}
-          >
-            <span>⚙️</span> {isClassSettingsLocked ? "View Class Settings 🔒" : "Edit Exam Settings"}
-          </button>
-          {!isClassSettingsLocked && exam.status === "DRAFT" && (
+          {!isProfessorUser ? (
+            <>
+              <button
+                type="button"
+                onClick={() => handleTabChange("settings")}
+                className={`px-3.5 py-2 rounded-md text-sm font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  tab === "settings"
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : "border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                }`}
+              >
+                <span>⚙️</span> Edit Exam Settings
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabChange("coordinator-report")}
+                className={`px-3.5 py-2 rounded-md text-sm font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  tab === "coordinator-report"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+                }`}
+              >
+                <span>📊</span> Class Student Report
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
+                🔒 Settings &amp; Timing locked by Coordinator
+              </span>
+              <button
+                type="button"
+                onClick={() => handleTabChange("professor-report")}
+                className={`px-3.5 py-2 rounded-md text-sm font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  tab === "professor-report"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+                }`}
+              >
+                <span>📊</span> Student Report
+              </button>
+            </div>
+          )}
+          {!isProfessorUser && exam.status === "DRAFT" && (
             <button onClick={publish} className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-green-700 cursor-pointer">
               Publish Exam
             </button>
           )}
-          {!isClassSettingsLocked && (
+          {!isProfessorUser && (
             <button
               type="button"
               onClick={() => setShowDeleteModal(true)}
@@ -313,7 +355,24 @@ export default function ExamDetail() {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          {isClassSettingsLocked ? (
+          {isProfessorUser ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 bg-slate-800/90 px-3.5 py-2 rounded-xl border border-slate-700/80 text-amber-300 text-xs font-semibold">
+                <span>🔒 Exam Schedule &amp; Timing locked by Course Coordinator</span>
+              </div>
+              <button
+                onClick={() => handleTabChange("professor-report")}
+                className={`text-xs font-bold px-3 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 border ${
+                  tab === "professor-report"
+                    ? "bg-blue-600 border-blue-500 text-white shadow-xs"
+                    : "bg-slate-800 hover:bg-slate-700 border-slate-600 text-blue-300"
+                }`}
+                title="View Student Report"
+              >
+                <span>📊</span> Student Report
+              </button>
+            </div>
+          ) : isClassSettingsLocked ? (
             <div className="flex items-center gap-1.5 bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-700/60 text-indigo-300 text-xs font-medium">
               <span>🏫 Class Managed by Course Coordinator (Active)</span>
             </div>
@@ -360,11 +419,17 @@ export default function ExamDetail() {
         {[
           { id: "questions", label: "Questions" },
           { id: "settings", label: "Exam Settings & Timing" },
+          { id: "professor-report", label: "📊 Student Report" },
+          { id: "coordinator-report", label: "📊 Class Student Report" },
           { id: "assign", label: "Assign Students" },
           { id: "results", label: "Results & Integrity" },
           { id: "qassign", label: "📋 Question Assignment" },
         ]
-          .filter((t) => !isCoordinator || (t.id !== "assign" && t.id !== "results" && t.id !== "qassign"))
+          .filter((t) => {
+            if (isCoordinator) return t.id === "questions" || t.id === "settings" || t.id === "coordinator-report";
+            if (isProfessorUser) return t.id !== "settings" && t.id !== "coordinator-report";
+            return t.id !== "coordinator-report";
+          })
           .map((t) => (
           <button
             key={t.id}
@@ -397,6 +462,12 @@ export default function ExamDetail() {
           }}
           onSwitchToQuestions={() => handleTabChange("questions")}
         />
+      )}
+      {tab === "coordinator-report" && (
+        <CoordinatorStudentReportTab exam={exam} />
+      )}
+      {tab === "professor-report" && (
+        <ProfessorStudentReportTab exam={exam} />
       )}
       {!isCoordinator && tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
       {!isCoordinator && tab === "results" && <ResultsTab examId={exam.id} />}
@@ -683,10 +754,10 @@ if __name__ == '__main__':
 
   const isCoordinator = isCoordinatorRole();
   const isAdmin = isAdminRole();
-  const isProfessorUser = !isCoordinator && !isAdmin;
+  const isProfessorUser = isProfessorUserRole() || (!isCoordinator && !isAdmin);
   const isClassMode = Boolean(exam.isClass);
-  const isLimitReached = !isClassMode && questions.length >= exam.numQuestions;
-  const isOverLimit = !isClassMode && questions.length > exam.numQuestions;
+  const isLimitReached = !isProfessorUser && !isClassMode && questions.length >= exam.numQuestions;
+  const isOverLimit = !isProfessorUser && !isClassMode && questions.length > exam.numQuestions;
 
   async function handleQuickIncrease() {
     setIncreasingLimit(true);

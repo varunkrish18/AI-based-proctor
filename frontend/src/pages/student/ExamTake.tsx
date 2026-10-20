@@ -59,6 +59,7 @@ export default function ExamTake() {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [codingAnswers, setCodingAnswers] = useState<Record<number, { code: string; language: string }>>({});
+  const [lockedCodingQuestions, setLockedCodingQuestions] = useState<Set<number>>(() => new Set());
   const [marked, setMarked] = useState<Set<number>>(new Set());
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -162,6 +163,21 @@ export default function ExamTake() {
         .post<StartExamResponse>(`/api/student/exams/${examId}/start`, undefined, "student")
         .then((res) => {
           setSession(res);
+          if (res.savedAnswers) {
+            setAnswers(res.savedAnswers);
+          }
+          if (res.savedCodingAnswers) {
+            setCodingAnswers(res.savedCodingAnswers);
+          }
+          try {
+            const stored = sessionStorage.getItem(`locked_coding_${res.attemptId}`);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed)) {
+                setLockedCodingQuestions((prev) => new Set([...prev, ...parsed]));
+              }
+            }
+          } catch {}
           if (res.durationMinutes != null && res.durationMinutes > 0) {
             const elapsedSeconds = Math.max(
               0,
@@ -2093,6 +2109,10 @@ export default function ExamTake() {
   }, [session, q, logEvent]);
 
   async function selectOption(questionId: number, optionIndex: number) {
+    if (answers[questionId] !== undefined) {
+      // Completed question is locked — cannot be re-attempted or modified
+      return;
+    }
     setAnswers((prev) => ({ ...prev, [questionId]: optionIndex }));
     if (!session) return;
     try {
@@ -2106,7 +2126,23 @@ export default function ExamTake() {
     }
   }
 
+  function handleFinalizeCoding(questionId: number) {
+    setLockedCodingQuestions((prev) => {
+      const next = new Set(prev).add(questionId);
+      try {
+        if (session?.attemptId) {
+          sessionStorage.setItem(`locked_coding_${session.attemptId}`, JSON.stringify(Array.from(next)));
+        }
+      } catch {}
+      return next;
+    });
+  }
+
   function updateCodingAnswer(questionId: number, code: string, language: string) {
+    if (lockedCodingQuestions.has(questionId)) {
+      // Locked coding questions cannot be modified
+      return;
+    }
     setCodingAnswers((prev) => ({
       ...prev,
       [questionId]: { code, language },
@@ -2927,12 +2963,44 @@ export default function ExamTake() {
       )}
 
       <div
+        id="question-active-card"
         className={`${String(q.questionType).toUpperCase() === "CODING" ? "max-w-7xl" : "max-w-2xl"} mx-auto px-4 py-6 transition-all duration-200 ${
           (isWindowBlurred || sidePanelDetected || fullscreenExited) && !submittedRef.current
             ? "filter blur-2xl pointer-events-none select-none opacity-10"
             : ""
         }`}
       >
+        {/* Completed Question Banner (Locked - cannot redo) */}
+        {(() => {
+          const isCoding = String(q.questionType).toUpperCase() === "CODING";
+          const isCompleted = isCoding
+            ? lockedCodingQuestions.has(q.questionId)
+            : answers[q.questionId] !== undefined;
+
+          if (!isCompleted) return null;
+
+          return (
+            <div className="mb-5 bg-emerald-50 border-2 border-emerald-500 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-emerald-950 shadow-xs animate-in fade-in">
+              <div className="flex items-center gap-3">
+                <span className="w-9 h-9 rounded-xl bg-emerald-600 text-white font-black flex items-center justify-center text-base shadow-xs shrink-0">
+                  🔒
+                </span>
+                <div>
+                  <div className="text-xs font-bold text-emerald-950 flex items-center gap-2 flex-wrap">
+                    <span>Question {current + 1} is Completed &amp; Locked</span>
+                    <span className="bg-emerald-700 text-white text-[10px] px-2.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                      Locked
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    In accordance with examination regulations, once you complete a question you cannot attempt, modify, or do it again.
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {String(q.questionType).toUpperCase() === "CODING" ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
             {/* Left: Problem Details & Examples */}
@@ -3027,15 +3095,47 @@ export default function ExamTake() {
                   (parsedAllowed.includes("c") && !parsedAllowed.includes("python") ? "c" : parsedAllowed[0]) ||
                   "c";
 
+                const isCodingCompleted = lockedCodingQuestions.has(q.questionId);
+
                 return (
-                  <CodeEditor
-                    initialCode={codingAnswers[q.questionId]?.code || q.codeTemplate}
-                    initialLanguage={effectiveInitialLang}
-                    allowedLanguages={parsedAllowed}
-                    sampleTestCases={q.sampleTestCases || []}
-                    onCodeChange={(newCode, newLang) => updateCodingAnswer(q.questionId, newCode, newLang)}
-                    onRunCode={(c, l, customIn) => handleRunCode(q.questionId, c, l, customIn)}
-                  />
+                  <div className="flex flex-col h-full space-y-2">
+                    {!isCodingCompleted ? (
+                      <div className="flex items-center justify-between bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
+                        <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                          <span>💡</span> Test your code with sample cases, then click to submit &amp; lock:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleFinalizeCoding(q.questionId)}
+                          className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition shrink-0"
+                          title="Finalize & Lock: once submitted, this question cannot be modified"
+                        >
+                          <span>🔒</span>
+                          <span>Submit &amp; Lock Code</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between bg-emerald-950/80 border border-emerald-600/70 rounded-xl px-3 py-2 text-xs text-emerald-200 font-semibold">
+                        <span className="flex items-center gap-1.5">
+                          <span>✓</span> Code solution submitted and locked. Read-only mode active.
+                        </span>
+                        <span className="bg-emerald-800 text-white text-[10px] px-2 py-0.5 rounded font-mono uppercase">
+                          Locked 🔒
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-h-0">
+                      <CodeEditor
+                        initialCode={codingAnswers[q.questionId]?.code || q.codeTemplate}
+                        initialLanguage={effectiveInitialLang}
+                        allowedLanguages={parsedAllowed}
+                        sampleTestCases={q.sampleTestCases || []}
+                        readOnly={isCodingCompleted}
+                        onCodeChange={(newCode, newLang) => updateCodingAnswer(q.questionId, newCode, newLang)}
+                        onRunCode={(c, l, customIn) => handleRunCode(q.questionId, c, l, customIn)}
+                      />
+                    </div>
+                  </div>
                 );
               })()}
             </div>
@@ -3072,24 +3172,39 @@ export default function ExamTake() {
               <p className="text-slate-900 font-medium select-none" onDragStart={(e) => e.preventDefault()}>{q.questionText}</p>
             </div>
             <div className="space-y-2">
-              {[q.optionA, q.optionB, q.optionC, q.optionD].map((opt, idx) => (
-                <label
-                  key={idx}
-                  className={`flex items-center gap-3 border rounded-md px-3.5 py-2.5 cursor-pointer transition-all ${
-                    answers[q.questionId] === idx
-                      ? "border-blue-500 bg-blue-50 text-slate-900"
-                      : "border-slate-200 hover:bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name={`q-${q.questionId}`}
-                    checked={answers[q.questionId] === idx}
-                    onChange={() => selectOption(q.questionId, idx)}
-                  />
-                  <span className="text-sm">{opt}</span>
-                </label>
-              ))}
+              {[q.optionA, q.optionB, q.optionC, q.optionD].map((opt, idx) => {
+                const isSelected = answers[q.questionId] === idx;
+                const isLocked = answers[q.questionId] !== undefined;
+                return (
+                  <label
+                    key={idx}
+                    className={`flex items-center justify-between border rounded-md px-3.5 py-2.5 transition-all ${
+                      isSelected
+                        ? "border-emerald-600 bg-emerald-50 text-emerald-950 font-semibold ring-1 ring-emerald-500"
+                        : isLocked
+                        ? "border-slate-200 bg-slate-50 text-slate-400 opacity-60 cursor-not-allowed"
+                        : "border-slate-200 hover:bg-slate-50 text-slate-700 cursor-pointer"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name={`q-${q.questionId}`}
+                        checked={isSelected}
+                        disabled={isLocked}
+                        onChange={() => selectOption(q.questionId, idx)}
+                        className={isLocked ? "cursor-not-allowed" : "cursor-pointer"}
+                      />
+                      <span className="text-sm">{opt}</span>
+                    </div>
+                    {isSelected && (
+                      <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <span>🔒</span> Submitted (Locked)
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
             </div>
           </div>
         )}
@@ -3126,7 +3241,7 @@ export default function ExamTake() {
             const isCoding = String(qq.questionType || "").trim().toUpperCase() === "CODING";
             const isAnswered =
               isCoding
-                ? Boolean(codingAnswers[qq.questionId]?.code?.trim())
+                ? lockedCodingQuestions.has(qq.questionId)
                 : answers[qq.questionId] !== undefined;
 
             return (
@@ -3151,6 +3266,146 @@ export default function ExamTake() {
               </button>
             );
           })}
+        </div>
+
+        {/* ======================================================== */}
+        {/* SEPARATE QUESTIONS TABLE (Matching Coordinator Specification) */}
+        {/* ======================================================== */}
+        <div className="mt-8 bg-white border border-slate-300 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-slate-900 text-white px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-base">📋</span>
+              <h3 className="font-bold text-sm text-white tracking-wide">
+                All Questions Overview ({questions.length} Questions)
+              </h3>
+            </div>
+            <div className="flex items-center gap-3 text-xs font-semibold flex-wrap">
+              <span className="flex items-center gap-1.5 text-emerald-300">
+                <span className="w-3 h-3 rounded bg-green-600 inline-block border border-green-400" />
+                Green = Completed (Locked 🔒)
+              </span>
+              <span className="flex items-center gap-1.5 text-blue-300">
+                <span className="w-3 h-3 rounded bg-blue-600 inline-block border border-blue-400" />
+                Blue = Incomplete
+              </span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-100 border-b-2 border-slate-300 text-slate-800 text-xs font-black uppercase tracking-wider">
+                  <th className="py-3 px-4 w-36 border-r border-slate-300">Question number</th>
+                  <th className="py-3 px-4 border-r border-slate-300">question</th>
+                  <th className="py-3 px-4 w-72 text-center">
+                    Completed means green color box<br />
+                    <span className="text-[10px] font-semibold text-slate-600 lowercase tracking-normal">
+                      incomplete means blue color box
+                    </span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-xs">
+                {questions.map((qq, idx) => {
+                  const isCoding = String(qq.questionType || "").trim().toUpperCase() === "CODING";
+                  const isAnswered = isCoding
+                    ? lockedCodingQuestions.has(qq.questionId)
+                    : answers[qq.questionId] !== undefined;
+                  const isCurrent = idx === current;
+
+                  return (
+                    <tr
+                      key={qq.questionId}
+                      onClick={() => {
+                        setCurrent(idx);
+                        const el = document.getElementById("question-active-card");
+                        if (el) {
+                          el.scrollIntoView({ behavior: "smooth" });
+                        } else {
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }
+                      }}
+                      className={`cursor-pointer transition-colors hover:bg-slate-50 ${
+                        isCurrent ? "bg-indigo-50/70 font-semibold" : ""
+                      }`}
+                    >
+                      {/* Col 1: Question number */}
+                      <td className="py-3.5 px-4 font-bold text-slate-900 border-r border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold ${
+                              isCurrent
+                                ? "bg-indigo-600 text-white"
+                                : "bg-slate-200 text-slate-700"
+                            }`}
+                          >
+                            {idx + 1}
+                          </span>
+                          <span>Question {idx + 1}</span>
+                          {isCurrent && (
+                            <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded font-medium">
+                              Current
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Col 2: question */}
+                      <td className="py-3.5 px-4 border-r border-slate-200">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                isCoding
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                  : "bg-blue-100 text-blue-800 border border-blue-200"
+                              }`}
+                            >
+                              {isCoding ? "💻 CODING" : "📋 MCQ"}
+                            </span>
+                            {qq.marks !== undefined && (
+                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                                {qq.marks} Mark{qq.marks !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                            {marked.has(qq.questionId) && (
+                              <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded border border-purple-200">
+                                📌 Marked
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-slate-800 font-medium line-clamp-2">
+                            {qq.problemTitle || qq.questionText || `Question ${idx + 1}`}
+                          </p>
+                        </div>
+                      </td>
+
+                      {/* Col 3: Completed means green color box incomplete means blue color box */}
+                      <td className="py-3.5 px-4 text-center align-middle">
+                        {isAnswered ? (
+                          <div
+                            className="w-full bg-green-600 text-white font-bold py-2.5 px-3 rounded-xl text-center shadow-xs flex items-center justify-center gap-1.5"
+                            title="Completed & Locked: You cannot re-attempt this question"
+                          >
+                            <span>✓</span>
+                            <span>Completed (Locked 🔒)</span>
+                          </div>
+                        ) : (
+                          <div
+                            className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-2.5 px-3 rounded-xl text-center shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                            title="Incomplete: Click to solve this question"
+                          >
+                            <span>→</span>
+                            <span>Incomplete (Click to solve)</span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
