@@ -48,8 +48,20 @@ public class PublicExamController {
     public List<ExamSummaryResponse> listPublicExams() {
         Instant now = trustedTimeService.now();
         return examRepository.findByStatus("PUBLISHED").stream()
-                .map(e -> new ExamSummaryResponse(e.getId(), e.getName(), e.getSubject(), e.getNumQuestions(),
-                        e.getDurationMinutes(), e.getStartAt(), e.getEndAt(), computeDisplayStatus(e, now)))
+                .map(e -> new ExamSummaryResponse(
+                        e.getId(),
+                        e.getName(),
+                        e.getSubject(),
+                        e.getNumQuestions(),
+                        e.getDurationMinutes(),
+                        e.getStartAt(),
+                        e.getEndAt(),
+                        computeDisplayStatus(e, now),
+                        e.getAssignedProfessorId(),
+                        e.getAssignedProfessorEmail(),
+                        e.getAssignedProfessorName(),
+                        Boolean.TRUE.equals(e.getIsClass())
+                ))
                 .toList();
     }
 
@@ -63,18 +75,22 @@ public class PublicExamController {
     public Map<String, Object> getPublicExamDetails(@PathVariable Long examId) {
         Exam exam = examRepository.findById(examId)
                 .orElseThrow(() -> new com.proctor.exam.exception.ApiException(org.springframework.http.HttpStatus.NOT_FOUND, "Exam not found."));
-        return Map.of(
-                "id", exam.getId(),
-                "name", exam.getName(),
-                "subject", exam.getSubject() != null ? exam.getSubject() : "",
-                "durationMinutes", exam.getDurationMinutes(),
-                "numQuestions", exam.getNumQuestions(),
-                "webcamRequired", exam.getWebcamRequired() != null ? exam.getWebcamRequired() : true,
-                "microphoneRequired", exam.getMicrophoneRequired() != null ? exam.getMicrophoneRequired() : true,
-                "screenRequired", exam.getScreenRequired() != null ? exam.getScreenRequired() : true,
-                "locationRequired", exam.getLocationRequired() != null ? exam.getLocationRequired() : false,
-                "openToAll", exam.isOpenToAll()
-        );
+        Map<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("id", exam.getId());
+        details.put("name", exam.getName());
+        details.put("subject", exam.getSubject() != null ? exam.getSubject() : "");
+        details.put("durationMinutes", exam.getDurationMinutes());
+        details.put("numQuestions", exam.getNumQuestions());
+        details.put("webcamRequired", exam.getWebcamRequired() != null ? exam.getWebcamRequired() : true);
+        details.put("microphoneRequired", exam.getMicrophoneRequired() != null ? exam.getMicrophoneRequired() : true);
+        details.put("screenRequired", exam.getScreenRequired() != null ? exam.getScreenRequired() : true);
+        details.put("locationRequired", exam.getLocationRequired() != null ? exam.getLocationRequired() : false);
+        details.put("openToAll", exam.isOpenToAll());
+        details.put("assignedProfessorId", exam.getAssignedProfessorId());
+        details.put("assignedProfessorEmail", exam.getAssignedProfessorEmail());
+        details.put("assignedProfessorName", exam.getAssignedProfessorName());
+        details.put("isClass", Boolean.TRUE.equals(exam.getIsClass()));
+        return details;
     }
 
     @PostMapping("/{examId}/verify-student")

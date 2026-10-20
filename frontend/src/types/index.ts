@@ -7,6 +7,10 @@ export interface ExamSummary {
   startAt: string;
   endAt: string;
   status: "UPCOMING" | "OPEN" | "CLOSED" | string;
+  assignedProfessorId?: number | null;
+  assignedProfessorEmail?: string | null;
+  assignedProfessorName?: string | null;
+  isClass?: boolean;
 }
 
 export interface Exam extends ExamSummary {
@@ -95,7 +99,7 @@ export interface RunCodeResponse {
 
 export interface StartExamResponse {
   attemptId: number;
-  durationMinutes: number;
+  durationMinutes: number | null;
   serverStartTime: string;
   questions: StudentQuestion[];
   webcamRequired?: boolean;

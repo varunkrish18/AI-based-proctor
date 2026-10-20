@@ -175,7 +175,19 @@ export default function ExamDetail() {
       </button>
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{exam.name}</h1>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <h1 className="text-2xl font-bold text-slate-900">{exam.name}</h1>
+            {exam.isClass && (
+              <span className="bg-indigo-100 text-indigo-800 text-xs px-2.5 py-0.5 rounded-full font-bold">
+                🏫 Class
+              </span>
+            )}
+            {exam.assignedProfessorName && (
+              <span className="bg-purple-100 text-purple-800 text-xs px-2.5 py-0.5 rounded-full font-medium">
+                👨‍🏫 Assigned Professor: {exam.assignedProfessorName}
+              </span>
+            )}
+          </div>
           <div className="text-slate-500 text-sm flex items-center gap-2 flex-wrap mt-0.5">
             <span>{exam.subject ?? "General"}</span>
             <span>&middot;</span>
@@ -274,11 +286,20 @@ export default function ExamDetail() {
                 <>
                   Duration: <span className="text-white font-bold">{exam.durationMinutes} mins</span> &middot;{" "}
                 </>
-              ) : null}
+              ) : (
+                <>
+                  <span className="text-indigo-300 font-semibold">♾️ Untimed Class (Infinite Attempts)</span> &middot;{" "}
+                </>
+              )}
               Scheduled End:{" "}
               <span className="text-white font-mono font-semibold">
                 {exam.endAt ? new Date(exam.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : "N/A"}
               </span>
+              {exam.assignedProfessorName && (
+                <>
+                  {" "}&middot; Faculty: <span className="text-indigo-200 font-semibold">{exam.assignedProfessorName}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -286,20 +307,26 @@ export default function ExamDetail() {
         <div className="flex items-center gap-2.5 flex-wrap">
           {exam.status !== "CLOSED" ? (
             <>
-              <div className="flex items-center gap-1.5 bg-slate-800/90 p-1.5 rounded-xl border border-slate-700/80">
-                <span className="text-xs text-slate-300 font-semibold px-1.5">⏱️ Extend Time:</span>
-                {[5, 10, 15, 30].map((mins) => (
-                  <button
-                    key={mins}
-                    disabled={timingAdjusting}
-                    onClick={() => handleAdjustTime(mins)}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white transition shadow-xs cursor-pointer disabled:opacity-50"
-                    title={`Instantly add ${mins} minutes to exam timer for all candidates`}
-                  >
-                    +{mins}m
-                  </button>
-                ))}
-              </div>
+              {exam.durationMinutes ? (
+                <div className="flex items-center gap-1.5 bg-slate-800/90 p-1.5 rounded-xl border border-slate-700/80">
+                  <span className="text-xs text-slate-300 font-semibold px-1.5">⏱️ Extend Time:</span>
+                  {[5, 10, 15, 30].map((mins) => (
+                    <button
+                      key={mins}
+                      disabled={timingAdjusting}
+                      onClick={() => handleAdjustTime(mins)}
+                      className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white transition shadow-xs cursor-pointer disabled:opacity-50"
+                      title={`Instantly add ${mins} minutes to exam timer for all candidates`}
+                    >
+                      +{mins}m
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-700/60 text-indigo-300 text-xs font-medium">
+                  <span>♾️ Untimed Class Active</span>
+                </div>
+              )}
 
               <button
                 onClick={() => setShowTerminateModal(true)}

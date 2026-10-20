@@ -66,8 +66,16 @@ export default function Exams() {
               </div>
               <p className="text-sm text-slate-500 mb-4">{exam.subject ?? "General"}</p>
               <div className="text-sm text-slate-600 space-y-1 mb-4">
-                <p>{exam.numQuestions} questions &middot; {exam.durationMinutes} min</p>
                 <p>
+                  {exam.numQuestions} questions &middot;{" "}
+                  {exam.durationMinutes ? `${exam.durationMinutes} min` : "♾️ Untimed Class (Infinite Attempts)"}
+                </p>
+                {exam.assignedProfessorName && (
+                  <p className="text-xs text-indigo-700 font-semibold flex items-center gap-1">
+                    <span>👨‍🏫</span> Faculty: {exam.assignedProfessorName}
+                  </p>
+                )}
+                <p className="text-xs text-slate-500">
                   {new Date(exam.startAt).toLocaleString()} &rarr; {new Date(exam.endAt).toLocaleString()}
                 </p>
               </div>

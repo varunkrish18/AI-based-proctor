@@ -10,5 +10,9 @@ public record ExamSummaryResponse(
         Integer durationMinutes,
         Instant startAt,
         Instant endAt,
-        String status
+        String status,
+        Long assignedProfessorId,
+        String assignedProfessorEmail,
+        String assignedProfessorName,
+        Boolean isClass
 ) {}

@@ -60,7 +60,7 @@ export default function ExamTake() {
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [codingAnswers, setCodingAnswers] = useState<Record<number, { code: string; language: string }>>({});
   const [marked, setMarked] = useState<Set<number>>(new Set());
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -162,11 +162,15 @@ export default function ExamTake() {
         .post<StartExamResponse>(`/api/student/exams/${examId}/start`, undefined, "student")
         .then((res) => {
           setSession(res);
-          const elapsedSeconds = Math.max(
-            0,
-            Math.floor((getTrustedEpochMs() - new Date(res.serverStartTime).getTime()) / 1000)
-          );
-          setRemainingSeconds(Math.max(res.durationMinutes * 60 - elapsedSeconds, 0));
+          if (res.durationMinutes != null && res.durationMinutes > 0) {
+            const elapsedSeconds = Math.max(
+              0,
+              Math.floor((getTrustedEpochMs() - new Date(res.serverStartTime).getTime()) / 1000)
+            );
+            setRemainingSeconds(Math.max(res.durationMinutes * 60 - elapsedSeconds, 0));
+          } else {
+            setRemainingSeconds(null);
+          }
 
           // If screen is not required, gate passes immediately
           if (res.screenRequired === false) {
@@ -350,12 +354,13 @@ export default function ExamTake() {
     return () => clearTimeout(t);
   }, [gazeWarningPopup]);
 
-  // Countdown timer; decrements remaining seconds smoothly
+  // Countdown timer; decrements remaining seconds smoothly for timed exams
   useEffect(() => {
-    if (!session || !screenGatePassed) return;
+    if (!session || !screenGatePassed || session.durationMinutes == null || session.durationMinutes <= 0) return;
 
     const timer = setInterval(() => {
       setRemainingSeconds((prev) => {
+        if (prev === null) return null;
         if (prev <= 1) {
           clearInterval(timer);
           handleSubmit("Time limit reached");
@@ -366,7 +371,7 @@ export default function ExamTake() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [session?.attemptId, screenGatePassed, handleSubmit]);
+  }, [session?.attemptId, session?.durationMinutes, screenGatePassed, handleSubmit]);
 
   // Screen share & media acquisition gate
   async function startProctoringAndExam() {
@@ -1883,10 +1888,12 @@ export default function ExamTake() {
           message: string | null;
         }>(`/api/student/exams/${examId}/live-sync?attemptId=${session.attemptId}`, "student");
 
-        if (syncRes.isTerminated || syncRes.remainingSeconds <= 0 || syncRes.examStatus === "CLOSED") {
+        const isUntimed = session.durationMinutes == null || session.durationMinutes <= 0;
+
+        if (syncRes.isTerminated || (!isUntimed && syncRes.remainingSeconds <= 0) || syncRes.examStatus === "CLOSED") {
           const terminationReason =
             syncRes.message ||
-            (syncRes.remainingSeconds <= 0
+            (!isUntimed && syncRes.remainingSeconds <= 0
               ? "Examination time limit reached."
               : "The examination has been concluded by the examiner.");
           handleSubmit(terminationReason);
@@ -1897,19 +1904,22 @@ export default function ExamTake() {
           setSession((prev) => (prev ? { ...prev, durationMinutes: syncRes.durationMinutes } : prev));
         }
 
-        setRemainingSeconds((prev) => {
-          if (Math.abs(syncRes.remainingSeconds - prev) > 8) {
-            const diffMin = Math.round((syncRes.remainingSeconds - prev) / 60);
-            if (diffMin !== 0) {
-              setWarning(
-                `⏱️ Exam duration was updated by examiner (${diffMin > 0 ? `+${diffMin}` : diffMin} min).`
-              );
-              setTimeout(() => setWarning(null), 6000);
+        if (!isUntimed) {
+          setRemainingSeconds((prev) => {
+            if (prev === null) return syncRes.remainingSeconds;
+            if (Math.abs(syncRes.remainingSeconds - prev) > 8) {
+              const diffMin = Math.round((syncRes.remainingSeconds - prev) / 60);
+              if (diffMin !== 0) {
+                setWarning(
+                  `⏱️ Exam duration was updated by examiner (${diffMin > 0 ? `+${diffMin}` : diffMin} min).`
+                );
+                setTimeout(() => setWarning(null), 6000);
+              }
+              return syncRes.remainingSeconds;
             }
-            return syncRes.remainingSeconds;
-          }
-          return prev;
-        });
+            return prev;
+          });
+        }
       } catch {
         // Silently ignore background polling blips
       }
@@ -2383,8 +2393,8 @@ export default function ExamTake() {
   const answeredCount =
     Object.values(answers).filter((v) => v !== undefined).length +
     Object.values(codingAnswers).filter((ca) => ca && ca.code && ca.code.trim().length > 0).length;
-  const mm = String(Math.floor(remainingSeconds / 60)).padStart(2, "0");
-  const ss = String(remainingSeconds % 60).padStart(2, "0");
+  const mm = remainingSeconds !== null ? String(Math.floor(remainingSeconds / 60)).padStart(2, "0") : "00";
+  const ss = remainingSeconds !== null ? String(remainingSeconds % 60).padStart(2, "0") : "00";
 
   const warningStyle =
     warningStrikes >= 3
@@ -2899,7 +2909,13 @@ export default function ExamTake() {
           )}
         </div>
 
-        <span className="font-mono text-lg font-bold">{mm}:{ss}</span>
+        {session?.durationMinutes != null && session.durationMinutes > 0 && remainingSeconds !== null ? (
+          <span className="font-mono text-lg font-bold">{mm}:{ss}</span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold text-xs border border-indigo-400/30">
+            <span>♾️</span> Untimed Class Session
+          </span>
+        )}
         <span className="text-sm text-slate-300">{answeredCount} answered</span>
       </div>
 

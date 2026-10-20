@@ -50,6 +50,20 @@ public class AdminExamController {
         return examAdminService.updateExam(examId, request, auth != null ? auth.getName() : "admin");
     }
 
+    @PutMapping("/{examId}/assign-professor")
+    public Exam assignProfessor(@PathVariable Long examId,
+                                @RequestBody AssignProfessorRequest request,
+                                Authentication auth) {
+        return examAdminService.assignProfessor(examId, request, auth != null ? auth.getName() : "admin");
+    }
+
+    @PostMapping("/{examId}/assign-professor")
+    public Exam assignProfessorPost(@PathVariable Long examId,
+                                    @RequestBody AssignProfessorRequest request,
+                                    Authentication auth) {
+        return examAdminService.assignProfessor(examId, request, auth != null ? auth.getName() : "admin");
+    }
+
     @PostMapping("/{examId}/publish")
     public Exam publish(@PathVariable Long examId, Authentication auth) {
         return examAdminService.publish(examId, auth != null ? auth.getName() : "admin");

@@ -18,6 +18,7 @@ interface ExamSettingsTabProps {
 
 export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }: ExamSettingsTabProps) {
   const isCoordinator = isCoordinatorRole();
+  const isClassPolicy = isCoordinator || Boolean(exam.isClass);
   const [form, setForm] = useState<{
     name: string;
     description: string;
@@ -113,11 +114,11 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
     try {
       const payload = {
         ...form,
-        durationMinutes: isCoordinator ? null : (form.durationMinutes ? Math.max(1, Number(form.durationMinutes)) : null),
+        durationMinutes: isClassPolicy ? null : (form.durationMinutes ? Math.max(1, Number(form.durationMinutes)) : null),
         numQuestions: Math.max(1, Number(form.numQuestions) || 10),
-        maxAttempts: isCoordinator ? null : (form.maxAttempts ? Math.max(1, Number(form.maxAttempts)) : null),
-        passingMarks: isCoordinator ? null : (form.passingMarks !== "" && form.passingMarks != null ? Math.max(0, Number(form.passingMarks)) : null),
-        negativeMarking: isCoordinator ? null : (form.negativeMarking !== "" && form.negativeMarking != null ? Math.max(0, Number(form.negativeMarking)) : null),
+        maxAttempts: isClassPolicy ? null : (form.maxAttempts ? Math.max(1, Number(form.maxAttempts)) : null),
+        passingMarks: isClassPolicy ? null : (form.passingMarks !== "" && form.passingMarks != null ? Math.max(0, Number(form.passingMarks)) : null),
+        negativeMarking: isClassPolicy ? null : (form.negativeMarking !== "" && form.negativeMarking != null ? Math.max(0, Number(form.negativeMarking)) : null),
         audioInputLevel: Math.max(1, Math.min(100, Number(form.audioInputLevel) || 20)),
         startAt: startDate.toISOString(),
         endAt: endDate.toISOString(),
@@ -155,6 +156,23 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
           )}
         </div>
       </div>
+
+      {isClassPolicy && (
+        <div className="bg-indigo-50/90 border border-indigo-200 rounded-xl p-4 text-xs text-indigo-950 flex items-start gap-3">
+          <span className="text-xl">🏫</span>
+          <div className="space-y-1">
+            <p className="font-bold text-indigo-900">Academic Class Policies Enforced</p>
+            <p className="text-indigo-800 leading-relaxed">
+              This class has <strong>infinite attempts</strong> and <strong>untimed sessions</strong> (no per-attempt countdown limit). Candidate access is active between the configured Start and End dates.
+            </p>
+            {exam.assignedProfessorName && (
+              <p className="text-indigo-950 font-semibold pt-0.5">
+                👨‍🏫 Assigned Faculty: {exam.assignedProfessorName} ({exam.assignedProfessorEmail})
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {saveSuccess && (
         <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
@@ -241,7 +259,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
             <span>⏰</span> Time Window &amp; Duration
           </h3>
 
-          <div className={`grid grid-cols-1 ${isCoordinator ? "md:grid-cols-2" : "md:grid-cols-3"} gap-4`}>
+          <div className={`grid grid-cols-1 ${isClassPolicy ? "md:grid-cols-2" : "md:grid-cols-3"} gap-4`}>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Start Date/Time *</label>
               <input
@@ -266,7 +284,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
               <span className="text-[11px] text-slate-400 mt-0.5 block">Exams strictly close after this moment</span>
             </div>
 
-            {!isCoordinator && (
+            {!isClassPolicy && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Duration (Minutes) *</label>
                 <input
@@ -294,7 +312,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
             <span>🎯</span> Questions, Scoring &amp; Attempts
           </h3>
 
-          <div className={`grid grid-cols-1 ${isCoordinator ? "" : "sm:grid-cols-2 md:grid-cols-4"} gap-4`}>
+          <div className={`grid grid-cols-1 ${isClassPolicy ? "" : "sm:grid-cols-2 md:grid-cols-4"} gap-4`}>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Question Limit *</label>
               <input
@@ -313,7 +331,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
               <span className="text-[11px] text-slate-400 mt-0.5 block">Questions served to student</span>
             </div>
 
-            {!isCoordinator && (
+            {!isClassPolicy && (
               <>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Max Attempts *</label>

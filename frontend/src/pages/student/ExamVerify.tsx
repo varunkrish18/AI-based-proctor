@@ -18,13 +18,15 @@ interface PublicExamDetails {
   id: number;
   name: string;
   subject?: string;
-  durationMinutes: number;
+  durationMinutes: number | null;
   numQuestions: number;
   webcamRequired: boolean;
   microphoneRequired: boolean;
   screenRequired: boolean;
   locationRequired: boolean;
   openToAll: boolean;
+  isClass?: boolean;
+  assignedProfessorName?: string;
 }
 
 export default function ExamVerify() {
@@ -117,12 +119,19 @@ export default function ExamVerify() {
           <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 mb-5 text-xs">
             <div className="flex items-center justify-between">
               <span className="font-bold text-slate-800 text-sm">{examMeta.name}</span>
-              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold text-[11px]">
-                {examMeta.durationMinutes} mins
+              <span className={`px-2 py-0.5 rounded-full font-semibold text-[11px] ${
+                examMeta.durationMinutes ? "bg-blue-100 text-blue-800" : "bg-indigo-100 text-indigo-800"
+              }`}>
+                {examMeta.durationMinutes ? `${examMeta.durationMinutes} mins` : "♾️ Untimed Class (Infinite Attempts)"}
               </span>
             </div>
             {examMeta.subject && (
               <p className="text-slate-500 text-[11px] mt-0.5">{examMeta.subject}</p>
+            )}
+            {examMeta.assignedProfessorName && (
+              <p className="text-indigo-700 font-semibold text-[11px] mt-1 flex items-center gap-1">
+                <span>👨‍🏫</span> Faculty in Charge: {examMeta.assignedProfessorName}
+              </p>
             )}
             <div className="mt-3 pt-2.5 border-t border-slate-200 flex flex-wrap items-center gap-2 text-[11px]">
               <span className="text-slate-500 font-medium">Proctoring Requirements:</span>

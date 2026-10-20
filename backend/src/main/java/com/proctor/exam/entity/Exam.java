@@ -132,6 +132,19 @@ public class Exam {
     @Column(name = "created_by")
     private Long createdBy;
 
+    @Column(name = "assigned_professor_id")
+    private Long assignedProfessorId;
+
+    @Column(name = "assigned_professor_email")
+    private String assignedProfessorEmail;
+
+    @Column(name = "assigned_professor_name")
+    private String assignedProfessorName;
+
+    @Column(name = "is_class", nullable = false)
+    @Builder.Default
+    private Boolean isClass = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

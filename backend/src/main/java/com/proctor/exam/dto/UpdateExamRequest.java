@@ -23,5 +23,9 @@ public record UpdateExamRequest(
         Boolean locationRequired,
         Integer audioInputLevel,
         Boolean openToAll,
-        String status
+        String status,
+        Long assignedProfessorId,
+        String assignedProfessorEmail,
+        String assignedProfessorName,
+        Boolean isClass
 ) {}

@@ -480,19 +480,28 @@ export default function Home() {
                           >
                             {isOpen ? "● OPEN NOW" : isUpcoming ? "UPCOMING" : "CLOSED"}
                           </span>
-                          {exam.durationMinutes && (
+                          {exam.durationMinutes ? (
                             <span className="text-xs text-slate-500 font-mono">
                               ⏱️ {exam.durationMinutes} mins
+                            </span>
+                          ) : (
+                            <span className="text-xs text-indigo-600 font-medium font-mono">
+                              ♾️ Untimed Class
                             </span>
                           )}
                         </div>
 
                         <h3 className="font-bold text-slate-900 text-base mb-1">{exam.name}</h3>
                         {exam.subject && (
-                          <p className="text-xs text-indigo-600 font-medium mb-2">{exam.subject}</p>
+                          <p className="text-xs text-indigo-600 font-medium mb-1">{exam.subject}</p>
+                        )}
+                        {exam.assignedProfessorName && (
+                          <p className="text-[11px] text-slate-600 mb-2">
+                            👨‍🏫 Faculty: <span className="font-semibold text-slate-800">{exam.assignedProfessorName}</span>
+                          </p>
                         )}
                         <p className="text-xs text-slate-500 line-clamp-2 mb-4">
-                          {exam.numQuestions} Questions • Monitored Session
+                          {exam.numQuestions} Questions • {exam.isClass ? "Infinite Retries Allowed" : "Monitored Session"}
                         </p>
                       </div>
 

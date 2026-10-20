@@ -1178,7 +1178,19 @@ export default function AdminDashboard() {
                   {filteredExams.map((e) => (
                     <tr key={e.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="px-5 py-3.5 font-bold text-slate-900">
-                        {e.name}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{e.name}</span>
+                          {e.isClass && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                              🏫 Class
+                            </span>
+                          )}
+                        </div>
+                        {e.assignedProfessorName && (
+                          <span className="block text-[11px] text-purple-700 font-medium">
+                            👨‍🏫 Faculty: {e.assignedProfessorName}
+                          </span>
+                        )}
                         {e.description && (
                           <span className="block text-[11px] text-slate-400 font-normal truncate max-w-xs">
                             {e.description}
@@ -1187,7 +1199,9 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-5 py-3.5 text-slate-600 text-xs">{e.subject ?? "—"}</td>
                       <td className="px-5 py-3.5 text-slate-600 text-xs">{e.numQuestions} Qs</td>
-                      <td className="px-5 py-3.5 text-slate-600 text-xs">{e.durationMinutes} mins</td>
+                      <td className="px-5 py-3.5 text-slate-600 text-xs">
+                        {e.durationMinutes ? `${e.durationMinutes} mins` : "♾️ Untimed"}
+                      </td>
                       <td className="px-5 py-3.5">
                         <span
                           className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${

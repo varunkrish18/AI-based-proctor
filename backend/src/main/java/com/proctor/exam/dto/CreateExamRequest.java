@@ -22,5 +22,9 @@ public record CreateExamRequest(
         Boolean microphoneRequired,
         Boolean screenRequired,
         Boolean locationRequired,
-        Integer audioInputLevel
+        Integer audioInputLevel,
+        Long assignedProfessorId,
+        String assignedProfessorEmail,
+        String assignedProfessorName,
+        Boolean isClass
 ) {}

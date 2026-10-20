@@ -43,6 +43,9 @@ export default function CourseCoordinatorDashboard() {
     screenRequired: boolean;
     locationRequired: boolean;
     audioInputLevel: number | string;
+    assignedProfessorId: string;
+    assignedProfessorEmail: string;
+    assignedProfessorName: string;
   }>({
     name: "",
     description: "",
@@ -57,9 +60,17 @@ export default function CourseCoordinatorDashboard() {
     screenRequired: true,
     locationRequired: false,
     audioInputLevel: 20,
+    assignedProfessorId: "",
+    assignedProfessorEmail: "",
+    assignedProfessorName: "",
   });
   const [classSubmitting, setClassSubmitting] = useState(false);
   const [classError, setClassError] = useState<string | null>(null);
+
+  // Reassign professor modal state
+  const [reassigningExam, setReassigningExam] = useState<Exam | null>(null);
+  const [reassignProfEmail, setReassignProfEmail] = useState<string>("");
+  const [reassignSubmitting, setReassignSubmitting] = useState(false);
 
   const fallbackDepartment = getAdminUserDepartment() || "Assigned Department";
   const departmentName = profile?.department || fallbackDepartment;
@@ -145,6 +156,12 @@ export default function CourseCoordinatorDashboard() {
   async function handleCreateClass(e: React.FormEvent) {
     e.preventDefault();
     setClassError(null);
+
+    if (!classForm.assignedProfessorEmail) {
+      setClassError("Please assign a Professor / Faculty member for this class. The coordinator assigns the professor, who will then manage questions and students.");
+      return;
+    }
+
     setClassSubmitting(true);
     try {
       const payload = {
@@ -152,6 +169,12 @@ export default function CourseCoordinatorDashboard() {
         description: classForm.description,
         subject: classForm.subject || departmentName,
         numQuestions: Math.max(1, Number(classForm.numQuestions) || 10),
+        durationMinutes: null, // Untimed class: No fixed time duration like 60 min
+        maxAttempts: null, // Infinite attempts
+        isClass: true,
+        assignedProfessorId: classForm.assignedProfessorId ? Math.abs(Number(classForm.assignedProfessorId)) : undefined,
+        assignedProfessorEmail: classForm.assignedProfessorEmail || undefined,
+        assignedProfessorName: classForm.assignedProfessorName || undefined,
         randomizeQuestions: classForm.randomizeQuestions,
         randomizeOptions: classForm.randomizeOptions,
         webcamRequired: classForm.webcamRequired,
@@ -166,7 +189,7 @@ export default function CourseCoordinatorDashboard() {
       const newExam = await api.post<Exam>("/api/admin/exams", payload, "admin");
       setClasses((prev) => [newExam, ...prev]);
       setSuccessMsg(
-        `Class / Examination '${newExam.name}' created successfully! You can now configure questions and enroll candidates.`
+        `Class '${newExam.name}' created with infinite attempts and assigned to ${newExam.assignedProfessorName || classForm.assignedProfessorName || "selected professor"}!`
       );
       setActiveTab("classes");
       setTimeout(() => setSuccessMsg(null), 6000);
@@ -174,6 +197,33 @@ export default function CourseCoordinatorDashboard() {
       setClassError(err instanceof Error ? err.message : "Could not create class / exam.");
     } finally {
       setClassSubmitting(false);
+    }
+  }
+
+  async function handleReassignProfessor(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reassigningExam || !reassignProfEmail) return;
+    setReassignSubmitting(true);
+    try {
+      const selectedProf = faculties.find((f) => f.email === reassignProfEmail);
+      const payload = {
+        professorId: selectedProf ? Math.abs(selectedProf.id) : undefined,
+        professorEmail: selectedProf ? selectedProf.email : reassignProfEmail,
+        professorName: selectedProf ? selectedProf.fullName : undefined,
+      };
+      const updated = await api.put<Exam>(
+        `/api/admin/exams/${reassigningExam.id}/assign-professor`,
+        payload,
+        "admin"
+      );
+      setClasses((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      setSuccessMsg(`Professor successfully assigned to class '${updated.name}'!`);
+      setReassigningExam(null);
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to assign professor.");
+    } finally {
+      setReassignSubmitting(false);
     }
   }
 
@@ -529,7 +579,7 @@ export default function CourseCoordinatorDashboard() {
                   key={c.id}
                   className="bg-white border border-slate-200 hover:border-indigo-300 rounded-2xl p-5 shadow-xs transition-all flex flex-col justify-between space-y-4"
                 >
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <span
                         className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
@@ -554,10 +604,72 @@ export default function CourseCoordinatorDashboard() {
                       <p className="text-xs text-slate-500 line-clamp-2">{c.description}</p>
                     )}
 
-                    <div className="pt-2 text-xs space-y-1 text-slate-600">
+                    {/* Assigned Professor Card */}
+                    <div className="pt-1">
+                      {c.assignedProfessorName || c.assignedProfessorEmail ? (
+                        <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                          <div className="overflow-hidden">
+                            <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block flex items-center gap-1">
+                              <span>👨‍🏫</span> Assigned Professor
+                            </span>
+                            <span className="text-xs font-bold text-slate-900 truncate block mt-0.5">
+                              {c.assignedProfessorName || c.assignedProfessorEmail}
+                            </span>
+                            {c.assignedProfessorEmail && (
+                              <span className="text-[10px] text-slate-500 font-mono truncate block">
+                                {c.assignedProfessorEmail}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              setReassigningExam(c);
+                              setReassignProfEmail(c.assignedProfessorEmail || "");
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 text-[10px] font-bold shrink-0 transition cursor-pointer shadow-xs"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                              ⚠️ No Professor Assigned
+                            </span>
+                            <span className="text-[11px] text-amber-900 font-medium block">
+                              Assign professor to lead this class
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setReassigningExam(c);
+                              setReassignProfEmail("");
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold shrink-0 transition cursor-pointer shadow-xs"
+                          >
+                            + Assign Prof
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Class Mode Features: Infinite Attempts & Untimed Date Duration */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        ♾️ Infinite Attempts
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200">
+                        ⏳ Untimed (No duration limit)
+                      </span>
+                    </div>
+
+                    <div className="pt-1 text-xs space-y-1 text-slate-600">
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Subject:</span>
-                        <span className="font-medium">{c.subject || departmentName}</span>
+                        <span className="text-slate-400">Date Window:</span>
+                        <span className="font-medium text-slate-800">
+                          {new Date(c.startAt).toLocaleDateString()} – {new Date(c.endAt).toLocaleDateString()}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Questions:</span>
@@ -575,7 +687,7 @@ export default function CourseCoordinatorDashboard() {
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[10px] text-slate-400">
-                      {new Date(c.startAt).toLocaleDateString()}
+                      Created by Coordinator
                     </span>
                     <Link
                       to={`/admin/exams/${c.id}`}
@@ -588,6 +700,77 @@ export default function CourseCoordinatorDashboard() {
               ))}
             </div>
           )}
+
+          {/* Reassign Professor Modal */}
+          {reassigningExam && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-5 shadow-2xl animate-fadeIn">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Assign Professor to Class
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Class: <strong className="text-slate-800">{reassigningExam.name}</strong>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setReassigningExam(null)}
+                    className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5 text-xs text-blue-900 space-y-1">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <span>🏛️</span> Coordinator Assignment Protocol
+                  </p>
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    Course Coordinators assign the <strong>Professor</strong> to manage this class. The assigned professor will configure question sets and enroll/assign students. Coordinators do not assign students.
+                  </p>
+                </div>
+
+                <form onSubmit={handleReassignProfessor} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Select Department Faculty / Professor *
+                    </label>
+                    <select
+                      required
+                      value={reassignProfEmail}
+                      onChange={(e) => setReassignProfEmail(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-800"
+                    >
+                      <option value="">-- Choose a Professor from {departmentName} --</option>
+                      {faculties.map((f) => (
+                        <option key={f.id} value={f.email}>
+                          {f.fullName} ({f.email}) {f.role ? `• ${f.role}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReassigningExam(null)}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={reassignSubmitting || !reassignProfEmail}
+                      className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm cursor-pointer disabled:opacity-50"
+                    >
+                      {reassignSubmitting ? "Assigning…" : "Save Assignment"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -596,9 +779,9 @@ export default function CourseCoordinatorDashboard() {
         <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-xs max-w-3xl mx-auto space-y-6">
           <div className="border-b border-slate-200 pb-4 flex justify-between items-start">
             <div>
-              <h2 className="text-lg font-black text-slate-900">Create New Class / Examination</h2>
+              <h2 className="text-lg font-black text-slate-900">Create New Class</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Configure an assessment for <strong className="text-slate-700">{departmentName}</strong> with proctoring parameters.
+                Configure a class for <strong className="text-slate-700">{departmentName}</strong> with infinite attempts and date duration. Assign the professor to lead it.
               </p>
             </div>
             <button
@@ -607,6 +790,39 @@ export default function CourseCoordinatorDashboard() {
             >
               Cancel
             </button>
+          </div>
+
+          {/* Key Feature Specification Box */}
+          <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-slate-50 border border-blue-200/80 rounded-2xl p-4 text-xs text-slate-700 space-y-2 shadow-xs">
+            <h4 className="font-bold text-blue-900 flex items-center gap-1.5 text-xs">
+              <span>📌</span> Course Coordinator Class Architecture:
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                <span className="font-bold text-indigo-900 block flex items-center gap-1">
+                  <span>♾️</span> Infinite Attempts
+                </span>
+                <span className="text-[11px] text-slate-500 mt-0.5 block leading-tight">
+                  Students have unlimited attempts to practice and master concepts.
+                </span>
+              </div>
+              <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                <span className="font-bold text-indigo-900 block flex items-center gap-1">
+                  <span>⏳</span> No Time Duration
+                </span>
+                <span className="text-[11px] text-slate-500 mt-0.5 block leading-tight">
+                  No 60-min per-attempt countdown. Valid throughout the scheduled date window.
+                </span>
+              </div>
+              <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                <span className="font-bold text-indigo-900 block flex items-center gap-1">
+                  <span>👨‍🏫</span> Assign Professor
+                </span>
+                <span className="text-[11px] text-slate-500 mt-0.5 block leading-tight">
+                  You assign the Professor, not the student. The professor enrolls students.
+                </span>
+              </div>
+            </div>
           </div>
 
           {classError && (
@@ -622,12 +838,12 @@ export default function CourseCoordinatorDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Class / Examination Name *
+                    Class Name *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. CS201: Data Structures Midterm Examination"
+                    placeholder="e.g. CS201: Data Structures & Algorithms Lab"
                     value={classForm.name}
                     onChange={(e) => setClassField("name", e.target.value)}
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
@@ -659,8 +875,49 @@ export default function CourseCoordinatorDashboard() {
                   />
                 </div>
 
+                {/* Professor Assignment Selector (Mandatory for Course Coordinator) */}
                 <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Description / Notes</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Assign Professor / Faculty in Charge *</span>
+                    <span className="text-[11px] text-blue-600 font-normal">Coordinator assigns the prof, not student</span>
+                  </label>
+                  <select
+                    required
+                    value={classForm.assignedProfessorEmail}
+                    onChange={(e) => {
+                      const selectedProf = faculties.find((f) => f.email === e.target.value);
+                      if (selectedProf) {
+                        setClassForm((prev) => ({
+                          ...prev,
+                          assignedProfessorId: String(selectedProf.id),
+                          assignedProfessorEmail: selectedProf.email,
+                          assignedProfessorName: selectedProf.fullName,
+                        }));
+                      } else {
+                        setClassForm((prev) => ({
+                          ...prev,
+                          assignedProfessorId: "",
+                          assignedProfessorEmail: "",
+                          assignedProfessorName: "",
+                        }));
+                      }
+                    }}
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white font-medium text-slate-800"
+                  >
+                    <option value="">-- Choose Professor / Faculty Member from {departmentName} --</option>
+                    {faculties.map((f) => (
+                      <option key={f.id} value={f.email}>
+                        {f.fullName} ({f.email}) {f.role ? `• ${f.role}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    The chosen professor will be granted full management access to this class to author questions and assign students.
+                  </p>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Description / Syllabus</label>
                   <textarea
                     rows={2}
                     placeholder="Optional syllabus topics, scoring instructions, or candidate guidelines…"
@@ -672,12 +929,19 @@ export default function CourseCoordinatorDashboard() {
               </div>
             </div>
 
-            {/* Schedule */}
+            {/* Date Duration Window (No 60 min countdown limit) */}
             <div className="space-y-4 pt-4 border-t border-slate-100">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Exam Window</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Date Duration Window (No Time Duration Limit)
+                </h3>
+                <span className="text-[11px] text-indigo-600 font-semibold">
+                  Valid across these dates with infinite attempts
+                </span>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Starts At *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Class Start Date &amp; Time *</label>
                   <input
                     type="datetime-local"
                     required
@@ -688,7 +952,7 @@ export default function CourseCoordinatorDashboard() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Ends At *</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Class End Date &amp; Time *</label>
                   <input
                     type="datetime-local"
                     required
@@ -771,7 +1035,7 @@ export default function CourseCoordinatorDashboard() {
                 disabled={classSubmitting}
                 className="px-6 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm cursor-pointer disabled:opacity-50"
               >
-                {classSubmitting ? "Creating Class…" : "Create Class / Exam (Draft)"}
+                {classSubmitting ? "Creating Class…" : "Create Class (Untimed, Infinite Attempts)"}
               </button>
             </div>
           </form>
