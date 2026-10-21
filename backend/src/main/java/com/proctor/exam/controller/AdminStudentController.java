@@ -110,4 +110,16 @@ public class AdminStudentController {
     public void deleteStudent(@PathVariable Long id, Authentication auth) {
         studentAdminService.deleteStudent(id, auth != null ? auth.getName() : null);
     }
+
+    @DeleteMapping
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteAllStudents(Authentication auth) {
+        studentAdminService.deleteAllStudents(auth != null ? auth.getName() : null);
+    }
+
+    @DeleteMapping("/all")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteAllStudentsAlt(Authentication auth) {
+        studentAdminService.deleteAllStudents(auth != null ? auth.getName() : null);
+    }
 }

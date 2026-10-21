@@ -68,6 +68,12 @@ export default function StudentManagementTab() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Delete All Student Credentials Modal state
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deleteAllSubmitting, setDeleteAllSubmitting] = useState(false);
+  const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
+  const [confirmDeleteAllText, setConfirmDeleteAllText] = useState("");
+
   // Bulk Upload Modal state
   interface ParsedStudentRow {
     rowNumber: number;
@@ -310,6 +316,24 @@ export default function StudentManagementTab() {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete student.");
     } finally {
       setDeleteSubmitting(false);
+    }
+  }
+
+  async function handleDeleteAllStudents() {
+    setDeleteAllError(null);
+    setDeleteAllSubmitting(true);
+    try {
+      await api.delete("/api/admin/students/all", "admin");
+      const deletedCount = students.length;
+      setStudents([]);
+      setShowDeleteAllModal(false);
+      setConfirmDeleteAllText("");
+      setSuccessMsg(`All student credentials (${deletedCount} ${deletedCount === 1 ? "student" : "students"}) have been successfully deleted.`);
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (err) {
+      setDeleteAllError(err instanceof Error ? err.message : "Failed to delete all student credentials.");
+    } finally {
+      setDeleteAllSubmitting(false);
     }
   }
 
@@ -1308,6 +1332,18 @@ export default function StudentManagementTab() {
             className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
           >
             <span>+</span> Add Student
+          </button>
+          <button
+            onClick={() => {
+              setDeleteAllError(null);
+              setConfirmDeleteAllText("");
+              setShowDeleteAllModal(true);
+            }}
+            disabled={students.length === 0 || loading}
+            className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Delete all student credentials"
+          >
+            <span>🗑️</span> Delete All Credentials
           </button>
         </div>
       </div>
@@ -2518,6 +2554,82 @@ export default function StudentManagementTab() {
                 className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {deleteSubmitting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== DELETE ALL CREDENTIALS MODAL ===================== */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-scaleUp text-xs">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-2xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center text-2xl shrink-0">
+                ⚠️
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Delete All Student Credentials?</h3>
+                <p className="text-rose-600 font-semibold text-[11px] mt-0.5">High-impact action: This cannot be undone</p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50/70 border border-rose-200 rounded-xl p-3.5 mb-4 space-y-2 text-slate-700">
+              <p className="leading-relaxed">
+                You are about to permanently delete <strong className="text-rose-700 font-bold">{students.length} student {students.length === 1 ? "record" : "records"}</strong> and their corresponding login credentials from the system.
+              </p>
+              <p className="text-[11px] text-rose-600 leading-normal">
+                Students will no longer be able to log in using these credentials unless re-registered or re-imported via bulk upload.
+              </p>
+            </div>
+
+            {deleteAllError && (
+              <div className="p-3 bg-rose-50 border border-rose-300 text-rose-700 rounded-xl font-medium mb-3">
+                {deleteAllError}
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-slate-700 font-bold mb-1.5 text-[11px]">
+                Type <span className="font-mono text-rose-600 font-bold select-all">DELETE ALL</span> to confirm:
+              </label>
+              <input
+                type="text"
+                value={confirmDeleteAllText}
+                onChange={(e) => setConfirmDeleteAllText(e.target.value)}
+                placeholder="DELETE ALL"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-slate-50 font-mono text-xs focus:bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteAllModal(false);
+                  setConfirmDeleteAllText("");
+                  setDeleteAllError(null);
+                }}
+                disabled={deleteAllSubmitting}
+                className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-semibold hover:bg-slate-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAllStudents}
+                disabled={deleteAllSubmitting || confirmDeleteAllText.trim().toUpperCase() !== "DELETE ALL"}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {deleteAllSubmitting ? (
+                  <>
+                    <span className="animate-spin text-sm">🔄</span> Deleting All…
+                  </>
+                ) : (
+                  <>
+                    <span>🗑️</span> Delete All Credentials
+                  </>
+                )}
               </button>
             </div>
           </div>

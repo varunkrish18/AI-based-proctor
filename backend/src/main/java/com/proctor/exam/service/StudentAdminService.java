@@ -192,6 +192,17 @@ public class StudentAdminService {
     }
 
     @Transactional
+    public void deleteAllStudents(String callerEmail) {
+        long count = studentRepository.count();
+        studentRepository.deleteAllInBatch();
+
+        if (callerEmail != null) {
+            auditLogService.logAdmin(callerEmail, "DELETE_ALL_STUDENTS",
+                    "Deleted all student credentials (" + count + " students) by " + callerEmail);
+        }
+    }
+
+    @Transactional
     public BulkStudentUploadResult createStudentsBulk(List<CreateStudentRequest> requests, String callerEmail) {
         int total = requests.size();
         if (total == 0) {
