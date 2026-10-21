@@ -33,6 +33,7 @@ public class PublicExamController {
     private final StudentRepository studentRepository;
     private final AdminRepository adminRepository;
     private final ProfessorRepository professorRepository;
+    private final com.proctor.exam.repository.ExamAttemptRepository attemptRepository;
 
     public PublicExamController(ExamRepository examRepository,
                                 StudentExamService studentExamService,
@@ -41,7 +42,8 @@ public class PublicExamController {
                                 ExamAssignmentRepository assignmentRepository,
                                 StudentRepository studentRepository,
                                 AdminRepository adminRepository,
-                                ProfessorRepository professorRepository) {
+                                ProfessorRepository professorRepository,
+                                com.proctor.exam.repository.ExamAttemptRepository attemptRepository) {
         this.examRepository = examRepository;
         this.studentExamService = studentExamService;
         this.trustedTimeService = trustedTimeService;
@@ -50,6 +52,7 @@ public class PublicExamController {
         this.studentRepository = studentRepository;
         this.adminRepository = adminRepository;
         this.professorRepository = professorRepository;
+        this.attemptRepository = attemptRepository;
     }
 
     private boolean isProfessorOrFaculty(Authentication auth, String email) {
@@ -106,6 +109,8 @@ public class PublicExamController {
         boolean isStudent = isAuthenticated && auth.getAuthorities().stream()
                 .anyMatch(a -> "ROLE_STUDENT".equalsIgnoreCase(a.getAuthority()));
 
+        Map<Long, String> attemptStatusByExamId = new HashMap<>();
+
         if (isStudent) {
             String callerIdentifier = auth.getName().trim().toLowerCase();
             Set<String> searchIdentifiers = new HashSet<>();
@@ -127,6 +132,25 @@ public class PublicExamController {
             publishedExams = publishedExams.stream()
                     .filter(e -> assignedExamIds.contains(e.getId()) || e.isOpenToAll())
                     .toList();
+
+            try {
+                List<com.proctor.exam.entity.ExamAttempt> attempts = attemptRepository.findByStudentEmailIgnoreCaseIn(searchIdentifiers);
+                for (com.proctor.exam.entity.ExamAttempt a : attempts) {
+                    if (a.getExam() != null && a.getExam().getId() != null) {
+                        Long eid = a.getExam().getId();
+                        String prev = attemptStatusByExamId.get(eid);
+                        if ("SUBMITTED".equalsIgnoreCase(a.getStatus()) || "COMPLETED".equalsIgnoreCase(a.getStatus())) {
+                            attemptStatusByExamId.put(eid, "COMPLETED");
+                        } else if (!"COMPLETED".equals(prev)) {
+                            if ("IN_PROGRESS".equalsIgnoreCase(a.getStatus())) {
+                                attemptStatusByExamId.put(eid, "IN_PROGRESS");
+                            } else if ("INCOMPLETE".equalsIgnoreCase(a.getStatus()) || "TERMINATED".equalsIgnoreCase(a.getStatus())) {
+                                attemptStatusByExamId.put(eid, "INCOMPLETE");
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
         } else if (isAuthenticated && isProfessorOrFaculty(auth, auth.getName())) {
             // Professor should ONLY see the class or exam assigned to him and the exam he created;
             // other than that he should not see any exam or class
@@ -155,7 +179,8 @@ public class PublicExamController {
                         e.getAssignedProfessorEmail(),
                         e.getAssignedProfessorName(),
                         Boolean.TRUE.equals(e.getIsClass()),
-                        e.isOpenToAll()
+                        e.isOpenToAll(),
+                        attemptStatusByExamId.get(e.getId())
                 ))
                 .toList();
     }

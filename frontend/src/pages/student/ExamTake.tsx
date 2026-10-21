@@ -60,6 +60,9 @@ export default function ExamTake() {
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [codingAnswers, setCodingAnswers] = useState<Record<number, { code: string; language: string }>>({});
   const [lockedCodingQuestions, setLockedCodingQuestions] = useState<Set<number>>(() => new Set());
+  const [questionTestCasesPassed, setQuestionTestCasesPassed] = useState<Record<number, boolean>>({});
+  const [showTerminateConfirm, setShowTerminateConfirm] = useState(false);
+  const [terminating, setTerminating] = useState(false);
   const [marked, setMarked] = useState<Set<number>>(new Set());
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +172,21 @@ export default function ExamTake() {
           if (res.savedCodingAnswers) {
             setCodingAnswers(res.savedCodingAnswers);
           }
+          // Restore completed and locked questions from persistent backend database response
+          if (res.completedQuestionIds && Array.isArray(res.completedQuestionIds)) {
+            setLockedCodingQuestions((prev) => {
+              const next = new Set(prev);
+              res.completedQuestionIds?.forEach((id) => next.add(id));
+              return next;
+            });
+            setQuestionTestCasesPassed((prev) => {
+              const next = { ...prev };
+              res.completedQuestionIds?.forEach((id) => {
+                next[id] = true;
+              });
+              return next;
+            });
+          }
           try {
             const stored = sessionStorage.getItem(`locked_coding_${res.attemptId}`);
             if (stored) {
@@ -177,8 +195,30 @@ export default function ExamTake() {
                 setLockedCodingQuestions((prev) => new Set([...prev, ...parsed]));
               }
             }
+            const storedPassed = sessionStorage.getItem(`passed_coding_${res.attemptId}`);
+            if (storedPassed) {
+              const parsedPassed = JSON.parse(storedPassed);
+              if (parsedPassed && typeof parsedPassed === "object") {
+                setQuestionTestCasesPassed((prev) => ({ ...prev, ...parsedPassed }));
+              }
+            }
           } catch {}
-          if (res.durationMinutes != null && res.durationMinutes > 0) {
+
+          // Advance to the first unanswered question if prior questions have already been completed
+          if (res.completedQuestionIds && res.completedQuestionIds.length > 0 && res.questions) {
+            const firstUnansweredIndex = res.questions.findIndex((qq) => {
+              const isCoding = String(qq.questionType || "").trim().toUpperCase() === "CODING";
+              if (isCoding) {
+                return !res.completedQuestionIds?.includes(qq.questionId);
+              }
+              return res.savedAnswers ? res.savedAnswers[qq.questionId] === undefined : true;
+            });
+            if (firstUnansweredIndex > 0) {
+              setCurrent(firstUnansweredIndex);
+            }
+          }
+          // Class exams are untimed (no countdown timer running)
+          if (!res.isClass && res.durationMinutes != null && res.durationMinutes > 0) {
             const elapsedSeconds = Math.max(
               0,
               Math.floor((getTrustedEpochMs() - new Date(res.serverStartTime).getTime()) / 1000)
@@ -312,6 +352,31 @@ export default function ExamTake() {
     }
   }, [session, examId, navigate, flushNow, stopAllMediaStreams, logEvent, answers, codingAnswers]);
 
+  const handleTerminate = useCallback(async () => {
+    if (!session || submittedRef.current || terminating) return;
+    setTerminating(true);
+    submittedRef.current = true;
+    try {
+      await logEvent("EXAM_STUDENT_TERMINATED", undefined, {
+        reason: "Candidate voluntarily terminated session without submitting",
+      });
+      await flushNow();
+      stopAllMediaStreams();
+      if (document.fullscreenElement) {
+        await document.exitFullscreen().catch(() => {});
+      }
+      await api.post(`/api/student/attempts/${session.attemptId}/terminate`, {}, "student");
+    } catch (e) {
+      console.warn("Termination request error:", e);
+    } finally {
+      stopAllMediaStreams();
+      if (document.fullscreenElement) {
+        await document.exitFullscreen().catch(() => {});
+      }
+      navigate("/", { replace: true });
+    }
+  }, [session, terminating, flushNow, stopAllMediaStreams, logEvent, navigate]);
+
   // Explicit 3-Strike Proctoring Enforcement System
   const issueWarningStrike = useCallback(
     (reason: string, description: string) => {
@@ -370,9 +435,9 @@ export default function ExamTake() {
     return () => clearTimeout(t);
   }, [gazeWarningPopup]);
 
-  // Countdown timer; decrements remaining seconds smoothly for timed exams
+  // Countdown timer; decrements remaining seconds smoothly for timed exams (disabled for class sessions)
   useEffect(() => {
-    if (!session || !screenGatePassed || session.durationMinutes == null || session.durationMinutes <= 0) return;
+    if (!session || session.isClass || !screenGatePassed || session.durationMinutes == null || session.durationMinutes <= 0) return;
 
     const timer = setInterval(() => {
       setRemainingSeconds((prev) => {
@@ -2126,16 +2191,46 @@ export default function ExamTake() {
     }
   }
 
-  function handleFinalizeCoding(questionId: number) {
-    setLockedCodingQuestions((prev) => {
-      const next = new Set(prev).add(questionId);
-      try {
-        if (session?.attemptId) {
-          sessionStorage.setItem(`locked_coding_${session.attemptId}`, JSON.stringify(Array.from(next)));
-        }
-      } catch {}
-      return next;
-    });
+  const [lockingQuestion, setLockingQuestion] = useState(false);
+
+  async function handleFinalizeCoding(questionId: number) {
+    if (!questionTestCasesPassed[questionId]) {
+      setWarning("You must attend the question and pass all test cases before submitting and locking your code.");
+      return;
+    }
+    const currentCode = codingAnswers[questionId]?.code;
+    const currentLang = codingAnswers[questionId]?.language;
+    if (!currentCode) {
+      setWarning("Cannot submit empty code solution.");
+      return;
+    }
+
+    setLockingQuestion(true);
+    try {
+      if (session?.attemptId) {
+        await api.post(
+          `/api/student/attempts/${session.attemptId}/answers`,
+          { questionId, codeSubmission: currentCode, codeLanguage: currentLang },
+          "student"
+        );
+      }
+      setLockedCodingQuestions((prev) => {
+        const next = new Set(prev).add(questionId);
+        try {
+          if (session?.attemptId) {
+            sessionStorage.setItem(`locked_coding_${session.attemptId}`, JSON.stringify(Array.from(next)));
+          }
+        } catch {}
+        return next;
+      });
+
+      // Advance to the next question automatically if available
+      setCurrent((c) => Math.min(c + 1, questions.length - 1));
+    } catch (e: any) {
+      setWarning("Failed to permanently save and lock question answer. Please check your network connection.");
+    } finally {
+      setLockingQuestion(false);
+    }
   }
 
   function updateCodingAnswer(questionId: number, code: string, language: string) {
@@ -2158,11 +2253,31 @@ export default function ExamTake() {
 
   async function handleRunCode(questionId: number, code: string, language: string, customInput?: string) {
     if (!session?.attemptId) throw new Error("Attempt not active");
-    return api.post<RunCodeResponse>(
+    const res = await api.post<RunCodeResponse>(
       `/api/student/attempts/${session.attemptId}/run-code`,
       { questionId, code, language, customInput },
       "student"
     );
+    const passed = Boolean(res && (res.status === "ACCEPTED" || (res.totalCases > 0 && res.passedCases === res.totalCases)));
+    if (passed) {
+      setQuestionTestCasesPassed((prev) => {
+        const next = { ...prev, [questionId]: true };
+        try {
+          if (session?.attemptId) {
+            sessionStorage.setItem(`passed_coding_${session.attemptId}`, JSON.stringify(next));
+          }
+        } catch {}
+        return next;
+      });
+      if (session?.attemptId) {
+        api.post(
+          `/api/student/attempts/${session.attemptId}/answers`,
+          { questionId, codeSubmission: code, codeLanguage: language },
+          "student"
+        ).catch(() => {});
+      }
+    }
+    return res;
   }
 
   function toggleMark(questionId: number) {
@@ -2818,6 +2933,53 @@ export default function ExamTake() {
         </div>
       )}
 
+      {/* Terminate Session Confirmation Modal */}
+      {showTerminateConfirm && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl text-slate-900 space-y-4 border border-slate-200">
+            <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-2xl font-bold shadow-inner">
+              🚪
+            </div>
+            <h3 className="text-xl font-bold text-center text-slate-900">
+              Terminate {session?.isClass ? "Class" : "Examination"}?
+            </h3>
+            <p className="text-sm text-slate-600 text-center leading-relaxed">
+              Are you sure you want to terminate without submitting? Your session will be recorded as <strong className="text-amber-600">INCOMPLETE</strong>. You will be able to re-enter and take it later.
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
+              <p className="font-bold flex items-center gap-1 text-amber-800">
+                <span>💡</span> Examination Rule Notice:
+              </p>
+              <p>
+                • Terminating now marks your attempt as <strong>Incomplete</strong>.
+              </p>
+              <p>
+                • If you pass the test cases and submit, it will be marked as <strong>Completed</strong> and cannot be attempted again.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowTerminateConfirm(false)}
+                disabled={terminating}
+                className="px-4 py-2.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+              >
+                Continue Working
+              </button>
+              <button
+                type="button"
+                onClick={handleTerminate}
+                disabled={terminating}
+                className="px-4 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-lg transition shadow-sm cursor-pointer flex items-center gap-1.5"
+              >
+                <span>🚪</span>
+                <span>{terminating ? "Terminating…" : "Yes, Terminate Session"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hidden elements for computer-vision capture */}
       <video ref={videoRef} autoPlay playsInline muted className="hidden" />
       <canvas ref={canvasRef} width={320} height={240} className="hidden" />
@@ -2945,14 +3107,27 @@ export default function ExamTake() {
           )}
         </div>
 
-        {session?.durationMinutes != null && session.durationMinutes > 0 && remainingSeconds !== null ? (
-          <span className="font-mono text-lg font-bold">{mm}:{ss}</span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold text-xs border border-indigo-400/30">
-            <span>♾️</span> Untimed Class Session
-          </span>
-        )}
-        <span className="text-sm text-slate-300">{answeredCount} answered</span>
+        <div className="flex items-center gap-3">
+          {!session?.isClass && session?.durationMinutes != null && session.durationMinutes > 0 && remainingSeconds !== null ? (
+            <span className="font-mono text-lg font-bold">{mm}:{ss}</span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold text-xs border border-indigo-400/30">
+              <span>♾️</span> Untimed Class Session
+            </span>
+          )}
+          <span className="text-sm text-slate-300 hidden sm:inline">{answeredCount} answered</span>
+
+          {/* Student voluntary terminate button */}
+          <button
+            type="button"
+            onClick={() => setShowTerminateConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-500/60 text-rose-200 transition shadow-xs cursor-pointer active:scale-98"
+            title="Terminate without submitting. Attempt will be marked as Incomplete, allowing you to re-take or resume later."
+          >
+            <span>🚪</span>
+            <span>Terminate {session?.isClass ? "Class" : "Exam"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Persistent warning banner with level-based severity */}
@@ -3095,6 +3270,7 @@ export default function ExamTake() {
                   (parsedAllowed.includes("c") && !parsedAllowed.includes("python") ? "c" : parsedAllowed[0]) ||
                   "c";
 
+                const hasPassedCases = Boolean(questionTestCasesPassed[q.questionId]);
                 const isCodingCompleted = lockedCodingQuestions.has(q.questionId);
 
                 return (
@@ -3102,25 +3278,38 @@ export default function ExamTake() {
                     {!isCodingCompleted ? (
                       <div className="flex items-center justify-between bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
                         <span className="text-slate-300 font-medium flex items-center gap-1.5">
-                          <span>💡</span> Test your code with sample cases, then click to submit &amp; lock:
+                          {hasPassedCases ? (
+                            <span className="text-emerald-400 font-bold flex items-center gap-1">
+                              <span>✓</span> All sample test cases passed! Click to submit &amp; lock question:
+                            </span>
+                          ) : (
+                            <span>💡 Run code and pass sample test cases to complete question:</span>
+                          )}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => handleFinalizeCoding(q.questionId)}
-                          className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition shrink-0"
-                          title="Finalize & Lock: once submitted, this question cannot be modified"
-                        >
-                          <span>🔒</span>
-                          <span>Submit &amp; Lock Code</span>
-                        </button>
+                        {hasPassedCases ? (
+                          <button
+                            type="button"
+                            onClick={() => handleFinalizeCoding(q.questionId)}
+                            disabled={lockingQuestion}
+                            className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition shrink-0"
+                            title="Test cases passed! Submit & Lock your solution."
+                          >
+                            <span>🔒</span>
+                            <span>{lockingQuestion ? "Submitting Code…" : "Submit & Lock Code"}</span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-amber-300 bg-amber-950/70 border border-amber-800/80 px-2.5 py-1 rounded-md font-semibold flex items-center gap-1">
+                            <span>⏳</span> Run Code &amp; Pass Test Cases
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center justify-between bg-emerald-950/80 border border-emerald-600/70 rounded-xl px-3 py-2 text-xs text-emerald-200 font-semibold">
                         <span className="flex items-center gap-1.5">
-                          <span>✓</span> Code solution submitted and locked. Read-only mode active.
+                          <span>✓</span> Test cases passed. Code solution submitted and locked. Read-only mode active.
                         </span>
                         <span className="bg-emerald-800 text-white text-[10px] px-2 py-0.5 rounded font-mono uppercase">
-                          Locked 🔒
+                          Completed 🔒
                         </span>
                       </div>
                     )}
@@ -3209,30 +3398,82 @@ export default function ExamTake() {
           </div>
         )}
 
-        <div className="flex justify-between mb-8">
+        <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
           <button
             onClick={() => setCurrent((c) => Math.max(c - 1, 0))}
             disabled={current === 0}
             className="px-4 py-2 border border-slate-300 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
           >
-            Previous
+            ← Previous Question
           </button>
-          {current < questions.length - 1 ? (
-            <button
-              onClick={() => setCurrent((c) => Math.min(c + 1, questions.length - 1))}
-              className="px-4 py-2 bg-slate-800 text-white rounded-md text-sm font-medium hover:bg-slate-700 cursor-pointer"
-            >
-              Next
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
-            >
-              {submitting ? "Submitting…" : "Submit Exam"}
-            </button>
-          )}
+
+          <div className="flex items-center gap-3">
+            {current < questions.length - 1 && (
+              <button
+                onClick={() => setCurrent((c) => Math.min(c + 1, questions.length - 1))}
+                className="px-4 py-2 bg-slate-800 text-white rounded-md text-sm font-medium hover:bg-slate-700 cursor-pointer"
+              >
+                Next Question →
+              </button>
+            )}
+
+            {/* Navigation and Submission Buttons */}
+            {(() => {
+              const isCurrentCoding = String(q.questionType).toUpperCase() === "CODING";
+              const isCurrentLocked = isCurrentCoding
+                ? lockedCodingQuestions.has(q.questionId)
+                : answers[q.questionId] !== undefined;
+              const hasPassedCases = Boolean(questionTestCasesPassed[q.questionId]);
+
+              // Check if ALL questions across the exam/class are completed
+              const allCompleted = questions.every((qq) => {
+                const qqIsCoding = String(qq.questionType).toUpperCase() === "CODING";
+                return qqIsCoding
+                  ? lockedCodingQuestions.has(qq.questionId)
+                  : answers[qq.questionId] !== undefined;
+              });
+
+              return (
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {/* If current coding question is passed but not yet locked, show prominent Submit & Lock Question button */}
+                  {isCurrentCoding && !isCurrentLocked && hasPassedCases && (
+                    <button
+                      type="button"
+                      onClick={() => handleFinalizeCoding(q.questionId)}
+                      disabled={lockingQuestion}
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-md text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 animate-in fade-in"
+                      title="Submit and lock this question's code permanently"
+                    >
+                      <span>🔒</span>
+                      <span>{lockingQuestion ? "Submitting Question…" : `Submit & Lock Question ${current + 1}`}</span>
+                    </button>
+                  )}
+
+                  {/* If on final question or all questions completed, allow Final Class/Exam Submission */}
+                  {(allCompleted || current === questions.length - 1) && (
+                    <button
+                      type="button"
+                      onClick={() => handleSubmit()}
+                      disabled={submitting || (!isCurrentLocked && (!isCurrentCoding || !hasPassedCases))}
+                      className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 text-white rounded-md text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                      title={allCompleted ? "All questions submitted! Finish and conclude session." : "Submit and finish session"}
+                    >
+                      <span>🏁</span>
+                      <span>{submitting ? "Finishing…" : session?.isClass ? "Submit Entire Class" : "Submit Entire Exam"}</span>
+                    </button>
+                  )}
+
+                  {/* Informational tip if question cannot be submitted yet */}
+                  {!isCurrentLocked && !hasPassedCases && isCurrentCoding && (
+                    <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-md font-medium flex items-center gap-1.5">
+                      <span>💡</span>
+                      <span>Pass test cases to unlock submission for Question {current + 1}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
         </div>
 
         {/* Question palette grid */}
@@ -3241,7 +3482,7 @@ export default function ExamTake() {
             const isCoding = String(qq.questionType || "").trim().toUpperCase() === "CODING";
             const isAnswered =
               isCoding
-                ? lockedCodingQuestions.has(qq.questionId)
+                ? lockedCodingQuestions.has(qq.questionId) || Boolean(questionTestCasesPassed[qq.questionId])
                 : answers[qq.questionId] !== undefined;
 
             return (
@@ -3309,7 +3550,7 @@ export default function ExamTake() {
                 {questions.map((qq, idx) => {
                   const isCoding = String(qq.questionType || "").trim().toUpperCase() === "CODING";
                   const isAnswered = isCoding
-                    ? lockedCodingQuestions.has(qq.questionId)
+                    ? lockedCodingQuestions.has(qq.questionId) || Boolean(questionTestCasesPassed[qq.questionId])
                     : answers[qq.questionId] !== undefined;
                   const isCurrent = idx === current;
 

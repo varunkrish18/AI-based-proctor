@@ -12,6 +12,7 @@ export interface ExamSummary {
   assignedProfessorName?: string | null;
   isClass?: boolean;
   openToAll?: boolean;
+  studentAttemptStatus?: "COMPLETED" | "INCOMPLETE" | "IN_PROGRESS" | string | null;
 }
 
 export interface Exam extends ExamSummary {
@@ -113,6 +114,8 @@ export interface StartExamResponse {
   audioInputLevel?: number;
   savedAnswers?: Record<number, number>;
   savedCodingAnswers?: Record<number, { code: string; language: string }>;
+  isClass?: boolean;
+  completedQuestionIds?: number[];
 }
 
 export interface AttemptResult {

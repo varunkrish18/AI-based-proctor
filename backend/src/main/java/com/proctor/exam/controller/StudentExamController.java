@@ -61,6 +61,11 @@ public class StudentExamController {
         return studentExamService.getLiveSync(examId, attemptId, auth.getName());
     }
 
+    @PostMapping("/attempts/{attemptId}/terminate")
+    public void terminate(@PathVariable Long attemptId, Authentication auth) {
+        studentExamService.terminateAttempt(attemptId, auth.getName());
+    }
+
     @PostMapping("/attempts/{attemptId}/submit")
     public AttemptResultResponse submit(@PathVariable Long attemptId, Authentication auth) {
         return studentExamService.submit(attemptId, auth.getName());

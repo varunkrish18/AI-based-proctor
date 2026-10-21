@@ -15,7 +15,9 @@ public record StartExamResponse(
         Boolean locationRequired,
         Integer audioInputLevel,
         Map<Long, Integer> savedAnswers,
-        Map<Long, SavedCodeAnswer> savedCodingAnswers
+        Map<Long, SavedCodeAnswer> savedCodingAnswers,
+        Boolean isClass,
+        List<Long> completedQuestionIds
 ) {
     public record SavedCodeAnswer(String code, String language) {}
 }

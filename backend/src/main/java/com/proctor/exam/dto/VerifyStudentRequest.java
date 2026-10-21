@@ -1,10 +1,9 @@
 package com.proctor.exam.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
 public record VerifyStudentRequest(
-        @NotBlank @Email String email,
+        @NotBlank(message = "Email is required") String email,
         String password,
         String name,
         String registerNumber

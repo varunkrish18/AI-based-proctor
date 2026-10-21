@@ -123,9 +123,9 @@ export default function ExamVerify() {
             <div className="flex items-center justify-between">
               <span className="font-bold text-slate-800 text-sm">{examMeta.name}</span>
               <span className={`px-2 py-0.5 rounded-full font-semibold text-[11px] ${
-                examMeta.durationMinutes ? "bg-blue-100 text-blue-800" : "bg-indigo-100 text-indigo-800"
+                examMeta.isClass ? "bg-indigo-100 text-indigo-800" : examMeta.durationMinutes ? "bg-blue-100 text-blue-800" : "bg-indigo-100 text-indigo-800"
               }`}>
-                {examMeta.durationMinutes ? `${examMeta.durationMinutes} mins` : "♾️ Untimed Class (Infinite Attempts)"}
+                {examMeta.isClass ? "♾️ Untimed Class (Infinite Attempts)" : examMeta.durationMinutes ? `${examMeta.durationMinutes} mins` : "♾️ Untimed"}
               </span>
             </div>
             {examMeta.subject && (

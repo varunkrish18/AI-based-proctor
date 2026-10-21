@@ -15,5 +15,6 @@ public record ExamSummaryResponse(
         String assignedProfessorEmail,
         String assignedProfessorName,
         Boolean isClass,
-        Boolean openToAll
+        Boolean openToAll,
+        String studentAttemptStatus
 ) {}

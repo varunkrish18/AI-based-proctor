@@ -114,6 +114,17 @@ public class StudentExamService {
             return new VerifyStudentResponse(false, null, "This exam has already ended.", false, false, false, false);
         }
 
+        List<ExamAttempt> existingAttempts = attemptRepository
+                .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(examId, email);
+        boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
+        if (!isClass) {
+            boolean hasCompleted = existingAttempts.stream()
+                    .anyMatch(a -> "SUBMITTED".equalsIgnoreCase(a.getStatus()) || "COMPLETED".equalsIgnoreCase(a.getStatus()));
+            if (hasCompleted) {
+                return new VerifyStudentResponse(false, null, "You have already completed and submitted this exam. Re-taking is not allowed.", false, false, false, false);
+            }
+        }
+
         if (student == null) {
             student = Student.builder()
                     .email(email)
@@ -174,15 +185,30 @@ public class StudentExamService {
         List<ExamAttempt> existingAttempts = attemptRepository
                 .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(examId, studentEmail);
 
-        // Resume an in-progress attempt if one exists, instead of silently starting a new one.
-        Optional<ExamAttempt> inProgress = existingAttempts
-                .stream().filter(a -> "IN_PROGRESS".equals(a.getStatus())).findFirst();
+        boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
+        if (!isClass) {
+            boolean hasCompleted = existingAttempts.stream()
+                    .anyMatch(a -> "SUBMITTED".equalsIgnoreCase(a.getStatus()) || "COMPLETED".equalsIgnoreCase(a.getStatus()));
+            if (hasCompleted) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "You have already completed and submitted this exam. Re-taking is not allowed.");
+            }
+        }
+
+        // Resume an in-progress or incomplete attempt if one exists, instead of silently starting a new one.
+        Optional<ExamAttempt> resumable = existingAttempts
+                .stream()
+                .filter(a -> "IN_PROGRESS".equalsIgnoreCase(a.getStatus()) || "INCOMPLETE".equalsIgnoreCase(a.getStatus()))
+                .findFirst();
 
         ExamAttempt attempt;
         List<Long> orderedQuestionIds;
 
-        if (inProgress.isPresent()) {
-            attempt = inProgress.get();
+        if (resumable.isPresent()) {
+            attempt = resumable.get();
+            if ("INCOMPLETE".equalsIgnoreCase(attempt.getStatus())) {
+                attempt.setStatus("IN_PROGRESS");
+                attempt = attemptRepository.save(attempt);
+            }
             orderedQuestionIds = decodeOrder(attempt.getQuestionOrder());
         } else {
             int nextAttemptNumber = existingAttempts.stream()
@@ -257,19 +283,35 @@ public class StudentExamService {
             questions.add(toStudentQuestion(q, randomizeOptions));
         }
 
-        // Load any previously saved answers for this attempt (so completed questions can be reviewed/redone)
+        // Load any previously saved answers for this attempt and prior attempts (so completed questions remain completed and locked)
         Map<Long, Integer> savedAnswers = new HashMap<>();
         Map<Long, StartExamResponse.SavedCodeAnswer> savedCodingAnswers = new HashMap<>();
-        List<ExamAnswer> existingAnswers = answerRepository.findByAttemptId(attempt.getId());
+        List<Long> completedQuestionIds = new ArrayList<>();
+        List<Long> allAttemptIds = new ArrayList<>();
+        allAttemptIds.add(attempt.getId());
+        if (existingAttempts != null) {
+            existingAttempts.forEach(a -> {
+                if (a.getId() != null && !allAttemptIds.contains(a.getId())) {
+                    allAttemptIds.add(a.getId());
+                }
+            });
+        }
+        List<ExamAnswer> existingAnswers = answerRepository.findByAttemptIdIn(allAttemptIds);
         if (existingAnswers != null) {
             for (ExamAnswer ea : existingAnswers) {
                 if (ea.getQuestion() != null) {
                     Long qid = ea.getQuestion().getId();
+                    boolean completed = false;
                     if (ea.getSelectedOption() != null) {
                         savedAnswers.put(qid, ea.getSelectedOption().intValue());
+                        completed = true;
                     }
                     if (ea.getCodeSubmission() != null && !ea.getCodeSubmission().isBlank()) {
                         savedCodingAnswers.put(qid, new StartExamResponse.SavedCodeAnswer(ea.getCodeSubmission(), ea.getCodeLanguage()));
+                        completed = true;
+                    }
+                    if (completed && !completedQuestionIds.contains(qid)) {
+                        completedQuestionIds.add(qid);
                     }
                 }
             }
@@ -289,7 +331,9 @@ public class StudentExamService {
                 Boolean.TRUE.equals(exam.getLocationRequired()),
                 exam.getAudioInputLevel(),
                 savedAnswers,
-                savedCodingAnswers
+                savedCodingAnswers,
+                Boolean.TRUE.equals(exam.getIsClass()),
+                completedQuestionIds
         );
     }
 
@@ -344,6 +388,9 @@ public class StudentExamService {
             if (answer.getSelectedOption() != null && req.selectedOption() != null && !answer.getSelectedOption().equals(req.selectedOption())) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "Question " + req.questionId() + " has already been completed and locked. It cannot be modified or attempted again.");
             }
+            if (answer.getCodeSubmission() != null && !answer.getCodeSubmission().isBlank() && req.codeSubmission() != null && !answer.getCodeSubmission().equals(req.codeSubmission())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Question " + req.questionId() + " has already been completed and locked. It cannot be modified or attempted again.");
+            }
         } else {
             answer = ExamAnswer.builder().attempt(attempt).question(question).build();
         }
@@ -366,6 +413,21 @@ public class StudentExamService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "This attempt is no longer in progress.");
         }
         return codeExecutionService.runPublicTestCases(req.questionId(), req.code(), req.language(), req.customInput());
+    }
+
+    @Transactional
+    public void terminateAttempt(Long attemptId, String studentEmail) {
+        ExamAttempt attempt = attemptRepository.findByIdAndStudentEmailIgnoreCase(attemptId, studentEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+        if (!"IN_PROGRESS".equals(attempt.getStatus())) {
+            return;
+        }
+        attempt.setStatus("INCOMPLETE");
+        attempt.setEndTime(trustedTimeService.now());
+        attemptRepository.save(attempt);
+
+        // Close proctoring session
+        proctoringSessionService.closeSession(attemptId);
     }
 
     @Transactional

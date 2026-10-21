@@ -1,0 +1,835 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3800 2700" width="3800" height="2700" style="background:#0b0f19; font-family:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+    <linearGradient id="cardGradDark" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="primaryBtn" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <linearGradient id="dangerBtn" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444" />
+      <stop offset="100%" stop-color="#dc2626" />
+    </linearGradient>
+    <linearGradient id="successBtn" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="amberBtn" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+
+    <!-- Drop Shadows -->
+    <filter id="shadow" x="-8%" y="-8%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.45" />
+    </filter>
+    <filter id="glowIndigo" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Arrow Markers -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#6366f1" />
+    </marker>
+    <marker id="arrowSuccess" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#10b981" />
+    </marker>
+    <marker id="arrowDanger" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#ef4444" />
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#f59e0b" />
+    </marker>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#06b6d4" />
+    </marker>
+  </defs>
+
+  <!-- ================= CANVAS BACKGROUND GRID ================= -->
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <rect width="40" height="40" fill="none" />
+    <circle cx="20" cy="20" r="1" fill="#1e293b" opacity="0.6" />
+  </pattern>
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- ================= MASTER HEADER ================= -->
+  <g id="Master_Header" transform="translate(80, 60)">
+    <rect width="3640" height="110" rx="16" fill="#111827" stroke="#374151" stroke-width="1.5" filter="url(#shadow)" />
+    <!-- Gradient accent bar -->
+    <rect x="0" y="0" width="3640" height="6" rx="3" fill="url(#headerGrad)" />
+    
+    <text x="40" y="52" fill="#ffffff" font-size="28" font-weight="800" letter-spacing="-0.5">AI-BASED PROCTORING SYSTEM  •  FULL UI &amp; UX ARCHITECTURE FLOW</text>
+    <text x="40" y="84" fill="#94a3b8" font-size="15" font-weight="500">Comprehensive Figma Wireframe Board: Authentication, Public IDE, Student Class/Exam Experience &amp; Staff/Admin Governance</text>
+
+    <!-- Legend Pills -->
+    <g transform="translate(2450, 40)">
+      <rect x="0" y="0" width="160" height="36" rx="18" fill="#1e293b" stroke="#6366f1" stroke-width="1.5" />
+      <circle cx="20" cy="18" r="6" fill="#6366f1" />
+      <text x="36" y="23" fill="#e2e8f0" font-size="13" font-weight="600">Student Flow</text>
+
+      <rect x="180" y="0" width="160" height="36" rx="18" fill="#1e293b" stroke="#ef4444" stroke-width="1.5" />
+      <circle cx="200" cy="18" r="6" fill="#ef4444" />
+      <text x="216" y="23" fill="#e2e8f0" font-size="13" font-weight="600">Admin / Staff</text>
+
+      <rect x="360" y="0" width="180" height="36" rx="18" fill="#1e293b" stroke="#10b981" stroke-width="1.5" />
+      <circle cx="380" cy="18" r="6" fill="#10b981" />
+      <text x="396" y="23" fill="#e2e8f0" font-size="13" font-weight="600">Passed / Completed</text>
+
+      <rect x="560" y="0" width="180" height="36" rx="18" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5" />
+      <circle cx="580" cy="18" r="6" fill="#f59e0b" />
+      <text x="596" y="23" fill="#e2e8f0" font-size="13" font-weight="600">Incomplete / Warning</text>
+
+      <rect x="760" y="0" width="160" height="36" rx="18" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5" />
+      <circle cx="780" cy="18" r="6" fill="#06b6d4" />
+      <text x="796" y="23" fill="#e2e8f0" font-size="13" font-weight="600">AI Proctor Engine</text>
+
+      <rect x="940" y="0" width="200" height="36" rx="8" fill="#4f46e5" />
+      <text x="965" y="23" fill="#ffffff" font-size="13" font-weight="700">FIGMA READY VECTOR</text>
+    </g>
+  </g>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 1: AUTHENTICATION, ONBOARDING & PUBLIC MODULES (Y: 220 to 680)   -->
+  <!-- ========================================================================= -->
+  <g id="Section_Auth_Public">
+    <!-- Section Title & Backdrop -->
+    <rect x="80" y="210" width="3640" height="480" rx="16" fill="#0f172a" fill-opacity="0.6" stroke="#1e293b" stroke-width="2" />
+    <text x="110" y="250" fill="#38bdf8" font-size="18" font-weight="700" letter-spacing="1.5">SECTION 1: ONBOARDING, AUTHENTICATION &amp; PUBLIC UTILITIES</text>
+    <line x1="110" y1="265" x2="3680" y2="265" stroke="#1e293b" stroke-width="1" />
+
+    <!-- SCREEN 1: /sign-in -->
+    <g id="Screen_SignIn" transform="translate(120, 290)">
+      <rect width="360" height="360" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <!-- Window bar -->
+      <rect width="360" height="36" rx="12" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" />
+      <circle cx="36" cy="18" r="5" fill="#f59e0b" />
+      <circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/sign-in • Universal Login</text>
+
+      <!-- Content -->
+      <text x="24" y="70" fill="#ffffff" font-size="18" font-weight="700">Proctor Platform Sign In</text>
+      <text x="24" y="92" fill="#94a3b8" font-size="12">Automatic role-based portal dispatch</text>
+
+      <rect x="24" y="115" width="312" height="42" rx="6" fill="#0f172a" stroke="#334155" />
+      <text x="36" y="141" fill="#64748b" font-size="13">user@institution.edu</text>
+      <text x="24" y="110" fill="#94a3b8" font-size="11" font-weight="600">EMAIL ADDRESS</text>
+
+      <rect x="24" y="185" width="312" height="42" rx="6" fill="#0f172a" stroke="#334155" />
+      <text x="36" y="211" fill="#64748b" font-size="13">••••••••••••••••</text>
+      <text x="24" y="180" fill="#94a3b8" font-size="11" font-weight="600">PASSWORD</text>
+
+      <text x="220" y="244" fill="#818cf8" font-size="11" font-weight="600">Forgot password?</text>
+
+      <rect x="24" y="260" width="312" height="44" rx="8" fill="url(#primaryBtn)" />
+      <text x="140" y="287" fill="#ffffff" font-size="14" font-weight="700">Sign In</text>
+
+      <rect x="24" y="318" width="312" height="22" rx="4" fill="#0b0f19" />
+      <text x="34" y="333" fill="#64748b" font-size="11">Detects: STUDENT vs EXAMINER vs ADMIN</text>
+    </g>
+
+    <!-- SCREEN 2: /reset-password -->
+    <g id="Screen_ResetPassword" transform="translate(560, 290)">
+      <rect width="320" height="280" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="320" height="36" rx="12" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/reset-password</text>
+
+      <text x="24" y="72" fill="#ffffff" font-size="16" font-weight="700">Reset Credentials</text>
+      <text x="24" y="94" fill="#94a3b8" font-size="12">Receive token via institutional mail</text>
+
+      <rect x="24" y="120" width="272" height="40" rx="6" fill="#0f172a" stroke="#334155" />
+      <text x="36" y="145" fill="#64748b" font-size="12">Registered Email Address</text>
+
+      <rect x="24" y="180" width="272" height="40" rx="8" fill="url(#amberBtn)" />
+      <text x="95" y="205" fill="#ffffff" font-size="13" font-weight="700">Send Recovery Link</text>
+
+      <text x="90" y="245" fill="#818cf8" font-size="12">← Back to Sign In</text>
+    </g>
+
+    <!-- SCREEN 3: /online-ide (Public Playground) -->
+    <g id="Screen_OnlineIDE" transform="translate(960, 290)">
+      <rect width="380" height="360" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="380" height="36" rx="12" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/ide • Standalone Online Compiler</text>
+
+      <!-- IDE UI representation -->
+      <rect x="16" y="50" width="100" height="26" rx="4" fill="#0f172a" stroke="#475569" />
+      <text x="28" y="67" fill="#38bdf8" font-size="11" font-weight="600">Java / C++ / Python</text>
+
+      <rect x="270" y="50" width="94" height="26" rx="6" fill="url(#successBtn)" />
+      <text x="290" y="67" fill="#ffffff" font-size="11" font-weight="700">▶ Run Code</text>
+
+      <!-- Code buffer -->
+      <rect x="16" y="86" width="348" height="150" rx="6" fill="#090d16" stroke="#1e293b" />
+      <text x="28" y="110" fill="#ec4899" font-size="11" font-family="monospace">public class Main {</text>
+      <text x="44" y="130" fill="#93c5fd" font-size="11" font-family="monospace">public static void main(...) {</text>
+      <text x="60" y="150" fill="#34d399" font-size="11" font-family="monospace">System.out.println("Passed!");</text>
+      <text x="44" y="170" fill="#93c5fd" font-size="11" font-family="monospace">}</text>
+      <text x="28" y="190" fill="#ec4899" font-size="11" font-family="monospace">}</text>
+
+      <!-- Terminal / Output -->
+      <rect x="16" y="246" width="348" height="96" rx="6" fill="#030712" stroke="#1f2937" />
+      <text x="28" y="268" fill="#10b981" font-size="11" font-family="monospace">$ Compilation Successful [42ms]</text>
+      <text x="28" y="290" fill="#e2e8f0" font-size="11" font-family="monospace">> Program Output: Passed!</text>
+      <text x="28" y="320" fill="#64748b" font-size="10">Judge0 Sandboxed Execution Engine</text>
+    </g>
+
+    <!-- SCREEN 4: /about & System Architecture -->
+    <g id="Screen_About" transform="translate(1420, 290)">
+      <rect width="340" height="320" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="340" height="36" rx="12" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/about • Platform &amp; AI Compliance</text>
+
+      <text x="24" y="72" fill="#ffffff" font-size="16" font-weight="700">Autonomous AI Proctoring</text>
+      <text x="24" y="94" fill="#94a3b8" font-size="12">Security standards &amp; student guidelines</text>
+
+      <rect x="24" y="116" width="292" height="48" rx="8" fill="#0f172a" stroke="#334155" />
+      <circle cx="48" cy="140" r="12" fill="#6366f1" fill-opacity="0.3" />
+      <text x="44" y="145" fill="#a5b4fc" font-size="14">👁</text>
+      <text x="72" y="136" fill="#e2e8f0" font-size="12" font-weight="600">Face &amp; Gaze Tracking</text>
+      <text x="72" y="152" fill="#64748b" font-size="10">Detects head rotation and gaze absence</text>
+
+      <rect x="24" y="174" width="292" height="48" rx="8" fill="#0f172a" stroke="#334155" />
+      <circle cx="48" cy="198" r="12" fill="#ef4444" fill-opacity="0.3" />
+      <text x="44" y="203" fill="#fca5a5" font-size="14">📱</text>
+      <text x="72" y="194" fill="#e2e8f0" font-size="12" font-weight="600">Object &amp; Device Detection</text>
+      <text x="72" y="210" fill="#64748b" font-size="10">Mobile phones, smartwatches, headphones</text>
+
+      <rect x="24" y="232" width="292" height="48" rx="8" fill="#0f172a" stroke="#334155" />
+      <circle cx="48" cy="256" r="12" fill="#10b981" fill-opacity="0.3" />
+      <text x="44" y="261" fill="#6ee7b7" font-size="14">🔒</text>
+      <text x="72" y="252" fill="#e2e8f0" font-size="12" font-weight="600">Browser Lockdown</text>
+      <text x="72" y="268" fill="#64748b" font-size="10">Tab blur events &amp; fullscreen locks</text>
+    </g>
+
+    <!-- Connectors for Section 1 -->
+    <path d="M 480 370 L 560 370" fill="none" stroke="#6366f1" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow)" />
+    <path d="M 480 470 C 510 470, 510 520, 560 520 L 960 520" fill="none" stroke="#06b6d4" stroke-width="2" marker-end="url(#arrowCyan)" />
+  </g>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 2: STUDENT CLASS & EXAM FLOW (Y: 730 to 1660)                    -->
+  <!-- ========================================================================= -->
+  <g id="Section_StudentFlow">
+    <rect x="80" y="720" width="3640" height="920" rx="16" fill="#090e1a" fill-opacity="0.75" stroke="#1e293b" stroke-width="2" />
+    <text x="110" y="760" fill="#818cf8" font-size="18" font-weight="700" letter-spacing="1.5">SECTION 2: STUDENT CLASS &amp; EXAM LIFECYCLE (ENHANCED TEST-GATED QUESTION ENGINE)</text>
+    <line x1="110" y1="775" x2="3680" y2="775" stroke="#1e293b" stroke-width="1" />
+
+    <!-- STEP 1: /exams or / (Student Home Dashboard) -->
+    <g id="Screen_StudentDashboard" transform="translate(120, 810)">
+      <rect width="360" height="420" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="360" height="36" rx="12" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/exams • Candidate Class List</text>
+
+      <text x="24" y="70" fill="#ffffff" font-size="17" font-weight="700">Enrolled Classes &amp; Exams</text>
+      <text x="24" y="90" fill="#94a3b8" font-size="12">Select class or resume interrupted session</text>
+
+      <!-- Exam Card 1: Available / Ready to Start -->
+      <rect x="20" y="110" width="320" height="85" rx="8" fill="#0f172a" stroke="#334155" />
+      <text x="36" y="134" fill="#ffffff" font-size="13" font-weight="700">CS301: Advanced Algorithms</text>
+      <text x="36" y="152" fill="#94a3b8" font-size="11">Duration: 60 mins • 5 Coding Problems</text>
+      <rect x="240" y="145" width="88" height="34" rx="6" fill="url(#primaryBtn)" />
+      <text x="254" y="167" fill="#ffffff" font-size="12" font-weight="700">Start Class</text>
+
+      <!-- Exam Card 2: INCOMPLETE / RESUME -->
+      <rect x="20" y="210" width="320" height="95" rx="8" fill="#1c1917" stroke="#f59e0b" stroke-width="1.5" />
+      <rect x="235" y="218" width="92" height="20" rx="4" fill="#78350f" />
+      <text x="243" y="232" fill="#fef3c7" font-size="10" font-weight="700">● INCOMPLETE</text>
+      <text x="36" y="236" fill="#ffffff" font-size="13" font-weight="700">CS204: Data Structures</text>
+      <text x="36" y="254" fill="#fcd34d" font-size="11">Voluntarily terminated on Q2 • Saved</text>
+      <rect x="240" y="260" width="88" height="34" rx="6" fill="url(#amberBtn)" />
+      <text x="252" y="282" fill="#ffffff" font-size="12" font-weight="700">Resume ↻</text>
+
+      <!-- Exam Card 3: COMPLETED / LOCKED -->
+      <rect x="20" y="320" width="320" height="85" rx="8" fill="#062e1e" stroke="#10b981" stroke-width="1" />
+      <rect x="245" y="328" width="82" height="20" rx="4" fill="#065f46" />
+      <text x="254" y="342" fill="#a7f3d0" font-size="10" font-weight="700">✓ SUBMITTED</text>
+      <text x="36" y="346" fill="#ffffff" font-size="13" font-weight="700">CS101: Intro to Java</text>
+      <text x="36" y="364" fill="#a7f3d0" font-size="11">Finished &amp; Graded • Re-take locked</text>
+      <rect x="240" y="360" width="88" height="30" rx="6" fill="#1e293b" stroke="#334155" />
+      <text x="258" y="380" fill="#64748b" font-size="11" font-weight="700">Locked 🔒</text>
+    </g>
+
+    <!-- STEP 2: /instructions -->
+    <g id="Screen_Instructions" transform="translate(560, 810)">
+      <rect width="320" height="420" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="320" height="36" rx="12" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/instructions • Exam Code of Conduct</text>
+
+      <text x="24" y="70" fill="#ffffff" font-size="16" font-weight="700">Candidate Instructions</text>
+      <text x="24" y="90" fill="#94a3b8" font-size="12">Mandatory rules before hardware checks</text>
+
+      <rect x="20" y="110" width="280" height="220" rx="8" fill="#0f172a" stroke="#334155" />
+      <text x="34" y="135" fill="#e2e8f0" font-size="12" font-weight="600">1. WebCam &amp; Mic Streaming</text>
+      <text x="34" y="152" fill="#94a3b8" font-size="11">Must stay active throughout the test.</text>
+
+      <text x="34" y="180" fill="#e2e8f0" font-size="12" font-weight="600">2. Fullscreen &amp; Tab Lock</text>
+      <text x="34" y="197" fill="#94a3b8" font-size="11">Switching tabs flags an infraction report.</text>
+
+      <text x="34" y="225" fill="#e2e8f0" font-size="12" font-weight="600">3. Question Passing Gate</text>
+      <text x="34" y="242" fill="#94a3b8" font-size="11">Must pass test cases before submitting Q.</text>
+
+      <text x="34" y="270" fill="#e2e8f0" font-size="12" font-weight="600">4. Terminate &amp; Resume Policy</text>
+      <text x="34" y="287" fill="#94a3b8" font-size="11">Terminate anytime to mark as Incomplete.</text>
+
+      <rect x="20" y="340" width="20" height="20" rx="4" fill="#6366f1" />
+      <text x="25" y="355" fill="#ffffff" font-size="14">✓</text>
+      <text x="50" y="355" fill="#cbd5e1" font-size="11">I accept all exam security policies</text>
+
+      <rect x="20" y="372" width="280" height="38" rx="8" fill="url(#primaryBtn)" />
+      <text x="100" y="396" fill="#ffffff" font-size="13" font-weight="700">Proceed to Verification →</text>
+    </g>
+
+    <!-- STEP 3: /exam/:id/verify -->
+    <g id="Screen_Verify" transform="translate(960, 810)">
+      <rect width="320" height="420" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="320" height="36" rx="12" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/verify • Face &amp; ID Capture</text>
+
+      <text x="24" y="70" fill="#ffffff" font-size="16" font-weight="700">Biometric Verification</text>
+      <text x="24" y="90" fill="#94a3b8" font-size="12">Position face in center frame</text>
+
+      <!-- WebCam oval preview -->
+      <rect x="35" y="110" width="250" height="170" rx="10" fill="#030712" stroke="#4f46e5" stroke-width="2" />
+      <circle cx="160" cy="180" r="45" fill="#1e293b" stroke="#6366f1" stroke-width="2" stroke-dasharray="4" />
+      <circle cx="160" cy="165" r="18" fill="#334155" />
+      <path d="M 135 205 C 135 185, 185 185, 185 205" fill="#334155" />
+
+      <rect x="75" y="255" width="170" height="20" rx="10" fill="#065f46" />
+      <text x="92" y="269" fill="#34d399" font-size="10" font-weight="700">● Face Position Validated</text>
+
+      <rect x="20" y="295" width="280" height="36" rx="6" fill="#0f172a" stroke="#334155" />
+      <text x="32" y="318" fill="#94a3b8" font-size="11">Student ID Card: Captured (id_front.jpg)</text>
+
+      <rect x="20" y="345" width="280" height="42" rx="8" fill="url(#primaryBtn)" />
+      <text x="95" y="371" fill="#ffffff" font-size="13" font-weight="700">Verify Identity &amp; Continue</text>
+    </g>
+
+    <!-- STEP 4: /exam/:id/system-check -->
+    <g id="Screen_SystemCheck" transform="translate(1360, 810)">
+      <rect width="320" height="420" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="320" height="36" rx="12" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/system-check • Diagnostic</text>
+
+      <text x="24" y="70" fill="#ffffff" font-size="16" font-weight="700">System Diagnostics</text>
+      <text x="24" y="90" fill="#94a3b8" font-size="12">Hardware permission handshake</text>
+
+      <!-- Checklist items -->
+      <g transform="translate(20, 115)">
+        <rect width="280" height="42" rx="6" fill="#0f172a" stroke="#10b981" />
+        <circle cx="25" cy="21" r="10" fill="#065f46" /><text x="21" y="26" fill="#34d399" font-size="12">✓</text>
+        <text x="45" y="26" fill="#e2e8f0" font-size="12" font-weight="600">Webcam 1080p</text>
+        <text x="200" y="26" fill="#34d399" font-size="11">Passed</text>
+
+        <rect y="52" width="280" height="42" rx="6" fill="#0f172a" stroke="#10b981" />
+        <circle cx="25" cy="73" r="10" fill="#065f46" /><text x="21" y="78" fill="#34d399" font-size="12">✓</text>
+        <text x="45" y="78" fill="#e2e8f0" font-size="12" font-weight="600">Microphone Input</text>
+        <text x="200" y="78" fill="#34d399" font-size="11">Passed</text>
+
+        <rect y="104" width="280" height="42" rx="6" fill="#0f172a" stroke="#10b981" />
+        <circle cx="25" cy="125" r="10" fill="#065f46" /><text x="21" y="130" fill="#34d399" font-size="12">✓</text>
+        <text x="45" y="130" fill="#e2e8f0" font-size="12" font-weight="600">Network Latency (48ms)</text>
+        <text x="200" y="130" fill="#34d399" font-size="11">Passed</text>
+
+        <rect y="156" width="280" height="42" rx="6" fill="#0f172a" stroke="#10b981" />
+        <circle cx="25" cy="177" r="10" fill="#065f46" /><text x="21" y="182" fill="#34d399" font-size="12">✓</text>
+        <text x="45" y="182" fill="#e2e8f0" font-size="12" font-weight="600">Mobile Device Check</text>
+        <text x="180" y="182" fill="#34d399" font-size="11">Desktop OK</text>
+      </g>
+
+      <rect x="20" y="345" width="280" height="42" rx="8" fill="url(#primaryBtn)" />
+      <text x="80" y="371" fill="#ffffff" font-size="13" font-weight="700">Enter Exam &amp; Lock Screen ⛶</text>
+    </g>
+
+    <!-- STEP 5: /exam/:id/take (MAIN EXAM & CODING ARENA) - WIDE FRAME -->
+    <g id="Screen_ExamTake" transform="translate(1760, 780)">
+      <rect width="1120" height="520" rx="14" fill="#111827" stroke="#6366f1" stroke-width="2" filter="url(#shadow)" />
+      <!-- Window Title bar -->
+      <rect width="1120" height="46" rx="14" fill="#0a0f1d" />
+      <circle cx="24" cy="23" r="6" fill="#ef4444" /><circle cx="44" cy="23" r="6" fill="#f59e0b" /><circle cx="64" cy="23" r="6" fill="#10b981" />
+      <text x="88" y="28" fill="#e2e8f0" font-size="13" font-weight="700">/exam/:examId/take • Exam in Progress • Fullscreen Locked</text>
+
+      <!-- Exam Top Nav Bar inside app -->
+      <g transform="translate(0, 46)">
+        <rect width="1120" height="56" fill="#1e293b" stroke="#334155" stroke-width="1" />
+        <text x="24" y="34" fill="#ffffff" font-size="15" font-weight="800">Algorithms Midterm (CS301)</text>
+
+        <!-- Timer badge -->
+        <rect x="360" y="12" width="140" height="32" rx="6" fill="#0f172a" stroke="#6366f1" />
+        <text x="375" y="33" fill="#818cf8" font-size="13" font-weight="700">⏱ 00:44:18 Left</text>
+
+        <!-- Live Proctoring Status -->
+        <rect x="520" y="12" width="260" height="32" rx="6" fill="#062e1e" stroke="#10b981" />
+        <circle cx="536" cy="28" r="5" fill="#34d399" />
+        <text x="550" y="33" fill="#a7f3d0" font-size="11" font-weight="600">AI PROCTOR ACTIVE • 1 FACE DETECTED</text>
+
+        <!-- TERMINATE EXAM BUTTON (NEW FEATURE) -->
+        <rect x="940" y="11" width="160" height="34" rx="6" fill="url(#dangerBtn)" />
+        <text x="960" y="33" fill="#ffffff" font-size="12" font-weight="700">Terminate Exam ✕</text>
+      </g>
+
+      <!-- EXAM BODY (3-PANEL VIEW) -->
+      <!-- Panel 1: Question Palette / Overview Table (Left) -->
+      <g transform="translate(20, 116)">
+        <rect width="210" height="385" rx="8" fill="#0f172a" stroke="#1e293b" />
+        <text x="16" y="28" fill="#94a3b8" font-size="11" font-weight="700">QUESTION PALETTE</text>
+
+        <!-- Q1: Completed / Submitted -->
+        <g transform="translate(16, 42)">
+          <rect width="178" height="42" rx="6" fill="#064e3b" stroke="#059669" />
+          <circle cx="22" cy="21" r="10" fill="#10b981" />
+          <text x="18" y="26" fill="#ffffff" font-size="11" font-weight="700">✓</text>
+          <text x="40" y="26" fill="#d1fae5" font-size="12" font-weight="700">Q1: Two Sum</text>
+          <text x="130" y="26" fill="#6ee7b7" font-size="10">Passed</text>
+        </g>
+
+        <!-- Q2: Current Question Active -->
+        <g transform="translate(16, 94)">
+          <rect width="178" height="42" rx="6" fill="#312e81" stroke="#6366f1" stroke-width="2" />
+          <circle cx="22" cy="21" r="10" fill="#4f46e5" />
+          <text x="18" y="26" fill="#ffffff" font-size="11" font-weight="700">2</text>
+          <text x="40" y="26" fill="#e0e7ff" font-size="12" font-weight="700">Q2: Merge K Lists</text>
+          <text x="135" y="26" fill="#818cf8" font-size="10">Active</text>
+        </g>
+
+        <!-- Q3: Unattempted -->
+        <g transform="translate(16, 146)">
+          <rect width="178" height="42" rx="6" fill="#1e293b" stroke="#334155" />
+          <circle cx="22" cy="21" r="10" fill="#334155" />
+          <text x="18" y="26" fill="#94a3b8" font-size="11" font-weight="700">3</text>
+          <text x="40" y="26" fill="#94a3b8" font-size="12" font-weight="600">Q3: LRU Cache</text>
+        </g>
+
+        <!-- Q4: Unattempted -->
+        <g transform="translate(16, 198)">
+          <rect width="178" height="42" rx="6" fill="#1e293b" stroke="#334155" />
+          <circle cx="22" cy="21" r="10" fill="#334155" />
+          <text x="18" y="26" fill="#94a3b8" font-size="11" font-weight="700">4</text>
+          <text x="40" y="26" fill="#94a3b8" font-size="12" font-weight="600">Q4: Binary Search</text>
+        </g>
+
+        <!-- Candidate Webcam Pip -->
+        <rect x="16" y="255" width="178" height="115" rx="8" fill="#000000" stroke="#374151" />
+        <circle cx="105" cy="305" r="28" fill="#1f2937" stroke="#4b5563" />
+        <rect x="24" y="344" width="162" height="20" rx="4" fill="#111827" fill-opacity="0.9" />
+        <text x="36" y="358" fill="#22c55e" font-size="10" font-weight="600">● Live AI Proctor Video</text>
+      </g>
+
+      <!-- Panel 2: Question Prompt (Center Left) -->
+      <g transform="translate(245, 116)">
+        <rect width="360" height="385" rx="8" fill="#0f172a" stroke="#1e293b" />
+        <!-- Header -->
+        <text x="18" y="28" fill="#818cf8" font-size="11" font-weight="800">PROBLEM 2 OF 4 • CODING</text>
+        <text x="18" y="52" fill="#ffffff" font-size="16" font-weight="800">Merge K Sorted Lists</text>
+
+        <rect x="18" y="66" width="324" height="100" rx="6" fill="#1e293b" stroke="#334155" />
+        <text x="28" y="86" fill="#cbd5e1" font-size="11">You are given an array of k linked-lists,</text>
+        <text x="28" y="102" fill="#cbd5e1" font-size="11">each linked-list is sorted in ascending order.</text>
+        <text x="28" y="122" fill="#cbd5e1" font-size="11">Merge all the linked-lists into one sorted</text>
+        <text x="28" y="138" fill="#cbd5e1" font-size="11">linked-list and return it.</text>
+
+        <!-- Test Case Gating Rule Callout -->
+        <rect x="18" y="176" width="324" height="68" rx="6" fill="#1e1b4b" stroke="#6366f1" />
+        <text x="28" y="196" fill="#c7d2fe" font-size="11" font-weight="700">🔒 SUBMISSION RULE:</text>
+        <text x="28" y="214" fill="#a5b4fc" font-size="10">You must click "Run Test Cases" and pass</text>
+        <text x="28" y="230" fill="#a5b4fc" font-size="10">all sample tests before "Submit Question" activates.</text>
+
+        <!-- Test Case Results preview -->
+        <rect x="18" y="254" width="324" height="78" rx="6" fill="#042f2e" stroke="#0d9488" />
+        <text x="28" y="272" fill="#5eead4" font-size="11" font-weight="700">Sample Test Case #1: [PASSED ✓]</text>
+        <text x="28" y="290" fill="#99f6e4" font-size="10" font-family="monospace">Input: lists = [[1,4,5],[1,3,4],[2,6]]</text>
+        <text x="28" y="306" fill="#99f6e4" font-size="10" font-family="monospace">Output: [1,1,2,3,4,4,5,6] (Match!)</text>
+
+        <!-- Previous / Next Question Navigation -->
+        <rect x="18" y="342" width="110" height="34" rx="6" fill="#1e293b" stroke="#475569" />
+        <text x="32" y="364" fill="#e2e8f0" font-size="11" font-weight="600">← Previous</text>
+
+        <rect x="232" y="342" width="110" height="34" rx="6" fill="#1e293b" stroke="#475569" />
+        <text x="256" y="364" fill="#e2e8f0" font-size="11" font-weight="600">Next →</text>
+      </g>
+
+      <!-- Panel 3: Code Editor & Execution Engine (Center Right) -->
+      <g transform="translate(620, 116)">
+        <rect width="480" height="385" rx="8" fill="#0f172a" stroke="#1e293b" />
+        <!-- Editor Header -->
+        <rect width="480" height="36" rx="8" fill="#030712" />
+        <text x="20" y="22" fill="#38bdf8" font-size="11" font-weight="700">Java 17 Solution.java</text>
+
+        <!-- Code lines -->
+        <rect x="12" y="44" width="456" height="230" rx="6" fill="#050811" />
+        <text x="24" y="66" fill="#93c5fd" font-size="11" font-family="monospace">class Solution {</text>
+        <text x="40" y="86" fill="#93c5fd" font-size="11" font-family="monospace">  public ListNode mergeKLists(ListNode[] lists) {</text>
+        <text x="56" y="106" fill="#cbd5e1" font-size="11" font-family="monospace">    PriorityQueue&lt;ListNode&gt; pq = new PriorityQueue&lt;&gt;();</text>
+        <text x="56" y="126" fill="#cbd5e1" font-size="11" font-family="monospace">    for (ListNode node : lists) {</text>
+        <text x="72" y="146" fill="#cbd5e1" font-size="11" font-family="monospace">      if (node != null) pq.add(node);</text>
+        <text x="56" y="166" fill="#cbd5e1" font-size="11" font-family="monospace">    }</text>
+        <text x="56" y="186" fill="#34d399" font-size="11" font-family="monospace">    // ... all test cases passed</text>
+        <text x="40" y="206" fill="#93c5fd" font-size="11" font-family="monospace">  }</text>
+        <text x="24" y="226" fill="#93c5fd" font-size="11" font-family="monospace">}</text>
+
+        <!-- Action Buttons -->
+        <!-- Run Test Cases Button -->
+        <rect x="12" y="286" width="220" height="44" rx="8" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+        <text x="48" y="313" fill="#38bdf8" font-size="13" font-weight="700">⚙ Run Sample Tests</text>
+
+        <!-- Submit Question Button (Gated by Test Cases) -->
+        <rect x="248" y="286" width="220" height="44" rx="8" fill="url(#successBtn)" />
+        <text x="272" y="313" fill="#ffffff" font-size="13" font-weight="800">✓ Submit Question</text>
+
+        <!-- Final Finish Exam Button -->
+        <rect x="12" y="340" width="456" height="34" rx="6" fill="#0f172a" stroke="#22c55e" stroke-dasharray="4" />
+        <text x="135" y="362" fill="#4ade80" font-size="11" font-weight="700">Finished All Questions? Complete Exam</text>
+      </g>
+    </g>
+
+    <!-- STEP 6A: MODAL: Voluntary Terminate (Marks Incomplete) -->
+    <g id="Modal_Terminate" transform="translate(2920, 810)">
+      <rect width="360" height="230" rx="12" fill="#1f1315" stroke="#ef4444" stroke-width="2" filter="url(#shadow)" />
+      <rect width="360" height="36" rx="12" fill="#450a0a" />
+      <text x="20" y="23" fill="#fca5a5" font-size="12" font-weight="700">⚠ Voluntary Class Termination</text>
+
+      <text x="24" y="68" fill="#ffffff" font-size="15" font-weight="800">Leave Examination Early?</text>
+      <text x="24" y="92" fill="#cbd5e1" font-size="11">Your progress on passed questions is saved.</text>
+      <text x="24" y="110" fill="#fca5a5" font-size="11">Your attempt will be marked as INCOMPLETE.</text>
+      <text x="24" y="128" fill="#cbd5e1" font-size="11">You may resume before the exam closing deadline.</text>
+
+      <!-- Action buttons -->
+      <rect x="24" y="156" width="145" height="42" rx="8" fill="#292524" stroke="#57534e" />
+      <text x="52" y="182" fill="#e7e5e4" font-size="12" font-weight="700">Cancel</text>
+
+      <rect x="185" y="156" width="150" height="42" rx="8" fill="url(#dangerBtn)" />
+      <text x="195" y="182" fill="#ffffff" font-size="12" font-weight="700">Confirm Terminate</text>
+    </g>
+
+    <!-- STEP 6B: /exam/:id/submitted (Completed State & Retake Prevention) -->
+    <g id="Screen_Submitted" transform="translate(2920, 1070)">
+      <rect width="360" height="260" rx="12" fill="#064e3b" fill-opacity="0.5" stroke="#10b981" stroke-width="2" filter="url(#shadow)" />
+      <rect width="360" height="36" rx="12" fill="#062e1e" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#a7f3d0" font-size="12" font-weight="700">/submitted • Exam Completed</text>
+
+      <circle cx="180" cy="85" r="26" fill="#10b981" />
+      <text x="171" y="93" fill="#ffffff" font-size="24">✓</text>
+
+      <text x="100" y="135" fill="#ffffff" font-size="16" font-weight="800">Exam Successfully Submitted</text>
+      <text x="65" y="156" fill="#a7f3d0" font-size="11">Status: COMPLETE • All test cases recorded</text>
+
+      <!-- Retake lock warning -->
+      <rect x="24" y="174" width="312" height="36" rx="6" fill="#042f2e" stroke="#14b8a6" />
+      <text x="36" y="196" fill="#99f6e4" font-size="11" font-weight="600">🔒 Retake Blocked: You cannot retake this class.</text>
+
+      <rect x="24" y="218" width="312" height="34" rx="6" fill="#1e293b" stroke="#334155" />
+      <text x="105" y="239" fill="#e2e8f0" font-size="12" font-weight="700">Return to Student Home</text>
+    </g>
+
+    <!-- Flow Arrows in Student Section -->
+    <path d="M 480 920 L 560 920" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrow)" />
+    <path d="M 880 920 L 960 920" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrow)" />
+    <path d="M 1280 920 L 1360 920" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrow)" />
+    <path d="M 1680 920 L 1760 920" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrow)" />
+    <!-- Take -> Terminate Modal -->
+    <path d="M 2880 870 L 2920 870" fill="none" stroke="#ef4444" stroke-width="2.5" marker-end="url(#arrowDanger)" />
+    <!-- Terminate Modal -> Back to Dashboard (Incomplete) -->
+    <path d="M 3100 1040 C 3100 1350, 480 1350, 360 1240 L 360 1100" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6" marker-end="url(#arrowAmber)" />
+    <!-- Take -> Submitted -->
+    <path d="M 2880 1180 L 2920 1180" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrowSuccess)" />
+  </g>
+
+  <!-- ========================================================================= -->
+  <!-- SECTION 3: PROFESSOR, COORDINATOR & ADMIN PORTAL (Y: 1680 to 2600)        -->
+  <!-- ========================================================================= -->
+  <g id="Section_AdminFlow">
+    <rect x="80" y="1680" width="3640" height="960" rx="16" fill="#090d18" fill-opacity="0.8" stroke="#1e293b" stroke-width="2" />
+    <text x="110" y="1720" fill="#f43f5e" font-size="18" font-weight="700" letter-spacing="1.5">SECTION 3: ADMIN &amp; COURSE COORDINATOR GOVERNANCE (STUDENT CREDENTIAL MANAGEMENT &amp; PROCTOR AUDIT)</text>
+    <line x1="110" y1="1735" x2="3680" y2="1735" stroke="#1e293b" stroke-width="1" />
+
+    <!-- SCREEN 1: /admin/dashboard (Main Portal) -->
+    <g id="Screen_AdminDashboard" transform="translate(120, 1770)">
+      <rect width="640" height="520" rx="14" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <!-- Window bar -->
+      <rect width="640" height="36" rx="14" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/admin/dashboard • Staff &amp; Faculty Operations Control</text>
+
+      <!-- Tabs header -->
+      <g transform="translate(20, 48)">
+        <rect width="600" height="40" rx="8" fill="#0f172a" />
+        <rect x="6" y="5" width="130" height="30" rx="6" fill="#3b82f6" />
+        <text x="24" y="25" fill="#ffffff" font-size="12" font-weight="700">Exam Schedules</text>
+
+        <rect x="146" y="5" width="170" height="30" rx="6" fill="#4f46e5" />
+        <text x="156" y="25" fill="#ffffff" font-size="12" font-weight="700">Student Credentials</text>
+
+        <text x="330" y="25" fill="#94a3b8" font-size="12" font-weight="600">Live AI Monitoring</text>
+        <text x="470" y="25" fill="#94a3b8" font-size="12" font-weight="600">Integrity Reports</text>
+      </g>
+
+      <!-- USER CREDENTIAL MANAGEMENT TAB (NEW FEATURE DISPLAYED) -->
+      <g transform="translate(20, 100)">
+        <text x="4" y="24" fill="#ffffff" font-size="16" font-weight="800">Student Credentials Repository</text>
+        <text x="4" y="44" fill="#94a3b8" font-size="12">Manage candidate accounts, passwords and batch credentials</text>
+
+        <!-- ACTION BUTTONS: Bulk CSV, Add User, AND DELETE ALL CREDENTIALS -->
+        <g transform="translate(0, 60)">
+          <!-- Add Student Button -->
+          <rect width="110" height="34" rx="6" fill="#3b82f6" />
+          <text x="15" y="22" fill="#ffffff" font-size="11" font-weight="700">+ Add Student</text>
+
+          <!-- Upload CSV Button -->
+          <rect x="120" width="120" height="34" rx="6" fill="#0f172a" stroke="#475569" />
+          <text x="135" y="22" fill="#e2e8f0" font-size="11" font-weight="600">📂 Upload CSV</text>
+
+          <!-- NEW USER REQUEST: DELETE ALL CREDENTIALS BUTTON -->
+          <rect x="420" width="180" height="34" rx="6" fill="url(#dangerBtn)" />
+          <text x="432" y="22" fill="#ffffff" font-size="11" font-weight="800">🗑 DELETE ALL CREDENTIALS</text>
+        </g>
+
+        <!-- Student Credential Table -->
+        <g transform="translate(0, 110)">
+          <rect width="600" height="32" rx="4" fill="#0f172a" />
+          <text x="16" y="20" fill="#94a3b8" font-size="11" font-weight="700">STUDENT ID</text>
+          <text x="120" y="20" fill="#94a3b8" font-size="11" font-weight="700">FULL NAME</text>
+          <text x="240" y="20" fill="#94a3b8" font-size="11" font-weight="700">EMAIL</text>
+          <text x="390" y="20" fill="#94a3b8" font-size="11" font-weight="700">BATCH</text>
+          <text x="490" y="20" fill="#94a3b8" font-size="11" font-weight="700">ACTIONS</text>
+
+          <!-- Row 1 -->
+          <g transform="translate(0, 36)">
+            <rect width="600" height="38" fill="#1e293b" stroke="#334155" stroke-width="0.5" />
+            <text x="16" y="24" fill="#f8fafc" font-size="11" font-family="monospace">STU-1082</text>
+            <text x="120" y="24" fill="#f8fafc" font-size="11" font-weight="600">Varun Kumar</text>
+            <text x="240" y="24" fill="#94a3b8" font-size="11">varun@exam.edu</text>
+            <text x="390" y="24" fill="#cbd5e1" font-size="11">2026-CSE-A</text>
+            <text x="490" y="24" fill="#ef4444" font-size="11" font-weight="700">Delete</text>
+          </g>
+
+          <!-- Row 2 -->
+          <g transform="translate(0, 78)">
+            <rect width="600" height="38" fill="#1e293b" stroke="#334155" stroke-width="0.5" />
+            <text x="16" y="24" fill="#f8fafc" font-size="11" font-family="monospace">STU-1083</text>
+            <text x="120" y="24" fill="#f8fafc" font-size="11" font-weight="600">Aditya Roy</text>
+            <text x="240" y="24" fill="#94a3b8" font-size="11">aditya@exam.edu</text>
+            <text x="390" y="24" fill="#cbd5e1" font-size="11">2026-CSE-A</text>
+            <text x="490" y="24" fill="#ef4444" font-size="11" font-weight="700">Delete</text>
+          </g>
+
+          <!-- Row 3 -->
+          <g transform="translate(0, 120)">
+            <rect width="600" height="38" fill="#1e293b" stroke="#334155" stroke-width="0.5" />
+            <text x="16" y="24" fill="#f8fafc" font-size="11" font-family="monospace">STU-1084</text>
+            <text x="120" y="24" fill="#f8fafc" font-size="11" font-weight="600">Sneha Patel</text>
+            <text x="240" y="24" fill="#94a3b8" font-size="11">sneha@exam.edu</text>
+            <text x="390" y="24" fill="#cbd5e1" font-size="11">2026-CSE-B</text>
+            <text x="490" y="24" fill="#ef4444" font-size="11" font-weight="700">Delete</text>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <!-- MODAL: Confirmation Dialog for "DELETE ALL CREDENTIALS" -->
+    <g id="Modal_DeleteAllConfirm" transform="translate(800, 1820)">
+      <rect width="360" height="250" rx="12" fill="#1c0b0e" stroke="#ef4444" stroke-width="2" filter="url(#shadow)" />
+      <rect width="360" height="36" rx="12" fill="#3f0e15" />
+      <text x="20" y="23" fill="#fecaca" font-size="12" font-weight="800">⚠ DANGER: PURGE ALL CREDENTIALS</text>
+
+      <text x="24" y="68" fill="#ffffff" font-size="15" font-weight="800">Delete All Student Credentials?</text>
+      <text x="24" y="94" fill="#fca5a5" font-size="11" font-weight="600">This action will delete all student logins permanently.</text>
+      <text x="24" y="112" fill="#cbd5e1" font-size="11">Students will no longer be able to log in or</text>
+      <text x="24" y="128" fill="#cbd5e1" font-size="11">resume interrupted examination attempts.</text>
+
+      <rect x="24" y="145" width="312" height="34" rx="6" fill="#0f172a" stroke="#7f1d1d" />
+      <text x="34" y="167" fill="#f87171" font-size="11">Type 'DELETE ALL' to confirm action</text>
+
+      <rect x="24" y="195" width="145" height="38" rx="6" fill="#292524" stroke="#57534e" />
+      <text x="75" y="219" fill="#e7e5e4" font-size="12" font-weight="700">Cancel</text>
+
+      <rect x="185" y="195" width="150" height="38" rx="6" fill="url(#dangerBtn)" />
+      <text x="210" y="219" fill="#ffffff" font-size="12" font-weight="800">Purge All 🗑</text>
+    </g>
+
+    <!-- SCREEN 2: /admin/exams/new (Create Exam & Class Wizard) -->
+    <g id="Screen_CreateExam" transform="translate(1200, 1770)">
+      <rect width="440" height="520" rx="14" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="440" height="36" rx="14" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/admin/exams/new • Exam &amp; Coding Problem Builder</text>
+
+      <text x="24" y="70" fill="#ffffff" font-size="16" font-weight="800">New Class / Exam Configurator</text>
+      <text x="24" y="90" fill="#94a3b8" font-size="12">Define questions, test cases, and AI thresholds</text>
+
+      <!-- Step 1: Meta -->
+      <rect x="20" y="110" width="400" height="85" rx="8" fill="#0f172a" stroke="#334155" />
+      <text x="32" y="132" fill="#ffffff" font-size="12" font-weight="700">Title &amp; Schedule Settings</text>
+      <text x="32" y="152" fill="#94a3b8" font-size="11">CS301 • Duration: 60m • Passing Mark: 70%</text>
+      <text x="32" y="172" fill="#38bdf8" font-size="11">✓ Incomplete Terminate &amp; Resume Enabled</text>
+
+      <!-- Step 2: Question & Test Case Builder -->
+      <rect x="20" y="205" width="400" height="150" rx="8" fill="#0f172a" stroke="#334155" />
+      <text x="32" y="228" fill="#ffffff" font-size="12" font-weight="700">Coding Question &amp; Test Suite Gating</text>
+      <rect x="32" y="240" width="376" height="48" rx="6" fill="#1e293b" />
+      <text x="44" y="260" fill="#a5b4fc" font-size="11" font-weight="600">Sample Test Case #1 (Visible to Student):</text>
+      <text x="44" y="276" fill="#cbd5e1" font-size="10" font-family="monospace">In: [2,7,11,15], target=9 → Out: [0,1]</text>
+
+      <rect x="32" y="296" width="376" height="48" rx="6" fill="#1e293b" />
+      <text x="44" y="316" fill="#fca5a5" font-size="11" font-weight="600">Hidden Evaluation Test Cases (5 Total):</text>
+      <text x="44" y="332" fill="#cbd5e1" font-size="10" font-family="monospace">Boundary, Null Array, Max Constraints</text>
+
+      <!-- Step 3: AI Proctor Policies -->
+      <rect x="20" y="365" width="400" height="90" rx="8" fill="#0f172a" stroke="#334155" />
+      <text x="32" y="388" fill="#ffffff" font-size="12" font-weight="700">AI Proctoring Flags</text>
+      <text x="32" y="408" fill="#4ade80" font-size="11">✓ Head Pose &amp; Eye Gaze Tracking (Threshold: 5s)</text>
+      <text x="32" y="426" fill="#4ade80" font-size="11">✓ Cellphone / Device Detection (YOLOv8 Engine)</text>
+      <text x="32" y="444" fill="#4ade80" font-size="11">✓ Fullscreen &amp; Tab Lock Violation Recording</text>
+
+      <rect x="20" y="468" width="400" height="38" rx="8" fill="url(#primaryBtn)" />
+      <text x="145" y="492" fill="#ffffff" font-size="13" font-weight="700">Publish Exam Session 🚀</text>
+    </g>
+
+    <!-- SCREEN 3: /admin/exams/:id/attempts/:attemptId (Detailed Candidate Proctor Report) -->
+    <g id="Screen_AdminReport" transform="translate(1680, 1770)">
+      <rect width="700" height="520" rx="14" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="700" height="36" rx="14" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">/admin/exams/:id/attempts/:attemptId • Candidate Proctoring Audit</text>
+
+      <!-- Candidate Header -->
+      <g transform="translate(24, 52)">
+        <text x="0" y="24" fill="#ffffff" font-size="17" font-weight="800">Audit Dossier: Varun Kumar (STU-1082)</text>
+        <text x="0" y="44" fill="#94a3b8" font-size="12">Algorithms Midterm (CS301) • Final Status: COMPLETED</text>
+
+        <!-- Integrity Score Widget -->
+        <rect x="490" y="0" width="160" height="54" rx="8" fill="#062e1e" stroke="#10b981" stroke-width="1.5" />
+        <text x="506" y="24" fill="#6ee7b7" font-size="11" font-weight="700">TRUST SCORE</text>
+        <text x="506" y="46" fill="#34d399" font-size="20" font-weight="800">96 / 100</text>
+      </g>
+
+      <!-- Timeline of Evidence Snaps & Infractions -->
+      <g transform="translate(24, 125)">
+        <text x="0" y="16" fill="#cbd5e1" font-size="12" font-weight="700">AI PROCTORING LOGS &amp; SNAPSHOT TIMELINE</text>
+
+        <!-- Timeline item 1: Normal -->
+        <g transform="translate(0, 30)">
+          <rect width="650" height="58" rx="6" fill="#0f172a" stroke="#334155" />
+          <rect x="12" y="12" width="60" height="36" rx="4" fill="#000" stroke="#475569" />
+          <text x="26" y="34" fill="#64748b" font-size="10">SNAP</text>
+          <text x="85" y="28" fill="#ffffff" font-size="12" font-weight="700">10:15:02 AM - Identity Verified &amp; Hardware Locked</text>
+          <text x="85" y="44" fill="#94a3b8" font-size="11">Single face matched with student record. No external display.</text>
+          <rect x="560" y="18" width="75" height="22" rx="4" fill="#065f46" />
+          <text x="572" y="33" fill="#34d399" font-size="10" font-weight="700">VERIFIED</text>
+        </g>
+
+        <!-- Timeline item 2: Warning Flag (Gaze deviation) -->
+        <g transform="translate(0, 96)">
+          <rect width="650" height="58" rx="6" fill="#1c1917" stroke="#f59e0b" stroke-width="1" />
+          <rect x="12" y="12" width="60" height="36" rx="4" fill="#000" stroke="#f59e0b" />
+          <text x="24" y="34" fill="#f59e0b" font-size="10">FLAG</text>
+          <text x="85" y="28" fill="#ffffff" font-size="12" font-weight="700">10:32:14 AM - Eye Gaze Away From Display (6.2s)</text>
+          <text x="85" y="44" fill="#fcd34d" font-size="11">Candidate looking towards right shoulder. Warning shown on screen.</text>
+          <rect x="560" y="18" width="75" height="22" rx="4" fill="#78350f" />
+          <text x="576" y="33" fill="#fde68a" font-size="10" font-weight="700">WARNING</text>
+        </g>
+
+        <!-- Timeline item 3: Question Passed Event -->
+        <g transform="translate(0, 162)">
+          <rect width="650" height="58" rx="6" fill="#0f172a" stroke="#10b981" />
+          <rect x="12" y="12" width="60" height="36" rx="4" fill="#042f2e" stroke="#10b981" />
+          <text x="24" y="34" fill="#34d399" font-size="10">CODE</text>
+          <text x="85" y="28" fill="#ffffff" font-size="12" font-weight="700">10:44:00 AM - Question 2 Passed Sample &amp; Hidden Tests</text>
+          <text x="85" y="44" fill="#a7f3d0" font-size="11">Judge0 sandbox: 6/6 test cases passed. Question marked COMPLETED.</text>
+          <rect x="560" y="18" width="75" height="22" rx="4" fill="#065f46" />
+          <text x="572" y="33" fill="#34d399" font-size="10" font-weight="700">SUBMITTED</text>
+        </g>
+      </g>
+
+      <!-- Examiner Verdict Bar -->
+      <g transform="translate(24, 435)">
+        <rect width="650" height="50" rx="8" fill="#0f172a" stroke="#334155" />
+        <text x="20" y="30" fill="#94a3b8" font-size="12" font-weight="600">Examiner Decision:</text>
+
+        <rect x="360" y="9" width="130" height="32" rx="6" fill="url(#dangerBtn)" />
+        <text x="382" y="30" fill="#ffffff" font-size="12" font-weight="700">Flag for Review</text>
+
+        <rect x="505" y="9" width="130" height="32" rx="6" fill="url(#successBtn)" />
+        <text x="532" y="30" fill="#ffffff" font-size="12" font-weight="700">Approve Grade</text>
+      </g>
+    </g>
+
+    <!-- LIVE MONITORING STREAM HUB (Right) -->
+    <g id="Screen_LiveGrid" transform="translate(2420, 1770)">
+      <rect width="460" height="520" rx="14" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow)" />
+      <rect width="460" height="36" rx="14" fill="#0f172a" />
+      <circle cx="20" cy="18" r="5" fill="#ef4444" /><circle cx="36" cy="18" r="5" fill="#f59e0b" /><circle cx="52" cy="18" r="5" fill="#10b981" />
+      <text x="75" y="22" fill="#94a3b8" font-size="12" font-weight="600">Proctor Live Stream Grid (Multi-Candidate)</text>
+
+      <!-- Grid of 4 webcam candidate feeds -->
+      <g transform="translate(20, 60)">
+        <!-- Candidate 1: Normal -->
+        <rect width="200" height="150" rx="8" fill="#000" stroke="#10b981" stroke-width="2" />
+        <circle cx="100" cy="70" r="28" fill="#1f2937" />
+        <rect x="10" y="115" width="180" height="24" rx="4" fill="#111827" fill-opacity="0.8" />
+        <text x="20" y="131" fill="#34d399" font-size="10" font-weight="700">Varun Kumar • NORMAL</text>
+
+        <!-- Candidate 2: Incomplete Terminated -->
+        <rect x="220" width="200" height="150" rx="8" fill="#000" stroke="#f59e0b" stroke-width="2" />
+        <circle cx="320" cy="70" r="28" fill="#1f2937" />
+        <rect x="230" y="115" width="180" height="24" rx="4" fill="#111827" fill-opacity="0.8" />
+        <text x="240" y="131" fill="#fbbf24" font-size="10" font-weight="700">Aditya Roy • INCOMPLETE</text>
+
+        <!-- Candidate 3: Warning / Multiple Faces -->
+        <rect y="170" width="200" height="150" rx="8" fill="#000" stroke="#ef4444" stroke-width="2" />
+        <circle cx="85" cy="240" r="24" fill="#1f2937" />
+        <circle cx="135" cy="240" r="20" fill="#7f1d1d" />
+        <rect x="10" y="285" width="180" height="24" rx="4" fill="#111827" fill-opacity="0.8" />
+        <text x="18" y="301" fill="#f87171" font-size="10" font-weight="700">Sneha Patel • 2 FACES ⚠</text>
+
+        <!-- Candidate 4: Completed -->
+        <rect x="220" y="170" width="200" height="150" rx="8" fill="#000" stroke="#065f46" stroke-width="1.5" />
+        <circle cx="320" cy="240" r="28" fill="#1f2937" />
+        <rect x="230" y="285" width="180" height="24" rx="4" fill="#111827" fill-opacity="0.8" />
+        <text x="240" y="301" fill="#a7f3d0" font-size="10" font-weight="700">Rohan Das • SUBMITTED ✓</text>
+      </g>
+
+      <rect x="20" y="445" width="420" height="50" rx="8" fill="#0f172a" stroke="#334155" />
+      <text x="35" y="474" fill="#cbd5e1" font-size="12" font-weight="600">Active Candidates: 4 | Flagged: 1 | Incomplete: 1</text>
+    </g>
+
+    <!-- Connectors for Admin Flow -->
+    <!-- Delete All Credentials to Confirmation Modal -->
+    <path d="M 660 1860 L 800 1860" fill="none" stroke="#ef4444" stroke-width="2.5" marker-end="url(#arrowDanger)" />
+    <!-- Admin Dashboard to Create Exam -->
+    <path d="M 760 2030 L 1200 2030" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrow)" />
+    <!-- Create Exam to Report Dossier -->
+    <path d="M 1640 2030 L 1680 2030" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrow)" />
+    <!-- Report Dossier to Live Stream Grid -->
+    <path d="M 2380 2030 L 2420 2030" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrow)" />
+  </g>
+
+  <!-- ========================================================================= -->
+  <!-- CROSS-SECTION CONNECTIONS: LOGIN DISPATCH                                -->
+  <!-- ========================================================================= -->
+  <!-- From /sign-in -> Student Section (/exams) -->
+  <path d="M 300 650 C 300 730, 260 750, 260 810" fill="none" stroke="#6366f1" stroke-width="3" marker-end="url(#arrow)" />
+  <rect x="270" y="705" width="145" height="24" rx="4" fill="#312e81" stroke="#4338ca" />
+  <text x="278" y="721" fill="#c7d2fe" font-size="10" font-weight="700">ROLE: STUDENT</text>
+
+  <!-- From /sign-in -> Admin Section (/admin/dashboard) -->
+  <path d="M 200 650 C 200 1600, 100 1600, 150 1770" fill="none" stroke="#ef4444" stroke-width="3" stroke-dasharray="6" marker-end="url(#arrowDanger)" />
+  <rect x="110" y="1650" width="175" height="24" rx="4" fill="#450a0a" stroke="#991b1b" />
+  <text x="118" y="1666" fill="#fca5a5" font-size="10" font-weight="700">ROLE: ADMIN / EXAMINER</text>
+
+</svg>

@@ -5,14 +5,14 @@
 
 ## 1. Overall System Architecture & Functionality
 
-The **AI Online Examination & Proctoring System (AEPS)** is a distributed, full-stack educational assessment platform designed to deliver both **Multiple Choice Question (MCQ)** exams and **Live Coding Assessments** with strict anti-cheating enforcement.
+The **sAI Online Examination & Proctoring System (AEPS)** is a distributed, full-stack educational assessment platform designed to deliver both **Multiple Choice Question (MCQ)** exams and **Live Coding Assessments** with strict anti-cheating enforcement.
 
-### 1.1 High-Level Architecture Overview
+### High-Level Architecture Overview
 The system is built on a **3-tier micro-architecture**:
 1. **Frontend Client (`/frontend`)**:
    - Modern Single Page Application (SPA) providing candidate examination portals, live WebRTC media capture, browser lockdown listeners, real-time audio FFT speech analysis, an in-browser code editor, and an administrative command center with interactive Recharts data visualization.
 2. **Core Backend Gateway (`/backend`)**:
-   - Enterprise Spring Boot 3 / Java 21 REST API server. Handles JWT security, role-based access control (RBAC), Flyway relational schema migrations, student question random assignment, Sandboxed Code Execution for 4+ languages, Bucket4j per-IP rate limiting, NTP-anchored monotonic trusted time synchronization, exponential time-decayed behavioral risk scoring, and multi-format reporting (PDF, Excel, CSV).
+   - Enterprise Spring Boot 3 / Java 21 REST API server. Handles, role-based access control (RBAC), Flyway relational schema migrations, student question random assignment, Sandboxed Code Execution for 4+ languages, Bucket4j per-IP rate limiting, NTP-anchored monotonic trusted time synchronization, exponential time-decayed behavioral risk scoring, and multi-format reporting (PDF, Excel, CSV).
 3. **AI Vision & Assessment Service (`/ai-service`)**:
    - High-throughput asynchronous Python FastAPI service. Integrates MediaPipe Face Landmarker (478 3D facial landmarks), OpenCV SolvePnP head pose estimation (Pitch, Yaw, Roll), Iris gaze tracking, TFLite mobile phone / prohibited object detection, Random Forest question classification, and Google Gemini LLM question generation.
 4. **Data Persistence (`/database` / PostgreSQL 16)**:
@@ -23,7 +23,7 @@ graph TD
     Client["React 19 + TypeScript SPA (:5173 / :8081)"]
     Backend["Spring Boot 3 REST Backend (:8080)"]
     AIService["FastAPI Computer Vision & AI (:8000)"]
-    DB[("PostgreSQL 16 Database (:5432 / :5433)")]
+    DB[("PostgreSQL 16 Database (:5432 / :5433)")] JWT security
 
     Client -->|REST API / JWT Bearer| Backend
     Client -->|Webcam Video Frames / Base64| Backend
@@ -166,6 +166,7 @@ Proctor-Git/
   - `xlsx` (`^0.18.5`): Client-side spreadsheet generation and table parsing.
   - `react-is` (`^19.3.0`): React element type validation.
 - **Styling & Tooling**:
+
   - `tailwindcss` (`^4.3.3`) & `@tailwindcss/vite` (`^4.3.3`): Utility-first CSS engine.
   - `postcss` (`^8.5.28`) & `autoprefixer` (`^10.6.1`): CSS post-processing.
   - `oxlint` (`^1.81.0`): High-performance Rust-based JavaScript/TypeScript linter.

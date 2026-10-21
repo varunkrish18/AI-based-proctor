@@ -15,6 +15,8 @@ public interface ExamAttemptRepository extends JpaRepository<ExamAttempt, Long>,
 
     List<ExamAttempt> findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(Long examId, String studentEmail);
 
+    List<ExamAttempt> findByStudentEmailIgnoreCaseIn(java.util.Collection<String> studentEmails);
+
     Optional<ExamAttempt> findByIdAndStudentEmailIgnoreCase(Long id, String studentEmail);
 
     long countByExamIdAndStudentEmailIgnoreCase(Long examId, String studentEmail);

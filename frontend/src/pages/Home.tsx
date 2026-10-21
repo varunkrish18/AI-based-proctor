@@ -481,6 +481,15 @@ export default function Home() {
                             >
                               {isOpen ? "● OPEN NOW" : isUpcoming ? "UPCOMING" : "CLOSED"}
                             </span>
+                            {exam.studentAttemptStatus === "COMPLETED" ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                <span>✓</span> Completed
+                              </span>
+                            ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                                <span>⚠️</span> Incomplete
+                              </span>
+                            ) : null}
                             {exam.openToAll ? (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                                 🌐 Open to All
@@ -495,13 +504,17 @@ export default function Home() {
                               </span>
                             )}
                           </div>
-                          {exam.durationMinutes ? (
+                          {exam.isClass ? (
+                            <span className="text-xs text-indigo-600 font-semibold font-mono whitespace-nowrap">
+                              ♾️ Untimed Class
+                            </span>
+                          ) : exam.durationMinutes ? (
                             <span className="text-xs text-slate-500 font-mono whitespace-nowrap">
                               ⏱️ {exam.durationMinutes} mins
                             </span>
                           ) : (
                             <span className="text-xs text-indigo-600 font-medium font-mono whitespace-nowrap">
-                              ♾️ Untimed Class
+                              ♾️ Untimed
                             </span>
                           )}
                         </div>
@@ -516,13 +529,35 @@ export default function Home() {
                           </p>
                         )}
                         <p className="text-xs text-slate-500 line-clamp-2 mb-4">
-                          {exam.numQuestions} Questions • {exam.isClass ? "Infinite Retries Allowed" : "Monitored Session"}
+                          {exam.numQuestions} Questions • {exam.isClass ? "Class Assessment (Infinite Attempts)" : "Monitored Session"}
                         </p>
                       </div>
 
                       <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                         <div className="text-[11px] text-slate-500">
-                          {isOpen ? (
+                          {exam.isClass ? (
+                            exam.studentAttemptStatus === "COMPLETED" ? (
+                              <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                                <span>✓</span> Completed (Retake Available)
+                              </span>
+                            ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
+                              <span className="text-amber-700 font-medium flex items-center gap-1">
+                                <span>⚠️</span> Terminated (Resume available)
+                              </span>
+                            ) : isOpen ? (
+                              <span className="text-emerald-600 font-medium">Ready to take • Infinite Attempts</span>
+                            ) : (
+                              <span>Ended</span>
+                            )
+                          ) : exam.studentAttemptStatus === "COMPLETED" ? (
+                            <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                              <span>✓</span> Submitted &amp; Locked
+                            </span>
+                          ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
+                            <span className="text-amber-700 font-medium flex items-center gap-1">
+                              <span>⚠️</span> Terminated without submitting
+                            </span>
+                          ) : isOpen ? (
                             <span className="text-emerald-600 font-medium">Ready to take</span>
                           ) : isUpcoming ? (
                             <span>Starts {new Date(exam.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
@@ -531,12 +566,31 @@ export default function Home() {
                           )}
                         </div>
 
-                        {isOpen ? (
+                        {(!exam.isClass && exam.studentAttemptStatus === "COMPLETED") ? (
+                          <button
+                            disabled
+                            className="bg-slate-100 text-slate-400 font-semibold text-xs px-3.5 py-1.5 rounded-lg border border-slate-200 cursor-not-allowed flex items-center gap-1"
+                            title="You have already submitted and completed this exam. Re-taking is not allowed."
+                          >
+                            <span>✓</span>
+                            <span>Completed</span>
+                          </button>
+                        ) : isOpen ? (
                           <Link
                             to={`/exam/${exam.id}/verify`}
-                            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg shadow-sm transition-all"
+                            className={`font-semibold text-xs px-3.5 py-1.5 rounded-lg shadow-sm transition-all ${
+                              exam.studentAttemptStatus === "INCOMPLETE"
+                                ? "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white"
+                                : exam.isClass && exam.studentAttemptStatus === "COMPLETED"
+                                ? "bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white"
+                                : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+                            }`}
                           >
-                            Start Exam →
+                            {exam.studentAttemptStatus === "INCOMPLETE"
+                              ? `Resume ${exam.isClass ? "Class" : "Exam"} →`
+                              : exam.isClass && exam.studentAttemptStatus === "COMPLETED"
+                              ? "Retake Class ↻"
+                              : `Start ${exam.isClass ? "Class" : "Exam"} →`}
                           </Link>
                         ) : (
                           <Link

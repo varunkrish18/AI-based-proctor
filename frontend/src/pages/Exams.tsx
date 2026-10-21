@@ -77,6 +77,15 @@ export default function Exams() {
                 <div>
                   <h2 className="font-semibold text-lg text-slate-900">{exam.name}</h2>
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    {exam.studentAttemptStatus === "COMPLETED" ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        <span>✓</span> Completed
+                      </span>
+                    ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                        <span>⚠️</span> Incomplete
+                      </span>
+                    ) : null}
                     {exam.openToAll ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                         🌐 Open to All
@@ -100,7 +109,7 @@ export default function Exams() {
               <div className="text-sm text-slate-600 space-y-1 mb-4">
                 <p>
                   {exam.numQuestions} questions &middot;{" "}
-                  {exam.durationMinutes ? `${exam.durationMinutes} min` : "♾️ Untimed Class (Infinite Attempts)"}
+                  {exam.isClass ? "♾️ Untimed Class" : exam.durationMinutes ? `${exam.durationMinutes} min` : "♾️ Untimed"}
                 </p>
                 {exam.assignedProfessorName && (
                   <p className="text-xs text-indigo-700 font-semibold flex items-center gap-1">
@@ -112,12 +121,26 @@ export default function Exams() {
                 </p>
               </div>
               <div className="mt-auto">
-                {effectiveStatus === "OPEN" ? (
+                {(!exam.isClass && exam.studentAttemptStatus === "COMPLETED") ? (
+                  <button disabled className="w-full bg-slate-100 text-slate-400 py-2 rounded-md font-semibold text-sm cursor-not-allowed flex items-center justify-center gap-1">
+                    <span>✓</span> Completed
+                  </button>
+                ) : effectiveStatus === "OPEN" ? (
                   <Link
                     to={`/exam/${exam.id}/verify`}
-                    className="block text-center bg-blue-600 text-white py-2 rounded-md font-medium hover:bg-blue-700 transition-colors"
+                    className={`block text-center text-white py-2 rounded-md font-semibold text-sm transition-colors ${
+                      exam.studentAttemptStatus === "INCOMPLETE"
+                        ? "bg-amber-600 hover:bg-amber-700"
+                        : exam.isClass && exam.studentAttemptStatus === "COMPLETED"
+                        ? "bg-indigo-600 hover:bg-indigo-700"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
                   >
-                    Start Exam
+                    {exam.studentAttemptStatus === "INCOMPLETE"
+                      ? "Resume Class"
+                      : exam.isClass && exam.studentAttemptStatus === "COMPLETED"
+                      ? "Retake Class ↻"
+                      : `Start ${exam.isClass ? "Class" : "Exam"}`}
                   </Link>
                 ) : (
                   <button disabled className="w-full bg-slate-100 text-slate-400 py-2 rounded-md font-medium cursor-not-allowed">
