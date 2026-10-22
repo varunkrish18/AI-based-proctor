@@ -216,7 +216,6 @@ public class StudentExamService {
                     .max()
                     .orElse(0) + 1;
 
-            boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
             if (!isClass && exam.getMaxAttempts() != null && nextAttemptNumber > exam.getMaxAttempts()) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Maximum attempts reached for this exam.");
             }
