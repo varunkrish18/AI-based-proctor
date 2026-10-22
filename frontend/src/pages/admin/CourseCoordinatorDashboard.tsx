@@ -746,16 +746,24 @@ export default function CourseCoordinatorDashboard() {
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                     <span className="text-[10px] text-slate-400">
                       Created by Coordinator
                     </span>
-                    <Link
-                      to={`/admin/exams/${c.id}`}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition"
-                    >
-                      ⚙️ Manage &amp; Questions
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        to={`/admin/exams/${c.id}?tab=coordinator-report`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition"
+                      >
+                        📊 Whole Report
+                      </Link>
+                      <Link
+                        to={`/admin/exams/${c.id}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition"
+                      >
+                        ⚙️ Manage
+                      </Link>
+                    </div>
                   </div>
                 </div>
               ))}

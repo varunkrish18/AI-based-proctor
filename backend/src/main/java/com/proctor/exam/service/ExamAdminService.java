@@ -398,114 +398,24 @@ public class ExamAdminService {
         List<Exam> resultList = new ArrayList<>();
         List<ExamQuestion> baseQuestions = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
 
-        // Check if baseExam is already assigned to a professor
-        boolean baseAssigned = baseExam.getAssignedProfessorEmail() != null && !baseExam.getAssignedProfessorEmail().isBlank();
-        int startIndex = 0;
+        // Keep the base class intact as the single unified class
+        baseExam.setIsClass(true);
+        baseExam.setMaxAttempts(null);
+        baseExam.setUpdatedAt(Instant.now());
 
-        if (!baseAssigned) {
+        // Assign primary professor if not yet assigned
+        if (baseExam.getAssignedProfessorEmail() == null || baseExam.getAssignedProfessorEmail().isBlank()) {
             ProfessorSummary firstProf = profs.get(0);
             baseExam.setAssignedProfessorId(firstProf.id());
             baseExam.setAssignedProfessorEmail(firstProf.email());
             baseExam.setAssignedProfessorName(firstProf.fullName());
-            baseExam.setIsClass(true);
-            baseExam.setMaxAttempts(null);
-            baseExam.setUpdatedAt(Instant.now());
-            Exam savedBase = examRepository.save(baseExam);
-            resultList.add(savedBase);
-            startIndex = 1;
-        } else {
-            resultList.add(baseExam);
         }
 
-        // For all other professors, ensure each has an independent section with copies of coordinator questions
-        for (int i = startIndex; i < profs.size(); i++) {
-            ProfessorSummary prof = profs.get(i);
-            if (prof.email().equalsIgnoreCase(baseExam.getAssignedProfessorEmail())) {
-                continue;
-            }
-
-            // Check if there is already an exam for this professor cloned from this base class
-            Optional<Exam> existingExam = examRepository.findAll().stream()
-                    .filter(e -> Boolean.TRUE.equals(e.getIsClass())
-                            && prof.email().equalsIgnoreCase(e.getAssignedProfessorEmail())
-                            && (e.getName().equals(baseExam.getName()) || e.getName().startsWith(baseExam.getName() + " - ")))
-                    .findFirst();
-
-            if (existingExam.isPresent()) {
-                resultList.add(existingExam.get());
-                continue;
-            }
-
-            Exam clonedExam = Exam.builder()
-                    .name(baseExam.getName() + " - " + prof.fullName())
-                    .description(baseExam.getDescription())
-                    .subject(baseExam.getSubject())
-                    .durationMinutes(baseExam.getDurationMinutes())
-                    .startAt(baseExam.getStartAt())
-                    .endAt(baseExam.getEndAt())
-                    .numQuestions(baseExam.getNumQuestions())
-                    .passingMarks(baseExam.getPassingMarks())
-                    .negativeMarking(baseExam.getNegativeMarking())
-                    .randomizeQuestions(baseExam.getRandomizeQuestions())
-                    .randomizeOptions(baseExam.getRandomizeOptions())
-                    .maxAttempts(Boolean.TRUE.equals(baseExam.getIsClass()) ? null : baseExam.getMaxAttempts())
-                    .webcamRequired(baseExam.getWebcamRequired())
-                    .microphoneRequired(baseExam.getMicrophoneRequired())
-                    .screenRequired(baseExam.getScreenRequired())
-                    .locationRequired(baseExam.getLocationRequired())
-                    .proctoringConfig(baseExam.getProctoringConfig())
-                    .status(baseExam.getStatus())
-                    .isClass(true)
-                    .createdBy(baseExam.getCreatedBy())
-                    .assignedProfessorId(prof.id())
-                    .assignedProfessorEmail(prof.email())
-                    .assignedProfessorName(prof.fullName())
-                    .build();
-
-            Exam savedCloned = examRepository.save(clonedExam);
-
-            // Clone base coordinator questions so prof starts with coordinator's questions
-            for (ExamQuestion bq : baseQuestions) {
-                ExamQuestion cq = ExamQuestion.builder()
-                        .exam(savedCloned)
-                        .questionType(bq.getQuestionType())
-                        .problemTitle(bq.getProblemTitle())
-                        .questionText(bq.getQuestionText())
-                        .optionA(bq.getOptionA())
-                        .optionB(bq.getOptionB())
-                        .optionC(bq.getOptionC())
-                        .optionD(bq.getOptionD())
-                        .correctAnswer(bq.getCorrectAnswer())
-                        .codeTemplate(bq.getCodeTemplate())
-                        .allowedLanguages(bq.getAllowedLanguages())
-                        .constraints(bq.getConstraints())
-                        .marks(bq.getMarks())
-                        .displayOrder(bq.getDisplayOrder())
-                        .createdBy(bq.getCreatedBy())
-                        .createdByRole("COURSE_COORDINATOR")
-                        .createdByCoordinator(true)
-                        .build();
-
-                if ("CODING".equals(bq.getQuestionType()) && bq.getTestCases() != null) {
-                    for (ExamQuestionTestCase btc : bq.getTestCases()) {
-                        ExamQuestionTestCase ctc = ExamQuestionTestCase.builder()
-                                .question(cq)
-                                .input(btc.getInput())
-                                .expectedOutput(btc.getExpectedOutput())
-                                .isHidden(btc.getIsHidden())
-                                .explanation(btc.getExplanation())
-                                .displayOrder(btc.getDisplayOrder())
-                                .build();
-                        cq.getTestCases().add(ctc);
-                    }
-                }
-                questionRepository.save(cq);
-            }
-            resultList.add(savedCloned);
-        }
+        Exam savedBase = examRepository.save(baseExam);
+        resultList.add(savedBase);
 
         auditLogService.logAdmin(adminEmail, "ALL_PROFESSORS_ASSIGNED",
-                "Assigned all " + profs.size() + " professors in department '" + dept + "' to class '" + baseExam.getName() + "'");
+                "Assigned all " + profs.size() + " professors in department '" + dept + "' to class '" + baseExam.getName() + "' (Single class maintained, no cloning)");
         return resultList;
     }
 

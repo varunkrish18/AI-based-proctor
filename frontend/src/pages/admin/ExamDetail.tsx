@@ -426,7 +426,10 @@ export default function ExamDetail() {
           { id: "qassign", label: "📋 Question Assignment" },
         ]
           .filter((t) => {
-            if (isCoordinator) return t.id === "questions" || t.id === "settings" || t.id === "coordinator-report";
+            if (isCoordinator) {
+              // Coordinator sees all management & report tabs except professor-specific view
+              return t.id !== "professor-report";
+            }
             if (isProfessorUser) return t.id !== "settings" && t.id !== "coordinator-report";
             return t.id !== "coordinator-report";
           })
@@ -469,9 +472,9 @@ export default function ExamDetail() {
       {tab === "professor-report" && (
         <ProfessorStudentReportTab exam={exam} />
       )}
-      {!isCoordinator && tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
-      {!isCoordinator && tab === "results" && <ResultsTab examId={exam.id} />}
-      {!isCoordinator && tab === "qassign" && (
+      {tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
+      {tab === "results" && <ResultsTab examId={exam.id} />}
+      {tab === "qassign" && (
         <QuestionAssignTab
           examId={exam.id}
           examName={exam.name}

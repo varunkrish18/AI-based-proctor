@@ -185,6 +185,12 @@ public class StudentExamService {
         List<ExamAttempt> existingAttempts = attemptRepository
                 .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(examId, studentEmail);
 
+        boolean isOpen = exam.isOpenToAll();
+        Optional<ExamAssignment> assignmentOpt = assignmentRepository.findByExamIdAndStudentEmailIgnoreCase(examId, studentEmail);
+        if (!isOpen && assignmentOpt.isEmpty()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You have not been assigned to this exam/class. Please contact your coordinator or professor.");
+        }
+
         boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
         if (!isClass) {
             boolean hasCompleted = existingAttempts.stream()
@@ -220,7 +226,7 @@ public class StudentExamService {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Maximum attempts reached for this exam.");
             }
 
-            // --- Prefer pre-assigned questions if admin has set up random assignment ---
+            // --- Prefer pre-assigned questions if admin has explicitly set up random assignment ---
             Optional<com.proctor.exam.entity.StudentQuestionAssignment> sqaOpt =
                     sqaRepository.findByExamIdAndStudentEmailIgnoreCase(examId, studentEmail);
 
@@ -235,7 +241,7 @@ public class StudentExamService {
                     orderedQuestionIds = List.of();
                 }
             } else {
-                // Fall back to fresh random selection from the full bank
+                // Use questions from the bank without creating unassigned random SQA records
                 List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
                 List<ExamQuestion> selected = new ArrayList<>(bank);
                 if (Boolean.TRUE.equals(exam.getRandomizeQuestions())) {
@@ -246,18 +252,6 @@ public class StudentExamService {
                         : selected.size();
                 selected = selected.subList(0, take);
                 orderedQuestionIds = selected.stream().map(ExamQuestion::getId).toList();
-
-                // Persist this assignment so this candidate has their questions tracked permanently
-                try {
-                    com.proctor.exam.entity.StudentQuestionAssignment autoSqa =
-                            com.proctor.exam.entity.StudentQuestionAssignment.builder()
-                                    .exam(exam)
-                                    .studentEmail(studentEmail)
-                                    .questionIds(objectMapper.writeValueAsString(orderedQuestionIds))
-                                    .questionsPerStudent(orderedQuestionIds.size())
-                                    .build();
-                    sqaRepository.save(autoSqa);
-                } catch (Exception ignored) {}
             }
 
             attempt = ExamAttempt.builder()
