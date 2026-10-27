@@ -71,7 +71,14 @@ public class ExamAdminService {
         String profEmail = req.assignedProfessorEmail();
         String profName = req.assignedProfessorName();
 
-        if (profId != null && (profEmail == null || profEmail.isBlank() || profName == null || profName.isBlank())) {
+        boolean isAssignAllProfessors = "ALL_PROFESSORS".equalsIgnoreCase(profEmail)
+                || (profName != null && profName.toLowerCase().startsWith("all department faculty"));
+
+        if (isAssignAllProfessors) {
+            profId = null;
+            profEmail = "ALL_PROFESSORS";
+            profName = "All Department Faculty";
+        } else if (profId != null && (profEmail == null || profEmail.isBlank() || profName == null || profName.isBlank())) {
             Professor p = professorRepository.findById(profId).orElse(null);
             if (p != null) {
                 profEmail = p.getEmail();
@@ -124,6 +131,7 @@ public class ExamAdminService {
                 .assignedProfessorId(profId)
                 .assignedProfessorEmail(profEmail != null ? profEmail.trim() : null)
                 .assignedProfessorName(profName != null ? profName.trim() : null)
+                .assignedToAllProfessors(isAssignAllProfessors)
                 .isClass(isClassMode)
                 .build();
         Exam saved = examRepository.save(exam);
@@ -247,28 +255,39 @@ public class ExamAdminService {
         String profEmail = req.professorEmail();
         String profName = req.professorName();
 
-        if (profId != null && (profEmail == null || profEmail.isBlank() || profName == null || profName.isBlank())) {
-            Professor p = professorRepository.findById(profId).orElse(null);
-            if (p != null) {
-                profEmail = p.getEmail();
-                profName = p.getFullName();
-            } else {
-                Admin a = adminRepository.findById(profId).orElse(null);
-                if (a != null) {
-                    profEmail = a.getEmail();
-                    profName = a.getFullName();
+        boolean isAssignAll = "ALL_PROFESSORS".equalsIgnoreCase(profEmail)
+                || (profName != null && profName.toLowerCase().startsWith("all department faculty"));
+
+        if (isAssignAll) {
+            profId = null;
+            profEmail = "ALL_PROFESSORS";
+            profName = "All Department Faculty";
+            exam.setAssignedToAllProfessors(true);
+        } else {
+            exam.setAssignedToAllProfessors(false);
+            if (profId != null && (profEmail == null || profEmail.isBlank() || profName == null || profName.isBlank())) {
+                Professor p = professorRepository.findById(profId).orElse(null);
+                if (p != null) {
+                    profEmail = p.getEmail();
+                    profName = p.getFullName();
+                } else {
+                    Admin a = adminRepository.findById(profId).orElse(null);
+                    if (a != null) {
+                        profEmail = a.getEmail();
+                        profName = a.getFullName();
+                    }
                 }
-            }
-        } else if (profEmail != null && !profEmail.isBlank() && (profName == null || profName.isBlank() || profId == null)) {
-            Professor p = professorRepository.findByEmailIgnoreCase(profEmail.trim()).orElse(null);
-            if (p != null) {
-                if (profId == null) profId = p.getId();
-                if (profName == null || profName.isBlank()) profName = p.getFullName();
-            } else {
-                Admin a = adminRepository.findByEmail(profEmail.trim().toLowerCase()).orElse(null);
-                if (a != null) {
-                    if (profId == null) profId = a.getId();
-                    if (profName == null || profName.isBlank()) profName = a.getFullName();
+            } else if (profEmail != null && !profEmail.isBlank() && (profName == null || profName.isBlank() || profId == null)) {
+                Professor p = professorRepository.findByEmailIgnoreCase(profEmail.trim()).orElse(null);
+                if (p != null) {
+                    if (profId == null) profId = p.getId();
+                    if (profName == null || profName.isBlank()) profName = p.getFullName();
+                } else {
+                    Admin a = adminRepository.findByEmail(profEmail.trim().toLowerCase()).orElse(null);
+                    if (a != null) {
+                        if (profId == null) profId = a.getId();
+                        if (profName == null || profName.isBlank()) profName = a.getFullName();
+                    }
                 }
             }
         }
@@ -302,7 +321,27 @@ public class ExamAdminService {
             boolean isAssignedById = exam.getAssignedProfessorId() != null &&
                     ((adminId != null && exam.getAssignedProfessorId().equals(adminId)) || (profEntityId != null && exam.getAssignedProfessorId().equals(profEntityId)));
 
-            if (!isCreator && !isAssignedByEmail && !isAssignedById) {
+            // If exam is assigned to ALL professors, check if this professor is in the exam/creator's department
+            boolean isAssignedToAll = Boolean.TRUE.equals(exam.getAssignedToAllProfessors())
+                    || "ALL_PROFESSORS".equalsIgnoreCase(exam.getAssignedProfessorEmail());
+            boolean matchesDept = false;
+            if (isAssignedToAll) {
+                String staffDept = prof != null ? prof.getDepartment() : (admin != null ? admin.getDepartment() : null);
+                if (staffDept != null && !staffDept.isBlank()) {
+                    if (staffDept.equalsIgnoreCase(exam.getSubject())) {
+                        matchesDept = true;
+                    } else if (exam.getCreatedBy() != null) {
+                        Admin creator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
+                        if (creator != null && staffDept.equalsIgnoreCase(creator.getDepartment())) {
+                            matchesDept = true;
+                        }
+                    }
+                } else {
+                    matchesDept = true; // No department restrictions configured
+                }
+            }
+
+            if (!isCreator && !isAssignedByEmail && !isAssignedById && (!isAssignedToAll || !matchesDept)) {
                 throw new ApiException(HttpStatus.FORBIDDEN,
                         "Access denied: As a Professor / Faculty, you can only view and manage exams assigned to or created by you.");
             }
@@ -310,9 +349,10 @@ public class ExamAdminService {
             if (exam.getCreatedBy() != null && !exam.getCreatedBy().equals(admin.getId())) {
                 Admin creator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
                 if (creator == null || creator.getDepartment() == null || !creator.getDepartment().equalsIgnoreCase(admin.getDepartment())) {
-                    // Also check if assigned professor is in coordinator's department
-                    boolean inSameDept = false;
-                    if (exam.getAssignedProfessorEmail() != null) {
+                    // Also check if assigned professor is in coordinator's department or assignedToAll
+                    boolean inSameDept = Boolean.TRUE.equals(exam.getAssignedToAllProfessors())
+                            && admin.getDepartment().equalsIgnoreCase(exam.getSubject());
+                    if (!inSameDept && exam.getAssignedProfessorEmail() != null) {
                         Professor p = professorRepository.findByEmailIgnoreCase(exam.getAssignedProfessorEmail()).orElse(null);
                         if (p != null && admin.getDepartment().equalsIgnoreCase(p.getDepartment())) {
                             inSameDept = true;
@@ -401,15 +441,11 @@ public class ExamAdminService {
         // Keep the base class intact as the single unified class
         baseExam.setIsClass(true);
         baseExam.setMaxAttempts(null);
+        baseExam.setAssignedToAllProfessors(true);
+        baseExam.setAssignedProfessorId(null);
+        baseExam.setAssignedProfessorEmail("ALL_PROFESSORS");
+        baseExam.setAssignedProfessorName("All Department Faculty (" + profs.size() + " Professors)");
         baseExam.setUpdatedAt(Instant.now());
-
-        // Assign primary professor if not yet assigned
-        if (baseExam.getAssignedProfessorEmail() == null || baseExam.getAssignedProfessorEmail().isBlank()) {
-            ProfessorSummary firstProf = profs.get(0);
-            baseExam.setAssignedProfessorId(firstProf.id());
-            baseExam.setAssignedProfessorEmail(firstProf.email());
-            baseExam.setAssignedProfessorName(firstProf.fullName());
-        }
 
         Exam savedBase = examRepository.save(baseExam);
         resultList.add(savedBase);
@@ -469,11 +505,13 @@ public class ExamAdminService {
             if (isProfessorRole) {
                 Long profEntityId = prof != null ? prof.getId() : null;
                 Long adminId = admin != null ? admin.getId() : null;
+                String profDept = prof != null ? prof.getDepartment() : (admin != null ? admin.getDepartment() : null);
 
                 return examRepository.findAll().stream()
                         .filter(e -> (adminId != null && e.getCreatedBy() != null && e.getCreatedBy().equals(adminId))
                                 || (e.getAssignedProfessorEmail() != null && e.getAssignedProfessorEmail().equalsIgnoreCase(email))
-                                || (e.getAssignedProfessorId() != null && ((adminId != null && e.getAssignedProfessorId().equals(adminId)) || (profEntityId != null && e.getAssignedProfessorId().equals(profEntityId)))))
+                                || (e.getAssignedProfessorId() != null && ((adminId != null && e.getAssignedProfessorId().equals(adminId)) || (profEntityId != null && e.getAssignedProfessorId().equals(profEntityId))))
+                                || (isExamAssignedToProfessor(e, profDept)))
                         .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
                         .toList();
             } else if (admin != null && "COURSE_COORDINATOR".equalsIgnoreCase(admin.getRole())) {
@@ -486,6 +524,7 @@ public class ExamAdminService {
                     return examRepository.findAll().stream()
                             .filter(e -> (e.getCreatedBy() != null && (deptStaffIds.contains(e.getCreatedBy()) || e.getCreatedBy().equals(admin.getId())))
                                     || (e.getSubject() != null && e.getSubject().equalsIgnoreCase(dept))
+                                    || (Boolean.TRUE.equals(e.getAssignedToAllProfessors()) && dept.equalsIgnoreCase(e.getSubject()))
                                     || (e.getAssignedProfessorEmail() != null && isProfessorInDept(e.getAssignedProfessorEmail(), dept)))
                             .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
                             .toList();
@@ -494,6 +533,26 @@ public class ExamAdminService {
             }
         }
         return examRepository.findAll();
+    }
+
+    private boolean isExamAssignedToProfessor(Exam e, String profDept) {
+        if (!Boolean.TRUE.equals(e.getAssignedToAllProfessors())
+                && !"ALL_PROFESSORS".equalsIgnoreCase(e.getAssignedProfessorEmail())) {
+            return false;
+        }
+        if (profDept == null || profDept.isBlank()) {
+            return true;
+        }
+        if (profDept.equalsIgnoreCase(e.getSubject())) {
+            return true;
+        }
+        if (e.getCreatedBy() != null) {
+            Admin creator = adminRepository.findById(e.getCreatedBy()).orElse(null);
+            if (creator != null && profDept.equalsIgnoreCase(creator.getDepartment())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isProfessorInDept(String email, String dept) {
@@ -818,6 +877,28 @@ public class ExamAdminService {
         int assigned = 0;
         int skipped = 0;
         List<Map<String, String>> credentials = new ArrayList<>();
+
+        Long assignerId = null;
+        String assignerName = null;
+        String assignerEmail = null;
+
+        if (adminEmail != null && !adminEmail.isBlank()) {
+            String caller = adminEmail.trim().toLowerCase();
+            Professor p = professorRepository.findByEmailIgnoreCase(caller).orElse(null);
+            if (p != null) {
+                assignerId = p.getId();
+                assignerName = p.getFullName();
+                assignerEmail = p.getEmail();
+            } else {
+                Admin a = adminRepository.findByEmail(caller).orElse(null);
+                if (a != null) {
+                    assignerId = a.getId();
+                    assignerName = a.getFullName();
+                    assignerEmail = a.getEmail();
+                }
+            }
+        }
+
         for (String rawEmail : req.emails()) {
             String email = rawEmail.trim().toLowerCase();
             if (email.isBlank()) continue;
@@ -828,6 +909,9 @@ public class ExamAdminService {
                         .exam(exam)
                         .studentEmail(email)
                         .accessPassword(pwd)
+                        .assignedByProfessorId(assignerId)
+                        .assignedByProfessorName(assignerName)
+                        .assignedByProfessorEmail(assignerEmail)
                         .build();
                 assignmentRepository.save(assignment);
                 assigned++;
@@ -838,8 +922,13 @@ public class ExamAdminService {
                 if (pwd == null || pwd.isBlank()) {
                     pwd = generateRandomPassword(8);
                     current.setAccessPassword(pwd);
-                    assignmentRepository.save(current);
                 }
+                if (assignerName != null && (current.getAssignedByProfessorName() == null || current.getAssignedByProfessorName().isBlank())) {
+                    current.setAssignedByProfessorId(assignerId);
+                    current.setAssignedByProfessorName(assignerName);
+                    current.setAssignedByProfessorEmail(assignerEmail);
+                }
+                assignmentRepository.save(current);
                 credentials.add(Map.of("email", email, "password", pwd));
                 skipped++;
             }
@@ -899,6 +988,12 @@ public class ExamAdminService {
         auditLogService.logAdmin(adminEmail, "EXAM_DELETED", "Deleted exam '" + exam.getName() + "' (ID: " + examId + ")");
     }
 
+    public Set<String> getAssignedEmails(Long examId, String staffEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, staffEmail);
+        return assignmentRepository.findAssignedStudentEmailsByExamId(examId);
+    }
+
     public List<ExamAssignment> listAssignments(Long examId, String staffEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, staffEmail);
@@ -909,6 +1004,27 @@ public class ExamAdminService {
                 assignmentRepository.save(a);
             }
         }
+
+        // If caller is a Professor, they should only see the students THEY assigned
+        if (staffEmail != null && !staffEmail.isBlank() && isProfessorUser(staffEmail)) {
+            String caller = staffEmail.trim().toLowerCase();
+            Professor callerProf = professorRepository.findByEmailIgnoreCase(caller).orElse(null);
+            Admin callerAdmin = adminRepository.findByEmail(caller).orElse(null);
+            Long callerId = callerProf != null ? callerProf.getId() : (callerAdmin != null ? callerAdmin.getId() : null);
+
+            return list.stream()
+                    .filter(a -> {
+                        if (a.getAssignedByProfessorEmail() != null && a.getAssignedByProfessorEmail().equalsIgnoreCase(caller)) {
+                            return true;
+                        }
+                        if (callerId != null && a.getAssignedByProfessorId() != null && a.getAssignedByProfessorId().equals(callerId)) {
+                            return true;
+                        }
+                        return false;
+                    })
+                    .toList();
+        }
+
         return list;
     }
 
@@ -922,6 +1038,21 @@ public class ExamAdminService {
         verifyExamAccess(exam, adminEmail);
         ExamAssignment assignment = assignmentRepository.findByIdAndExamId(assignmentId, examId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Assignment not found."));
+
+        if (adminEmail != null && !adminEmail.isBlank() && isProfessorUser(adminEmail)) {
+            String caller = adminEmail.trim().toLowerCase();
+            Professor callerProf = professorRepository.findByEmailIgnoreCase(caller).orElse(null);
+            Admin callerAdmin = adminRepository.findByEmail(caller).orElse(null);
+            Long callerId = callerProf != null ? callerProf.getId() : (callerAdmin != null ? callerAdmin.getId() : null);
+
+            boolean isOwner = (assignment.getAssignedByProfessorEmail() != null && assignment.getAssignedByProfessorEmail().equalsIgnoreCase(caller))
+                    || (callerId != null && assignment.getAssignedByProfessorId() != null && assignment.getAssignedByProfessorId().equals(callerId));
+
+            if (!isOwner) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "Access denied: You can only remove students that you assigned.");
+            }
+        }
+
         assignmentRepository.delete(assignment);
         auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "STUDENT_UNASSIGNED",
                 "Unassigned " + assignment.getStudentEmail() + " from exam ID " + examId);
@@ -1376,12 +1507,17 @@ public class ExamAdminService {
                 profName = "Course Coordinator";
             }
 
-            // A) Collect from assignments
+            // A) Collect from assignments and map student email -> assigning professor name
             List<ExamAssignment> assignments = assignmentRepository.findByExamIdOrderByCreatedAtDesc(ex.getId());
             Set<String> studentEmails = new LinkedHashSet<>();
+            Map<String, String> studentAssignerMap = new HashMap<>();
             for (ExamAssignment a : assignments) {
                 if (a.getStudentEmail() != null && !a.getStudentEmail().isBlank()) {
-                    studentEmails.add(a.getStudentEmail().trim().toLowerCase());
+                    String sEmail = a.getStudentEmail().trim().toLowerCase();
+                    studentEmails.add(sEmail);
+                    if (a.getAssignedByProfessorName() != null && !a.getAssignedByProfessorName().isBlank()) {
+                        studentAssignerMap.put(sEmail, a.getAssignedByProfessorName().trim());
+                    }
                 }
             }
 
@@ -1400,6 +1536,41 @@ public class ExamAdminService {
                 if (s == null) {
                     s = studentRepository.findByEmailIgnoreCase(email).orElse(null);
                     if (s != null) studentCache.put(email, s);
+                }
+
+                // Determine student's specific assigned professor
+                String studentProfName = studentAssignerMap.get(email);
+                if (studentProfName == null || studentProfName.isBlank() || studentProfName.toLowerCase().startsWith("all department faculty")) {
+                    // Try to resolve professor in charge of this student's department & year
+                    if (s != null && s.getDepartment() != null && s.getYear() != null) {
+                        String sDept = s.getDepartment().trim();
+                        String sYear = s.getYear().trim();
+                        for (Professor p : professorRepository.findAll()) {
+                            if (p.getDepartment() != null && p.getDepartment().equalsIgnoreCase(sDept)
+                                    && p.getYear() != null && p.getYear().equalsIgnoreCase(sYear)
+                                    && p.getFullName() != null && !p.getFullName().isBlank()) {
+                                studentProfName = p.getFullName();
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (studentProfName == null || studentProfName.isBlank() || studentProfName.toLowerCase().startsWith("all department faculty")) {
+                    studentProfName = profName;
+                }
+                // If it was assigned to ALL_PROFESSORS and no specific assigner was found, fallback to creator or Coordinator
+                if (studentProfName == null || studentProfName.isBlank()
+                        || studentProfName.toLowerCase().startsWith("all department faculty")) {
+                    if (ex.getCreatedBy() != null) {
+                        Admin creator = adminRepository.findById(ex.getCreatedBy()).orElse(null);
+                        if (creator != null && creator.getFullName() != null && !creator.getFullName().isBlank()) {
+                            studentProfName = creator.getFullName();
+                        } else {
+                            studentProfName = "Course Coordinator";
+                        }
+                    } else {
+                        studentProfName = "Course Coordinator";
+                    }
                 }
 
                 String regNo = (s != null && s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank())
@@ -1443,7 +1614,7 @@ public class ExamAdminService {
                                 s != null ? s.getId() : existing.studentId(),
                                 regNo,
                                 sName,
-                                profName,
+                                studentProfName,
                                 dept,
                                 totalCoordinatorQuestions,
                                 completed,
@@ -1455,37 +1626,13 @@ public class ExamAdminService {
                             s != null ? s.getId() : null,
                             regNo,
                             sName,
-                            profName,
+                            studentProfName,
                             dept,
                             totalCoordinatorQuestions,
                             completed,
                             incomplete
                     ));
                 }
-            }
-        }
-
-        // If class has no assigned students yet, include all enrolled students in the database as demo/incomplete rows
-        if (reportMap.isEmpty()) {
-            List<Student> allStudents = studentRepository.findAll();
-            for (Student s : allStudents) {
-                String regNo = s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank()
-                        ? s.getRegisterNumber()
-                        : "REG-" + s.getId();
-                String sName = s.getFullName() != null && !s.getFullName().isBlank() ? s.getFullName() : s.getEmail();
-                String dept = s.getDepartment() != null && !s.getDepartment().isBlank() ? s.getDepartment() : "Computer Science";
-                String profName = baseExam.getAssignedProfessorName() != null ? baseExam.getAssignedProfessorName() : "Course Coordinator";
-
-                reportMap.put(s.getEmail().toLowerCase(), new CoordinatorStudentReportItem(
-                        s.getId(),
-                        regNo,
-                        sName,
-                        profName,
-                        dept,
-                        totalCoordinatorQuestions,
-                        0,
-                        totalCoordinatorQuestions
-                ));
             }
         }
 
@@ -1581,26 +1728,6 @@ public class ExamAdminService {
                     completed,
                     incomplete
             ));
-        }
-
-        // If no students explicitly assigned yet, show registered students in the system as demo rows
-        if (reportMap.isEmpty()) {
-            List<Student> allStudents = studentRepository.findAll();
-            for (Student s : allStudents) {
-                String regNo = s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank()
-                        ? s.getRegisterNumber()
-                        : "REG-" + s.getId();
-                String sName = s.getFullName() != null && !s.getFullName().isBlank() ? s.getFullName() : s.getEmail();
-
-                reportMap.put(s.getEmail().toLowerCase(), new ProfessorStudentReportItem(
-                        s.getId(),
-                        regNo,
-                        sName,
-                        totalQuestions,
-                        0,
-                        totalQuestions
-                ));
-            }
         }
 
         List<ProfessorStudentReportItem> items = new ArrayList<>(reportMap.values());

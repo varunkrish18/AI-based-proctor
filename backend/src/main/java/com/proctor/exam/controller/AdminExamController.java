@@ -131,6 +131,11 @@ public class AdminExamController {
         return examAdminService.listAssignments(examId, auth != null ? auth.getName() : null);
     }
 
+    @GetMapping("/{examId}/assigned-emails")
+    public java.util.Set<String> getAssignedEmails(@PathVariable Long examId, Authentication auth) {
+        return examAdminService.getAssignedEmails(examId, auth != null ? auth.getName() : null);
+    }
+
     @DeleteMapping("/{examId}/assignments/{assignmentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unassignStudent(@PathVariable Long examId, @PathVariable Long assignmentId, Authentication auth) {

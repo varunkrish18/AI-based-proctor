@@ -216,19 +216,19 @@ export default function CourseCoordinatorDashboard() {
   async function handleAssignAllProfessors(examToAssign: Exam) {
     if (
       !window.confirm(
-        `Assign class '${examToAssign.name}' to ALL professors in ${departmentName} (${faculties.length} professors)?\n\nEach professor will receive an independent copy with base coordinator questions and can manage questions separately.`
+        `Assign class '${examToAssign.name}' to ALL professors in ${departmentName} (${faculties.length} professors)?\n\nAll professors will see and manage this single unified class. Student data and progress will be gathered in one class without cloning.`
       )
     ) {
       return;
     }
     setReassignSubmitting(true);
     try {
-      const res = await api.post<{ assignedCount: number; message: string }>(
+      await api.post<{ assignedCount: number; message: string }>(
         `/api/admin/exams/${examToAssign.id}/assign-all-professors`,
         undefined,
         "admin"
       );
-      setSuccessMsg(`✓ Successfully assigned class to all ${res.assignedCount || faculties.length} professors in ${departmentName}!`);
+      setSuccessMsg(`✓ Successfully assigned unified class to all ${faculties.length} professors in ${departmentName}!`);
       setReassigningExam(null);
       await loadData();
       setTimeout(() => setSuccessMsg(null), 6000);
@@ -674,13 +674,6 @@ export default function CourseCoordinatorDashboard() {
                             >
                               Change
                             </button>
-                            <button
-                              onClick={() => handleAssignAllProfessors(c)}
-                              className="px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-[10px] font-bold transition cursor-pointer shadow-xs"
-                              title="Assign this class to all department professors at once"
-                            >
-                              👥 All Profs
-                            </button>
                           </div>
                         </div>
                       ) : (
@@ -702,13 +695,6 @@ export default function CourseCoordinatorDashboard() {
                               className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold transition cursor-pointer shadow-xs"
                             >
                               + Assign Prof
-                            </button>
-                            <button
-                              onClick={() => handleAssignAllProfessors(c)}
-                              className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition cursor-pointer shadow-xs"
-                              title="Assign this class to all department professors at once"
-                            >
-                              👥 All Profs
                             </button>
                           </div>
                         </div>
@@ -813,8 +799,8 @@ export default function CourseCoordinatorDashboard() {
                     >
                       <option value="">-- Choose a Professor from {departmentName} --</option>
                       {faculties.length > 0 && (
-                        <option value="ALL_PROFESSORS" className="font-bold text-indigo-700 bg-indigo-50">
-                          👥 Assign to ALL Department Faculty ({faculties.length} Professors at once)
+                        <option value="ALL_PROFESSORS" className="font-bold text-blue-700 bg-blue-50">
+                          👥 ★ Assign to ALL Department Faculty ({faculties.length} Professors - Unified Class)
                         </option>
                       )}
                       {faculties.map((f) => (
@@ -823,28 +809,6 @@ export default function CourseCoordinatorDashboard() {
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-3.5 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                        <span>👥</span> Multi-Professor Batch Assignment
-                      </span>
-                      <span className="text-[10px] bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded-full">
-                        {faculties.length} Faculty
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-indigo-800 leading-relaxed">
-                      Assign this class to all faculty at once. Each professor gets their own independent section with base coordinator questions and can manage questions separately.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={reassignSubmitting || faculties.length === 0}
-                      onClick={() => handleAssignAllProfessors(reassigningExam)}
-                      className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      <span>👥</span> Assign All Professors At Once ({faculties.length})
-                    </button>
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -1012,8 +976,8 @@ export default function CourseCoordinatorDashboard() {
                   >
                     <option value="">-- Choose Professor / Faculty Member from {departmentName} --</option>
                     {faculties.length > 0 && (
-                      <option value="ALL_PROFESSORS" className="font-bold text-indigo-700 bg-indigo-50">
-                        👥 Assign to ALL Department Faculty ({faculties.length} Professors at once)
+                      <option value="ALL_PROFESSORS" className="font-bold text-blue-700 bg-blue-50">
+                        👥 ★ Assign to ALL Department Faculty ({faculties.length} Professors - Unified Class)
                       </option>
                     )}
                     {faculties.map((f) => (

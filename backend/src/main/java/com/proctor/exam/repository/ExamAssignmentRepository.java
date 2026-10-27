@@ -21,4 +21,7 @@ public interface ExamAssignmentRepository extends JpaRepository<ExamAssignment, 
 
     @Query("SELECT a.exam.id FROM ExamAssignment a WHERE LOWER(a.studentEmail) IN :identifiers")
     Set<Long> findAssignedExamIdsByStudentIdentifiers(@Param("identifiers") Collection<String> identifiers);
+
+    @Query("SELECT LOWER(a.studentEmail) FROM ExamAssignment a WHERE a.exam.id = :examId")
+    Set<String> findAssignedStudentEmailsByExamId(@Param("examId") Long examId);
 }

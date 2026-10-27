@@ -4,13 +4,15 @@ import { api, downloadFile } from "../../api/client";
 import type { ProfessorUser, CreateProfessorPayload, UpdateProfessorPayload, BulkProfessorUploadResult } from "../../types";
 
 const PRESET_DEPARTMENTS = [
-  "Computer Science & Engineering",
-  "Information Technology",
-  "Electronics & Communication Engineering",
-  "Electrical & Electronics Engineering",
-  "Mechanical Engineering",
-  "Civil Engineering",
-  "Artificial Intelligence & Data Science",
+  "CSE",
+  "CSE(AIML)",
+  "AIDS",
+  "CCE",
+  "CSE(CS)",
+  "EE-VLSI",
+  "ECE",
+  "MECH",
+  "CSBS",
 ];
 
 const PRESET_YEARS = [
@@ -18,7 +20,6 @@ const PRESET_YEARS = [
   "2nd Year",
   "3rd Year",
   "4th Year",
-  "All Years",
 ];
 
 export default function ProfessorManagementTab() {
@@ -40,7 +41,7 @@ export default function ProfessorManagementTab() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState<CreateProfessorPayload>({
     fullName: "",
-    department: "Computer Science & Engineering",
+    department: "CSE",
     staffCode: "",
     year: "3rd Year",
     email: "",
@@ -194,7 +195,7 @@ export default function ProfessorManagementTab() {
       setSuccessMsg(`Professor '${newProf.fullName}' (${newProf.staffCode}) registered successfully!`);
       setCreateForm({
         fullName: "",
-        department: "Computer Science & Engineering",
+        department: "CSE",
         staffCode: "",
         year: "3rd Year",
         email: "",

@@ -145,6 +145,10 @@ public class Exam {
     @Builder.Default
     private Boolean isClass = false;
 
+    @Column(name = "assigned_to_all_professors", nullable = false)
+    @Builder.Default
+    private Boolean assignedToAllProfessors = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

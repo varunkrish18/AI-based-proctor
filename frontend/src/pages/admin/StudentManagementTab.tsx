@@ -4,13 +4,15 @@ import { api, downloadFile, downloadFilePost } from "../../api/client";
 import type { StudentUser, CreateStudentPayload, UpdateStudentPayload, BulkStudentUploadResult } from "../../types";
 
 const PRESET_DEPARTMENTS = [
-  "Computer Science & Engineering",
-  "Information Technology",
-  "Electronics & Communication Engineering",
-  "Electrical & Electronics Engineering",
-  "Mechanical Engineering",
-  "Civil Engineering",
-  "Artificial Intelligence & Data Science",
+  "CSE",
+  "CSE(AIML)",
+  "AIDS",
+  "CCE",
+  "CSE(CS)",
+  "EE-VLSI",
+  "ECE",
+  "MECH",
+  "CSBS",
 ];
 
 const PRESET_YEARS = [

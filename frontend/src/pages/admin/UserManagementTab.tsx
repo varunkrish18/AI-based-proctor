@@ -3,13 +3,15 @@ import { api, getToken } from "../../api/client";
 import type { AdminUser, CreateAdminUserPayload, UpdateAdminUserPayload } from "../../types";
 
 const PRESET_DEPARTMENTS = [
-  "Computer Science & Engineering",
-  "Information Technology",
-  "Electronics & Communication Engineering",
-  "Electrical & Electronics Engineering",
-  "Mechanical Engineering",
-  "Civil Engineering",
-  "Artificial Intelligence & Data Science",
+  "CSE",
+  "CSE(AIML)",
+  "AIDS",
+  "CCE",
+  "CSE(CS)",
+  "EE-VLSI",
+  "ECE",
+  "MECH",
+  "CSBS",
 ];
 
 export default function UserManagementTab() {

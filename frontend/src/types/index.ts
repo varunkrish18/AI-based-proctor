@@ -10,6 +10,7 @@ export interface ExamSummary {
   assignedProfessorId?: number | null;
   assignedProfessorEmail?: string | null;
   assignedProfessorName?: string | null;
+  assignedToAllProfessors?: boolean;
   isClass?: boolean;
   openToAll?: boolean;
   studentAttemptStatus?: "COMPLETED" | "INCOMPLETE" | "IN_PROGRESS" | string | null;
@@ -64,6 +65,9 @@ export interface ExamAssignmentItem {
   id: number;
   studentEmail: string;
   accessPassword?: string;
+  assignedByProfessorId?: number;
+  assignedByProfessorName?: string;
+  assignedByProfessorEmail?: string;
   createdAt: string;
 }
 

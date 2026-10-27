@@ -427,8 +427,9 @@ export default function ExamDetail() {
         ]
           .filter((t) => {
             if (isCoordinator) {
-              // Coordinator sees all management & report tabs except professor-specific view
-              return t.id !== "professor-report";
+              // Coordinator manages questions, settings, and whole class report.
+              // Assign students, results/integrity, and question assignment are delegated to Professors.
+              return t.id !== "professor-report" && t.id !== "assign" && t.id !== "results" && t.id !== "qassign";
             }
             if (isProfessorUser) return t.id !== "settings" && t.id !== "coordinator-report";
             return t.id !== "coordinator-report";
@@ -759,6 +760,24 @@ if __name__ == '__main__':
   const isAdmin = isAdminRole();
   const isProfessorUser = isProfessorUserRole() || (!isCoordinator && !isAdmin);
   const isClassMode = Boolean(exam.isClass);
+
+  // Filter between All Questions, Coordinator Questions, and Professor Questions
+  const [questionFilter, setQuestionFilter] = useState<"ALL" | "COORDINATOR" | "PROFESSOR">("ALL");
+
+  const coordinatorQuestions = useMemo(() => {
+    return questions.filter((q) => Boolean(q.createdByCoordinator) || q.createdByRole === "COURSE_COORDINATOR");
+  }, [questions]);
+
+  const professorQuestions = useMemo(() => {
+    return questions.filter((q) => !Boolean(q.createdByCoordinator) && q.createdByRole !== "COURSE_COORDINATOR");
+  }, [questions]);
+
+  const displayedQuestions = useMemo(() => {
+    if (questionFilter === "COORDINATOR") return coordinatorQuestions;
+    if (questionFilter === "PROFESSOR") return professorQuestions;
+    return questions;
+  }, [questionFilter, coordinatorQuestions, professorQuestions, questions]);
+
   const isLimitReached = !isProfessorUser && !isClassMode && questions.length >= exam.numQuestions;
   const isOverLimit = !isProfessorUser && !isClassMode && questions.length > exam.numQuestions;
 
@@ -1954,8 +1973,17 @@ public class Solution {
                 <span>📊</span>
                 <span>Bulk Upload (Excel / CSV)</span>
               </button>
-              <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md">
-                Question {questions.length + 1} of {exam.numQuestions}
+              <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-md">
+                {isClassMode ? (
+                  <>
+                    <span>📚 {questions.length} Question{questions.length !== 1 ? "s" : ""} in Bank</span>
+                    {questions.length >= exam.numQuestions && (
+                      <span className="text-emerald-700 font-bold ml-1.5">(Target {exam.numQuestions} Met ✓)</span>
+                    )}
+                  </>
+                ) : (
+                  <>Question {questions.length + 1} of {exam.numQuestions}</>
+                )}
               </span>
             </div>
           </div>
@@ -2402,23 +2430,86 @@ public class Solution {
       )}
 
       <div className="space-y-3">
-        <div className="flex justify-between items-center">
-          <h3 className="font-bold text-slate-900 text-sm">Question Bank ({questions.length})</h3>
-          <span className="text-xs text-slate-400">Total marks: {questions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0)}</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-1">
+          <div>
+            <h3 className="font-bold text-slate-900 text-sm">
+              Question Bank ({displayedQuestions.length}{displayedQuestions.length !== questions.length ? ` of ${questions.length}` : ""})
+            </h3>
+            <span className="text-xs text-slate-400">
+              Total marks: {displayedQuestions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0)}
+            </span>
+          </div>
+
+          {/* Question Filter Pills: All, Coordinator Questions (Locked), Professor Questions */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-semibold self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setQuestionFilter("ALL")}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                questionFilter === "ALL"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <span>📚 All</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200/70 text-slate-700">
+                {questions.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuestionFilter("COORDINATOR")}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                questionFilter === "COORDINATOR"
+                  ? "bg-white text-amber-900 shadow-xs border border-amber-300"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+              title="Questions set by the Course Coordinator (Locked for professors)"
+            >
+              <span>🔒 Coordinator</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                {coordinatorQuestions.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuestionFilter("PROFESSOR")}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                questionFilter === "PROFESSOR"
+                  ? "bg-white text-emerald-900 shadow-xs border border-emerald-300"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+              title="Questions added by Faculty / Professors"
+            >
+              <span>✍️ Faculty / Prof</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                {professorQuestions.length}
+              </span>
+            </button>
+          </div>
         </div>
 
-        {questions.map((q, idx) => {
-          const isCoding = q.questionType === "CODING";
-          const isCoordinatorQuestion = Boolean(q.createdByCoordinator) || q.createdByRole === "COURSE_COORDINATOR";
-          const isProtectedFromProf = isClassMode && isProfessorUser && isCoordinatorQuestion;
+        {displayedQuestions.length === 0 ? (
+          <div className="bg-white border border-dashed border-slate-200 rounded-xl p-8 text-center text-xs text-slate-400">
+            {questionFilter === "COORDINATOR"
+              ? "No questions added by the Course Coordinator yet."
+              : questionFilter === "PROFESSOR"
+              ? "No questions added by faculty / professors yet. Use the form above to add questions."
+              : "No questions in the question bank yet."}
+          </div>
+        ) : (
+          displayedQuestions.map((q, idx) => {
+            const isCoding = q.questionType === "CODING";
+            const isCoordinatorQuestion = Boolean(q.createdByCoordinator) || q.createdByRole === "COURSE_COORDINATOR";
+            const isProtectedFromProf = isClassMode && isProfessorUser && isCoordinatorQuestion;
 
-          return (
-            <div key={q.id} className="bg-white border border-slate-200 rounded-xl p-4 text-sm shadow-xs space-y-3">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                    Q{idx + 1}
-                  </span>
+            return (
+              <div key={q.id} className="bg-white border border-slate-200 rounded-xl p-4 text-sm shadow-xs space-y-3">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                      Q{idx + 1}
+                    </span>
                   <span
                     className={`text-xs font-bold px-2 py-0.5 rounded ${
                       isCoding
@@ -2516,7 +2607,7 @@ public class Solution {
               )}
             </div>
           );
-        })}
+        }))}
 
         {questions.length === 0 && (
           <div className="p-8 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-white">
@@ -3093,22 +3184,25 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     }
   }, [availableSections, selectedSectionId]);
 
+  const [allAssignedEmails, setAllAssignedEmails] = useState<string[]>([]);
+
   const activeSection = useMemo(() => {
     return classSections.find((s) => s.id === selectedSectionId) || null;
   }, [classSections, selectedSectionId]);
 
+  const assignedEmailSet = useMemo(() => {
+    const set = new Set<string>();
+    allAssignedEmails.forEach((e) => set.add((e || "").toLowerCase().trim()));
+    assignments.forEach((a) => set.add((a.studentEmail || "").toLowerCase().trim()));
+    return set;
+  }, [allAssignedEmails, assignments]);
+
+  // Completely filter out any student already assigned to this exam so another professor cannot see them
   const sectionStudents = useMemo(() => {
     if (!activeSection) return [];
-    return getStudentsForClassSection(activeSection, allStudents);
-  }, [activeSection, allStudents]);
-
-  const assignedEmailSet = useMemo(() => {
-    return new Set(assignments.map((a) => (a.studentEmail || "").toLowerCase().trim()));
-  }, [assignments]);
-
-  const sectionNewStudents = useMemo(() => {
-    return sectionStudents.filter((s) => !assignedEmailSet.has((s.email || "").toLowerCase().trim()));
-  }, [sectionStudents, assignedEmailSet]);
+    const all = getStudentsForClassSection(activeSection, allStudents);
+    return all.filter((s) => !assignedEmailSet.has((s.email || "").toLowerCase().trim()));
+  }, [activeSection, allStudents, assignedEmailSet]);
 
   const filteredPreviewStudents = useMemo(() => {
     const q = previewSearch.toLowerCase().trim();
@@ -3125,7 +3219,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     if (!activeSection) return;
     const emailsToAssign = sectionStudents.map((s) => s.email.trim()).filter(Boolean);
     if (emailsToAssign.length === 0) {
-      setStatus(`No registered students found in Section "${activeSection.className}" to assign.`);
+      setStatus(`No unassigned students found in Section "${activeSection.className}".`);
       return;
     }
     setSubmitting(true);
@@ -3138,7 +3232,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
       }>(`/api/admin/exams/${examId}/assign`, { emails: emailsToAssign }, "admin");
 
       setStatus(
-        `✓ Assigned ${res.assigned} student(s) from Section "${activeSection.className}" (${res.skipped} already assigned). Random passwords generated.`
+        `✓ Assigned ${res.assigned} student(s) from Section "${activeSection.className}". Random passwords generated.`
       );
       if (res.credentials && res.credentials.length > 0) {
         setRecentCredentials(res.credentials);
@@ -3159,11 +3253,18 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
 
   function loadAssignments() {
     setLoading(true);
+    // 1. Load assignments visible to caller (for professors, only their own assigned students)
     api
       .get<ExamAssignmentItem[]>(`/api/admin/exams/${examId}/assignments`, "admin")
       .then(setAssignments)
       .catch(() => {})
       .finally(() => setLoading(false));
+
+    // 2. Load all assigned emails across all professors to hide them from the assign list
+    api
+      .get<string[]>(`/api/admin/exams/${examId}/assigned-emails`, "admin")
+      .then((emails) => setAllAssignedEmails(Array.isArray(emails) ? emails : []))
+      .catch(() => {});
   }
 
   useEffect(() => {
@@ -3680,23 +3781,24 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
 
                   <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                     <span className="text-[11px] bg-emerald-100 text-emerald-800 font-bold px-2 py-1 rounded">
-                      {sectionStudents.length} Students Enrolled
+                      {sectionStudents.length} Available to Assign
                     </span>
                   </div>
                 </div>
 
                 {/* Assignment Status Pill Breakdown */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <span className="text-slate-500 block text-[11px]">Ready to Assign:</span>
-                    <span className="font-bold text-emerald-600 text-sm">{sectionNewStudents.length}</span>
-                    <span className="text-[11px] text-slate-400 ml-1">students</span>
+                <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Unassigned in this Section:</span>
+                    <span className="font-bold text-emerald-600 text-base">{sectionStudents.length}</span>
+                    <span className="text-[11px] text-slate-400 ml-1">students ready</span>
                   </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <span className="text-slate-500 block text-[11px]">Already Assigned:</span>
-                    <span className="font-bold text-slate-700 text-sm">{sectionStudents.length - sectionNewStudents.length}</span>
-                    <span className="text-[11px] text-slate-400 ml-1">students</span>
-                  </div>
+                  {allAssignedEmails.length > 0 && (
+                    <div className="text-right">
+                      <span className="text-slate-400 block text-[10px]">Already assigned:</span>
+                      <span className="font-semibold text-slate-600 text-xs">Hidden from view</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Students Preview List with Search */}
@@ -3704,7 +3806,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] font-semibold text-slate-700">
-                        Class List Preview ({filteredPreviewStudents.length}/{sectionStudents.length}):
+                        Available Students Preview ({filteredPreviewStudents.length}/{sectionStudents.length}):
                       </span>
                       {sectionStudents.length > 5 && (
                         <input
@@ -3718,36 +3820,27 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                     </div>
 
                     <div className="max-h-40 overflow-y-auto divide-y divide-slate-200/80 bg-white rounded-lg border border-slate-200 text-xs">
-                      {filteredPreviewStudents.map((st) => {
-                        const isAssigned = assignedEmailSet.has((st.email || "").toLowerCase().trim());
-                        return (
-                          <div key={st.id} className="flex items-center justify-between px-3 py-1.5">
-                            <div className="flex items-center gap-2 truncate pr-2">
-                              <span className="font-mono text-blue-700 font-bold shrink-0">
-                                {st.registerNumber}
-                              </span>
-                              <span className="text-slate-800 font-medium truncate">{st.fullName}</span>
-                              <span className="text-slate-400 text-[11px] truncate">({st.email})</span>
-                            </div>
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded font-bold shrink-0 ${
-                                isAssigned
-                                  ? "bg-slate-100 text-slate-600 border border-slate-200"
-                                  : "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                              }`}
-                            >
-                              {isAssigned ? "Assigned" : "Ready"}
+                      {filteredPreviewStudents.map((st) => (
+                        <div key={st.id} className="flex items-center justify-between px-3 py-1.5">
+                          <div className="flex items-center gap-2 truncate pr-2">
+                            <span className="font-mono text-blue-700 font-bold shrink-0">
+                              {st.registerNumber}
                             </span>
+                            <span className="text-slate-800 font-medium truncate">{st.fullName}</span>
+                            <span className="text-slate-400 text-[11px] truncate">({st.email})</span>
                           </div>
-                        );
-                      })}
+                          <span className="text-[10px] px-2 py-0.5 rounded font-bold shrink-0 bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Ready
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-                    <p className="font-semibold">ℹ️ No registered students match this section range.</p>
-                    <p className="mt-0.5 text-[11px] text-amber-700">
-                      Students registered in the database whose register numbers fall between <strong>{activeSection.startReg}</strong> and <strong>{activeSection.endReg}</strong> ({activeSection.year}) will appear here automatically.
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+                    <p className="font-semibold">✓ All students in this section are already assigned!</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      No remaining unassigned students in <strong>{activeSection.className}</strong>.
                     </p>
                   </div>
                 )}
