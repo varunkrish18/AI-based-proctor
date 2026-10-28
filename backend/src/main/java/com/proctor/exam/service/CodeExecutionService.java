@@ -263,8 +263,37 @@ public class CodeExecutionService {
     private TestCaseExecutionResult executeViaOnlineEngine(int caseIndex, String code, String language,
                                                            String input, String expectedOutput) {
         long startTime = System.currentTimeMillis();
+        String normLang = language != null ? language.toLowerCase().trim() : "python";
+
+        // Attempt 1: Wandbox primary
+        TestCaseExecutionResult result = executeViaWandbox(caseIndex, code, normLang, input, expectedOutput, startTime);
+        if (result != null && !"RUNTIME_ERROR".equals(result.status())) {
+            return result;
+        }
+
+        // If Wandbox timed out or had internal container error (e.g. OCI crun clone issue), attempt secondary fallback
+        if (result != null && result.errorMessage() != null && 
+            (result.errorMessage().contains("timed out") || result.errorMessage().contains("Resource temporarily unavailable") || result.errorMessage().contains("OCI runtime error"))) {
+            log.warn("Wandbox execution congested ({}), attempting secondary execution retry...", result.errorMessage());
+            try {
+                Thread.sleep(600);
+            } catch (InterruptedException ignored) {}
+            TestCaseExecutionResult retry = executeViaWandbox(caseIndex, code, normLang, input, expectedOutput, startTime);
+            if (retry != null && !"RUNTIME_ERROR".equals(retry.status())) {
+                return retry;
+            }
+        }
+
+        return result != null ? result : new TestCaseExecutionResult(
+                caseIndex, input, expectedOutput, "", false,
+                "RUNTIME_ERROR", System.currentTimeMillis() - startTime, "Online cloud execution services are currently busy. Please try running again in a few moments."
+        );
+    }
+
+    private TestCaseExecutionResult executeViaWandbox(int caseIndex, String code, String normLang,
+                                                     String input, String expectedOutput, long overallStartTime) {
+        long startTime = System.currentTimeMillis();
         try {
-            String normLang = language != null ? language.toLowerCase().trim() : "python";
             String compiler = mapCompilerForWandbox(normLang);
 
             String processedCode = code;
@@ -282,18 +311,18 @@ public class CodeExecutionService {
             String requestBody = MAPPER.writeValueAsString(payload);
 
             java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(java.time.Duration.ofSeconds(6))
+                    .connectTimeout(java.time.Duration.ofSeconds(8))
                     .build();
 
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                     .uri(java.net.URI.create(WANDBOX_API_URL))
                     .header("Content-Type", "application/json")
-                    .timeout(java.time.Duration.ofSeconds(15))
+                    .timeout(java.time.Duration.ofSeconds(14))
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
 
             java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            long elapsed = System.currentTimeMillis() - startTime;
+            long elapsed = System.currentTimeMillis() - overallStartTime;
 
             if (response.statusCode() != 200) {
                 return new TestCaseExecutionResult(
@@ -338,8 +367,8 @@ public class CodeExecutionService {
             );
 
         } catch (Exception e) {
-            long elapsed = System.currentTimeMillis() - startTime;
-            log.error("Online execution fallback error: {}", e.getMessage());
+            long elapsed = System.currentTimeMillis() - overallStartTime;
+            log.error("Wandbox execution attempt error: {}", e.getMessage());
             return new TestCaseExecutionResult(
                     caseIndex, input, expectedOutput, "", false,
                     "RUNTIME_ERROR", elapsed, "Online execution error: " + e.getMessage()
@@ -420,9 +449,32 @@ public class CodeExecutionService {
 
         String envJavaHome = System.getenv("JAVA_HOME");
         if (envJavaHome != null && !envJavaHome.isBlank()) {
-            Path p = Paths.get(envJavaHome, "bin", exeName);
+            Path p = Paths.get(envJavaHome.trim(), "bin", exeName);
             if (Files.exists(p)) {
                 return p.toAbsolutePath().toString();
+            }
+        }
+
+        // Search standard Windows JDK installations (Adoptium, Eclipse, Oracle, Microsoft)
+        if (isWin) {
+            String[] commonRoots = {
+                "C:\\Program Files\\Eclipse Adoptium",
+                "C:\\Program Files\\Java",
+                "C:\\Program Files\\Microsoft"
+            };
+            for (String root : commonRoots) {
+                File dir = new File(root);
+                if (dir.exists() && dir.isDirectory()) {
+                    File[] subdirs = dir.listFiles(File::isDirectory);
+                    if (subdirs != null) {
+                        for (File sub : subdirs) {
+                            File candidate = new File(sub, "bin" + File.separator + exeName);
+                            if (candidate.exists()) {
+                                return candidate.getAbsolutePath();
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -445,14 +445,25 @@ export default function StudentManagementTab() {
             colMap["department"] = idx;
           } else if (
             norm === "registernumber" ||
+            norm === "registerno" ||
             norm === "regnumber" ||
             norm === "regno" ||
-            norm === "registrationnumber"
+            norm === "registrationnumber" ||
+            norm === "registrationno" ||
+            norm === "rollno" ||
+            norm === "rollnumber" ||
+            norm === "reg"
           ) {
             colMap["registerNumber"] = idx;
           } else if (norm === "year" || norm === "academicyear" || norm === "batch") {
             colMap["year"] = idx;
-          } else if (norm === "mail" || norm === "email" || norm === "emailaddress") {
+          } else if (
+            norm === "mail" ||
+            norm === "mailid" ||
+            norm === "email" ||
+            norm === "emailid" ||
+            norm === "emailaddress"
+          ) {
             colMap["email"] = idx;
           } else if (norm === "password" || norm === "pwd" || norm === "pass") {
             colMap["password"] = idx;
