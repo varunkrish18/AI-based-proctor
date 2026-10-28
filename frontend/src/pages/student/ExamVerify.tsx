@@ -46,7 +46,7 @@ export default function ExamVerify() {
     if (!examId) return;
     api
       .get<PublicExamDetails>(`/api/exams/${examId}`, "user")
-      .then((data) => {
+      .then(async (data) => {
         setExamMeta(data);
         sessionStorage.setItem(
           `exam_proctoring_${examId}`,
@@ -57,6 +57,43 @@ export default function ExamVerify() {
             locationRequired: data.locationRequired,
           })
         );
+
+        // If it's a class, no access password or examination access screen is needed! Auto-verify and proceed directly.
+        if (data.isClass) {
+          try {
+            setSubmitting(true);
+            const studentEmail = currentUser?.email || email.trim();
+            const studentFullName = currentUser?.fullName || name.trim();
+            const studentReg = currentUser?.identifier || registerNumber.trim();
+            const res = await api.post<VerifyResponse>(`/api/exams/${examId}/verify-student`, {
+              name: studentFullName,
+              registerNumber: studentReg,
+              email: studentEmail,
+              password: "",
+            });
+            if (res.verified && res.sessionToken) {
+              setToken("student", res.sessionToken);
+              sessionStorage.setItem(`student_name_${examId}`, res.studentName || studentFullName);
+              sessionStorage.setItem(`student_reg_${examId}`, res.registerNumber || studentReg);
+              sessionStorage.setItem(`student_email_${examId}`, studentEmail);
+              sessionStorage.setItem(
+                `exam_proctoring_${examId}`,
+                JSON.stringify({
+                  webcamRequired: res.webcamRequired ?? data.webcamRequired ?? false,
+                  microphoneRequired: res.microphoneRequired ?? data.microphoneRequired ?? false,
+                  screenRequired: res.screenRequired ?? data.screenRequired ?? false,
+                  locationRequired: res.locationRequired ?? data.locationRequired ?? false,
+                })
+              );
+              navigate(`/exam/${examId}/system-check`, { replace: true });
+              return;
+            }
+          } catch (autoErr: any) {
+            console.warn("Class auto-verify fallback to manual entry:", autoErr);
+          } finally {
+            setSubmitting(false);
+          }
+        }
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "You are not assigned to this examination or class.");
@@ -111,9 +148,13 @@ export default function ExamVerify() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Examination Access</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            {examMeta?.isClass ? "Class Access" : "Examination Access"}
+          </h1>
           <p className="text-slate-500 text-xs mt-1">
-            Verify your registered email and assigned access password to proceed
+            {examMeta?.isClass
+              ? "Confirm your details to enter the class session"
+              : "Verify your registered email and assigned access password to proceed"}
           </p>
         </div>
 
@@ -207,32 +248,34 @@ export default function ExamVerify() {
             />
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-semibold text-slate-700">
-                Exam Access Password
-              </label>
-              <button
-                type="button"
-                onClick={() => setShowPassword((p) => !p)}
-                className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
+          {!examMeta?.isClass && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Exam Access Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((p) => !p)}
+                  className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition tracking-wider"
+                placeholder="Enter 8-digit access password"
+                autoComplete="current-password"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Generated and provided to you when your email was assigned to this examination.
+              </p>
             </div>
-            <input
-              type={showPassword ? "text" : "password"}
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition tracking-wider"
-              placeholder="Enter 8-digit access password"
-              autoComplete="current-password"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Generated and provided to you when your email was assigned to this examination.
-            </p>
-          </div>
+          )}
 
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-800 text-xs flex items-start gap-2">
@@ -246,7 +289,11 @@ export default function ExamVerify() {
             disabled={submitting}
             className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-50 shadow-sm cursor-pointer"
           >
-            {submitting ? "Verifying Credentials…" : "Verify & Continue to Exam"}
+            {submitting
+              ? "Entering Session…"
+              : examMeta?.isClass
+              ? "Continue to Class →"
+              : "Verify & Continue to Exam"}
           </button>
         </form>
       </div>

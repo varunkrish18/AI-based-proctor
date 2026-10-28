@@ -79,21 +79,25 @@ public class StudentExamService {
 
         Student student = studentRepository.findByEmail(email).orElse(null);
 
-        // Verify assignment access password if present, or student credentials password
-        if (assignmentOpt.isPresent()) {
-            ExamAssignment assignment = assignmentOpt.get();
-            if (assignment.getAccessPassword() != null && !assignment.getAccessPassword().isBlank()) {
-                if (rawPassword == null || rawPassword.trim().isBlank()) {
-                    return new VerifyStudentResponse(false, null, "Exam access password is required.", false, false, false, false);
-                }
-                boolean matchesAssignment = assignment.getAccessPassword().trim().equalsIgnoreCase(rawPassword.trim());
-                boolean matchesStudentPwd = (student != null && student.getDisplayPassword() != null && !student.getDisplayPassword().isBlank() && student.getDisplayPassword().trim().equalsIgnoreCase(rawPassword.trim()));
-                if (!matchesAssignment && !matchesStudentPwd) {
-                    return new VerifyStudentResponse(false, null, "Invalid access password. Please check your assigned exam or student password and try again.", false, false, false, false);
-                }
-            } else if (student != null && student.getDisplayPassword() != null && !student.getDisplayPassword().isBlank()) {
-                if (rawPassword == null || rawPassword.trim().isBlank() || !student.getDisplayPassword().trim().equalsIgnoreCase(rawPassword.trim())) {
-                    return new VerifyStudentResponse(false, null, "Invalid student password. Please check your student credentials.", false, false, false, false);
+        boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
+
+        // Verify assignment access password if present, or student credentials password (bypassed for class)
+        if (!isClass) {
+            if (assignmentOpt.isPresent()) {
+                ExamAssignment assignment = assignmentOpt.get();
+                if (assignment.getAccessPassword() != null && !assignment.getAccessPassword().isBlank()) {
+                    if (rawPassword == null || rawPassword.trim().isBlank()) {
+                        return new VerifyStudentResponse(false, null, "Exam access password is required.", false, false, false, false);
+                    }
+                    boolean matchesAssignment = assignment.getAccessPassword().trim().equalsIgnoreCase(rawPassword.trim());
+                    boolean matchesStudentPwd = (student != null && student.getDisplayPassword() != null && !student.getDisplayPassword().isBlank() && student.getDisplayPassword().trim().equalsIgnoreCase(rawPassword.trim()));
+                    if (!matchesAssignment && !matchesStudentPwd) {
+                        return new VerifyStudentResponse(false, null, "Invalid access password. Please check your assigned exam or student password and try again.", false, false, false, false);
+                    }
+                } else if (student != null && student.getDisplayPassword() != null && !student.getDisplayPassword().isBlank()) {
+                    if (rawPassword == null || rawPassword.trim().isBlank() || !student.getDisplayPassword().trim().equalsIgnoreCase(rawPassword.trim())) {
+                        return new VerifyStudentResponse(false, null, "Invalid student password. Please check your student credentials.", false, false, false, false);
+                    }
                 }
             }
         } else if (isOpen) {
@@ -116,7 +120,6 @@ public class StudentExamService {
 
         List<ExamAttempt> existingAttempts = attemptRepository
                 .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(examId, email);
-        boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
         if (!isClass) {
             boolean hasCompleted = existingAttempts.stream()
                     .anyMatch(a -> "SUBMITTED".equalsIgnoreCase(a.getStatus()) || "COMPLETED".equalsIgnoreCase(a.getStatus()));
