@@ -18,7 +18,9 @@ export default function CourseCoordinatorDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  type CoordinatorSearchFieldOption = "ALL" | "NAME" | "EMAIL" | "ROLE" | "DEPARTMENT";
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchField, setSearchField] = useState<CoordinatorSearchFieldOption>("ALL");
 
   // Visibility states for passwords
   const [visiblePasswords, setVisiblePasswords] = useState<Record<number, boolean>>({});
@@ -272,12 +274,18 @@ export default function CourseCoordinatorDashboard() {
 
   const filteredFaculties = faculties.filter((f) => {
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      f.fullName.toLowerCase().includes(q) ||
-      f.email.toLowerCase().includes(q) ||
-      (f.department && f.department.toLowerCase().includes(q))
-    );
+    const q = searchQuery.toLowerCase().trim();
+    const matchesName = (f.fullName || "").toLowerCase().includes(q);
+    const matchesEmail = (f.email || "").toLowerCase().includes(q);
+    const matchesDept = (f.department || "").toLowerCase().includes(q);
+    const matchesRole = (f.role || "").toLowerCase().includes(q);
+
+    if (searchField === "NAME" && !matchesName) return false;
+    else if (searchField === "EMAIL" && !matchesEmail) return false;
+    else if (searchField === "DEPARTMENT" && !matchesDept) return false;
+    else if (searchField === "ROLE" && !matchesRole) return false;
+    else if (searchField === "ALL" && !matchesName && !matchesEmail && !matchesDept && !matchesRole) return false;
+    return true;
   });
 
   const activeCount = faculties.filter((f) => !f.locked).length;
@@ -447,17 +455,57 @@ export default function CourseCoordinatorDashboard() {
       {/* ===================== TAB 1: FACULTIES ===================== */}
       {activeTab === "faculties" && (
         <div className="space-y-4">
-          {/* Action and Search Bar (NO Assign Faculty button) */}
+          {/* Action and Search Bar with Field Option */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2 w-full sm:w-80">
-              <span className="text-slate-400">🔍</span>
-              <input
-                type="text"
-                placeholder="Search faculty by name or email…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-xs border border-slate-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto flex-1 max-w-lg">
+              {/* Field selector */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-blue-500 transition shrink-0 text-xs">
+                <span className="text-slate-400">Search:</span>
+                <select
+                  value={searchField}
+                  onChange={(e) => setSearchField(e.target.value as CoordinatorSearchFieldOption)}
+                  className="bg-transparent text-slate-700 font-semibold focus:outline-none cursor-pointer"
+                >
+                  <option value="ALL">All Fields</option>
+                  <option value="NAME">Name</option>
+                  <option value="EMAIL">Email</option>
+                  <option value="ROLE">Role</option>
+                  <option value="DEPARTMENT">Department</option>
+                </select>
+              </div>
+
+              {/* Input box */}
+              <div className="relative flex-1 min-w-[200px]">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  🔍
+                </span>
+                <input
+                  type="text"
+                  placeholder={
+                    searchField === "NAME"
+                      ? "Search by faculty name…"
+                      : searchField === "EMAIL"
+                      ? "Search by email address…"
+                      : searchField === "ROLE"
+                      ? "Search by role (e.g. PROFESSOR, FACULTY)…"
+                      : searchField === "DEPARTMENT"
+                      ? "Search by department…"
+                      : "Search faculty by name, email, department…"
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 text-xs border border-slate-300 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold"
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-3">

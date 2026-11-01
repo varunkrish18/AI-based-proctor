@@ -12,10 +12,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 @Slf4j
@@ -151,7 +159,7 @@ public class CodeExecutionService {
             List<String> command = buildCommand(lang, code, tempDir);
 
             if (command == null || command.isEmpty()) {
-                log.info("Local compiler command unavailable for {}; falling back to cloud online execution engine", lang);
+                log.info("Local compiler command unavailable for {}; falling back to cloud online execution engines", lang);
                 return executeViaOnlineEngine(caseIndex, code, lang, input, expectedOutput);
             }
 
@@ -257,133 +265,628 @@ public class CodeExecutionService {
         }
     }
 
+    // =========================================================================
+    // MULTI-ENGINE COMPILER FALLBACK SYSTEM
+    // Automatically attempts up to 5 diverse cloud compiler services in sequence.
+    // If one is congested, down, or fails, execution immediately shifts to the next.
+    // =========================================================================
+
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(6))
+            .build();
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    // 1. Wandbox API
     private static final String WANDBOX_API_URL = "https://wandbox.org/api/compile.json";
-    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+    // 2. Judge0 CE API
+    private static final String JUDGE0_API_URL = "https://ce.judge0.com/submissions?base64_encoded=false&wait=true";
+    // 3. Rextester API
+    private static final String REXTESTER_API_URL = "https://rextester.com/rundotnet/api";
+    // 4. CodeX API
+    private static final String CODEX_API_URL = "https://api.codex.jaagrav.in";
+    // 5. Paiza.IO API
+    private static final String PAIZA_CREATE_URL = "https://api.paiza.io/runners/create";
+    private static final String PAIZA_DETAILS_URL = "https://api.paiza.io/runners/get_details";
+    // 6. Piston API (Additional backup)
+    private static final String PISTON_API_URL = "https://emkc.org/api/v2/piston/execute";
+
+    @FunctionalInterface
+    private interface CompilerExecutor {
+        TestCaseExecutionResult execute(String code, String normLang, String input, String expectedOutput, long overallStartTime) throws Exception;
+    }
+
+    private record OnlineCompilerEngine(String name, CompilerExecutor executor) {}
 
     private TestCaseExecutionResult executeViaOnlineEngine(int caseIndex, String code, String language,
                                                            String input, String expectedOutput) {
-        long startTime = System.currentTimeMillis();
+        long overallStartTime = System.currentTimeMillis();
         String normLang = language != null ? language.toLowerCase().trim() : "python";
 
-        // Attempt 1: Wandbox primary
-        TestCaseExecutionResult result = executeViaWandbox(caseIndex, code, normLang, input, expectedOutput, startTime);
-        if (result != null && !"RUNTIME_ERROR".equals(result.status())) {
-            return result;
-        }
+        // Five online compiler engines (+ Piston backup) organized in an automatic fallback chain:
+        // If one fails or is congested/down, it automatically falls back to the next one!
+        List<OnlineCompilerEngine> engines = List.of(
+                new OnlineCompilerEngine("Wandbox", (c, lang, in, exp, start) -> executeViaWandbox(caseIndex, c, lang, in, exp, start)),
+                new OnlineCompilerEngine("Judge0 CE", (c, lang, in, exp, start) -> executeViaJudge0(caseIndex, c, lang, in, exp, start)),
+                new OnlineCompilerEngine("Rextester", (c, lang, in, exp, start) -> executeViaRextester(caseIndex, c, lang, in, exp, start)),
+                new OnlineCompilerEngine("CodeX", (c, lang, in, exp, start) -> executeViaCodeX(caseIndex, c, lang, in, exp, start)),
+                new OnlineCompilerEngine("Paiza.IO", (c, lang, in, exp, start) -> executeViaPaiza(caseIndex, c, lang, in, exp, start)),
+                new OnlineCompilerEngine("Piston", (c, lang, in, exp, start) -> executeViaPiston(caseIndex, c, lang, in, exp, start))
+        );
 
-        // If Wandbox timed out or had internal container error (e.g. OCI crun clone issue), attempt secondary fallback
-        if (result != null && result.errorMessage() != null && 
-            (result.errorMessage().contains("timed out") || result.errorMessage().contains("Resource temporarily unavailable") || result.errorMessage().contains("OCI runtime error"))) {
-            log.warn("Wandbox execution congested ({}), attempting secondary execution retry...", result.errorMessage());
+        TestCaseExecutionResult lastResult = null;
+
+        for (int i = 0; i < engines.size(); i++) {
+            OnlineCompilerEngine engine = engines.get(i);
             try {
-                Thread.sleep(600);
-            } catch (InterruptedException ignored) {}
-            TestCaseExecutionResult retry = executeViaWandbox(caseIndex, code, normLang, input, expectedOutput, startTime);
-            if (retry != null && !"RUNTIME_ERROR".equals(retry.status())) {
-                return retry;
+                log.info("[Compiler Engine {}/{}: {}] Running case {} (language: {})...",
+                        i + 1, engines.size(), engine.name(), caseIndex, normLang);
+
+                TestCaseExecutionResult res = engine.executor().execute(code, normLang, input, expectedOutput, overallStartTime);
+
+                if (res != null) {
+                    // Valid program outcome (ACCEPTED or WRONG_ANSWER)
+                    if ("ACCEPTED".equals(res.status()) || "WRONG_ANSWER".equals(res.status())) {
+                        log.info("[Compiler Engine {}] Succeeded for case {} with status: {}", engine.name(), caseIndex, res.status());
+                        return res;
+                    }
+
+                    // Legitimate code compilation error (e.g. syntax error in student code)
+                    if ("COMPILATION_ERROR".equals(res.status())) {
+                        log.info("[Compiler Engine {}] Code has compilation error for case {}: {}", engine.name(), caseIndex, res.errorMessage());
+                        return res;
+                    }
+
+                    // Legitimate runtime error from student code (e.g. ZeroDivisionError, ArrayIndexOutOfBounds)
+                    if ("RUNTIME_ERROR".equals(res.status()) && !isInfrastructureFailure(res.errorMessage())) {
+                        log.info("[Compiler Engine {}] Student code produced runtime error for case {}: {}", engine.name(), caseIndex, res.errorMessage());
+                        return res;
+                    }
+
+                    // Time limit exceeded
+                    if ("TIME_LIMIT_EXCEEDED".equals(res.status())) {
+                        log.info("[Compiler Engine {}] Execution timed out for case {}", engine.name(), caseIndex);
+                        return res;
+                    }
+
+                    // Infrastructure or remote server error — log warning and fall back to next compiler engine
+                    log.warn("[Compiler Engine {}] Infrastructure issue for case {}: '{}'. Falling back to next engine...",
+                            engine.name(), caseIndex, res.errorMessage());
+                    lastResult = res;
+                }
+            } catch (Exception ex) {
+                log.warn("[Compiler Engine {}] Execution failed with exception for case {}: {}. Falling back to next engine...",
+                        engine.name(), caseIndex, ex.getMessage());
             }
         }
 
-        return result != null ? result : new TestCaseExecutionResult(
+        long elapsed = System.currentTimeMillis() - overallStartTime;
+        return lastResult != null ? lastResult : new TestCaseExecutionResult(
                 caseIndex, input, expectedOutput, "", false,
-                "RUNTIME_ERROR", System.currentTimeMillis() - startTime, "Online cloud execution services are currently busy. Please try running again in a few moments."
+                "RUNTIME_ERROR", elapsed,
+                "All online compilers (Wandbox, Judge0, Rextester, CodeX, Paiza.IO) are currently busy or unavailable. Please try again shortly."
         );
     }
 
-    private TestCaseExecutionResult executeViaWandbox(int caseIndex, String code, String normLang,
-                                                     String input, String expectedOutput, long overallStartTime) {
-        long startTime = System.currentTimeMillis();
-        try {
-            String compiler = mapCompilerForWandbox(normLang);
-
-            String processedCode = code;
-            if ("java".equals(normLang) || compiler.contains("openjdk")) {
-                // Wandbox compiles source in 'prog.java'. A top-level 'public class' causes javac error.
-                processedCode = processedCode.replaceAll("public\\s+(final\\s+)?class\\s+", "class ");
-            }
-
-            Map<String, Object> payload = Map.of(
-                    "compiler", compiler,
-                    "code", processedCode,
-                    "stdin", input != null ? input : ""
-            );
-
-            String requestBody = MAPPER.writeValueAsString(payload);
-
-            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(java.time.Duration.ofSeconds(8))
-                    .build();
-
-            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create(WANDBOX_API_URL))
-                    .header("Content-Type", "application/json")
-                    .timeout(java.time.Duration.ofSeconds(14))
-                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
-                    .build();
-
-            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            long elapsed = System.currentTimeMillis() - overallStartTime;
-
-            if (response.statusCode() != 200) {
-                return new TestCaseExecutionResult(
-                        caseIndex, input, expectedOutput, "", false,
-                        "RUNTIME_ERROR", elapsed, "Online execution service returned HTTP " + response.statusCode()
-                );
-            }
-
-            com.fasterxml.jackson.databind.JsonNode root = MAPPER.readTree(response.body());
-            String statusStr = root.path("status").asText("0");
-            String compilerErr = root.path("compiler_error").asText("");
-            String compilerOut = root.path("compiler_output").asText("");
-            String progOut = root.path("program_output").asText("");
-            String progErr = root.path("program_error").asText("");
-
-            // Check compilation error
-            if (!"0".equals(statusStr) && (!compilerErr.isBlank() || !compilerOut.isBlank()) && progOut.isEmpty()) {
-                String errMsg = !compilerErr.isBlank() ? compilerErr : compilerOut;
-                return new TestCaseExecutionResult(
-                        caseIndex, input, expectedOutput, "", false,
-                        "COMPILATION_ERROR", elapsed, errMsg.trim()
-                );
-            }
-
-            // Check runtime error
-            if (!"0".equals(statusStr)) {
-                String errMsg = !progErr.isBlank() ? progErr : (!compilerErr.isBlank() ? compilerErr : "Process exited with status " + statusStr);
-                return new TestCaseExecutionResult(
-                        caseIndex, input, expectedOutput, progOut.trim(), false,
-                        "RUNTIME_ERROR", elapsed, errMsg.trim()
-                );
-            }
-
-            String actualTrimmed = progOut.replace("\r\n", "\n").trim();
-            String expectedTrimmed = expectedOutput != null ? expectedOutput.replace("\r\n", "\n").trim() : "";
-            boolean passed = expectedTrimmed.isEmpty() || actualTrimmed.equals(expectedTrimmed);
-            String status = passed ? "ACCEPTED" : "WRONG_ANSWER";
-
-            return new TestCaseExecutionResult(
-                    caseIndex, input, expectedOutput, actualTrimmed, passed,
-                    status, elapsed, null
-            );
-
-        } catch (Exception e) {
-            long elapsed = System.currentTimeMillis() - overallStartTime;
-            log.error("Wandbox execution attempt error: {}", e.getMessage());
-            return new TestCaseExecutionResult(
-                    caseIndex, input, expectedOutput, "", false,
-                    "RUNTIME_ERROR", elapsed, "Online execution error: " + e.getMessage()
-            );
+    private boolean isInfrastructureFailure(String errorMsg) {
+        if (errorMsg == null || errorMsg.isBlank()) {
+            return true;
         }
+        String lower = errorMsg.toLowerCase();
+        return lower.contains("http ") ||
+                lower.contains("connection refused") ||
+                lower.contains("connect timed out") ||
+                lower.contains("read timed out") ||
+                lower.contains("timed out") ||
+                lower.contains("resource temporarily unavailable") ||
+                lower.contains("oci runtime error") ||
+                lower.contains("rate limit") ||
+                lower.contains("busy") ||
+                lower.contains("service unavailable") ||
+                lower.contains("internal server error") ||
+                lower.contains("online execution error") ||
+                lower.contains("cloud execution services are currently busy") ||
+                lower.contains("gateway timeout") ||
+                lower.contains("bad gateway") ||
+                lower.contains("unauthorized") ||
+                lower.contains("quota exceeded") ||
+                lower.contains("internal execution error") ||
+                lower.contains("execution timed out");
     }
 
-    private String mapCompilerForWandbox(String lang) {
-        String lower = lang != null ? lang.toLowerCase().trim() : "python";
-        return switch (lower) {
+    private TestCaseExecutionResult evaluateOutput(int caseIndex, String input, String expectedOutput,
+                                                   String rawOutput, long elapsed) {
+        String actualTrimmed = rawOutput != null ? rawOutput.replace("\r\n", "\n").trim() : "";
+        String expectedTrimmed = expectedOutput != null ? expectedOutput.replace("\r\n", "\n").trim() : "";
+        boolean passed = expectedTrimmed.isEmpty() || actualTrimmed.equals(expectedTrimmed);
+        String status = passed ? "ACCEPTED" : "WRONG_ANSWER";
+
+        return new TestCaseExecutionResult(
+                caseIndex, input, expectedOutput, actualTrimmed, passed,
+                status, elapsed, null
+        );
+    }
+
+    private String normalizeJavaCode(String code) {
+        if (code == null) return "";
+        // Online compiler environments compile code in a fixed file name (prog.java, Main.java, Solution.java, etc.).
+        // Replacing 'public class' with 'class' prevents javac from rejecting mismatched class and file names.
+        return code.replaceAll("public\\s+(final\\s+)?class\\s+", "class ");
+    }
+
+    // ==========================================
+    // 1. WANDBOX COMPILER ENGINE
+    // ==========================================
+    private TestCaseExecutionResult executeViaWandbox(int caseIndex, String code, String normLang,
+                                                     String input, String expectedOutput, long overallStartTime) throws Exception {
+        String compiler = mapCompilerForWandbox(normLang);
+        String processedCode = "java".equals(normLang) || compiler.contains("openjdk")
+                ? normalizeJavaCode(code)
+                : code;
+
+        Map<String, Object> payload = Map.of(
+                "compiler", compiler,
+                "code", processedCode,
+                "stdin", input != null ? input : ""
+        );
+
+        String requestBody = MAPPER.writeValueAsString(payload);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(WANDBOX_API_URL))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(10))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        long elapsed = System.currentTimeMillis() - overallStartTime;
+
+        if (response.statusCode() != 200) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "Wandbox returned HTTP " + response.statusCode()
+            );
+        }
+
+        JsonNode root = MAPPER.readTree(response.body());
+        String statusStr = root.path("status").asText("0");
+        String compilerErr = root.path("compiler_error").asText("");
+        String compilerOut = root.path("compiler_output").asText("");
+        String progOut = root.path("program_output").asText("");
+        String progErr = root.path("program_error").asText("");
+
+        // Check compilation error
+        if (!"0".equals(statusStr) && (!compilerErr.isBlank() || !compilerOut.isBlank()) && progOut.isEmpty()) {
+            String errMsg = !compilerErr.isBlank() ? compilerErr : compilerOut;
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "COMPILATION_ERROR", elapsed, errMsg.trim()
+            );
+        }
+
+        // Check runtime error
+        if (!"0".equals(statusStr)) {
+            String errMsg = !progErr.isBlank() ? progErr : (!compilerErr.isBlank() ? compilerErr : "Process exited with status " + statusStr);
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, progOut.trim(), false,
+                    "RUNTIME_ERROR", elapsed, errMsg.trim()
+            );
+        }
+
+        return evaluateOutput(caseIndex, input, expectedOutput, progOut, elapsed);
+    }
+
+    // ==========================================
+    // 2. JUDGE0 CE COMPILER ENGINE
+    // ==========================================
+    private TestCaseExecutionResult executeViaJudge0(int caseIndex, String code, String normLang,
+                                                    String input, String expectedOutput, long overallStartTime) throws Exception {
+        int languageId = mapLanguageIdForJudge0(normLang);
+        String processedCode = "java".equals(normLang) ? normalizeJavaCode(code) : code;
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("language_id", languageId);
+        payload.put("source_code", processedCode);
+        payload.put("stdin", input != null ? input : "");
+
+        String requestBody = MAPPER.writeValueAsString(payload);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(JUDGE0_API_URL))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .timeout(Duration.ofSeconds(12))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        long elapsed = System.currentTimeMillis() - overallStartTime;
+
+        if (response.statusCode() != 200 && response.statusCode() != 201) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "Judge0 returned HTTP " + response.statusCode()
+            );
+        }
+
+        JsonNode root = MAPPER.readTree(response.body());
+        JsonNode statusObj = root.path("status");
+        int statusId = statusObj.path("id").asInt(0);
+        String statusDesc = statusObj.path("description").asText("");
+
+        String stdout = root.path("stdout").asText("");
+        String stderr = root.path("stderr").asText("");
+        String compileOutput = root.path("compile_output").asText("");
+        String message = root.path("message").asText("");
+
+        // Status 6 = Compilation Error
+        if (statusId == 6 || (!compileOutput.isBlank() && stdout.isEmpty())) {
+            String errMsg = !compileOutput.isBlank() ? compileOutput : "Compilation Error";
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "COMPILATION_ERROR", elapsed, errMsg.trim()
+            );
+        }
+
+        // Status 5 = Time Limit Exceeded
+        if (statusId == 5) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "TIME_LIMIT_EXCEEDED", elapsed, "Time Limit Exceeded"
+            );
+        }
+
+        // Status 13, 14 = Internal Error / Exec Format Error
+        if (statusId == 13 || statusId == 14) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "Judge0 internal execution error: " + statusDesc
+            );
+        }
+
+        // Status 7-12 = Runtime Error
+        if (statusId >= 7 && statusId <= 12) {
+            String errMsg = !stderr.isBlank() ? stderr : (!message.isBlank() ? message : statusDesc);
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, stdout.trim(), false,
+                    "RUNTIME_ERROR", elapsed, errMsg.trim()
+            );
+        }
+
+        return evaluateOutput(caseIndex, input, expectedOutput, stdout, elapsed);
+    }
+
+    // ==========================================
+    // 3. REXTESTER COMPILER ENGINE
+    // ==========================================
+    private TestCaseExecutionResult executeViaRextester(int caseIndex, String code, String normLang,
+                                                       String input, String expectedOutput, long overallStartTime) throws Exception {
+        int langChoice = mapLanguageIdForRextester(normLang);
+        String processedCode = "java".equals(normLang) ? normalizeJavaCode(code) : code;
+
+        String formData = "LanguageChoice=" + langChoice
+                + "&Program=" + URLEncoder.encode(processedCode, StandardCharsets.UTF_8)
+                + "&Input=" + URLEncoder.encode(input != null ? input : "", StandardCharsets.UTF_8)
+                + "&CompilerArgs=";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(REXTESTER_API_URL))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .timeout(Duration.ofSeconds(12))
+                .POST(HttpRequest.BodyPublishers.ofString(formData, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        long elapsed = System.currentTimeMillis() - overallStartTime;
+
+        if (response.statusCode() != 200) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "Rextester returned HTTP " + response.statusCode()
+            );
+        }
+
+        JsonNode root = MAPPER.readTree(response.body());
+        String errors = root.path("Errors").asText("");
+        String result = root.path("Result").asText("");
+
+        // Check if there are compilation errors
+        if (!errors.isBlank() && result.isEmpty()) {
+            boolean isCompileErr = errors.contains("error:") || errors.contains("SyntaxError") ||
+                    errors.contains("javac") || errors.contains("Line ");
+            String status = isCompileErr ? "COMPILATION_ERROR" : "RUNTIME_ERROR";
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    status, elapsed, errors.trim()
+            );
+        }
+
+        if (!errors.isBlank()) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, result.trim(), false,
+                    "RUNTIME_ERROR", elapsed, errors.trim()
+            );
+        }
+
+        return evaluateOutput(caseIndex, input, expectedOutput, result, elapsed);
+    }
+
+    // ==========================================
+    // 4. CODEX COMPILER ENGINE
+    // ==========================================
+    private TestCaseExecutionResult executeViaCodeX(int caseIndex, String code, String normLang,
+                                                   String input, String expectedOutput, long overallStartTime) throws Exception {
+        String codexLang = mapLanguageForCodeX(normLang);
+        String processedCode = "java".equals(normLang) ? normalizeJavaCode(code) : code;
+
+        Map<String, Object> payload = Map.of(
+                "code", processedCode,
+                "language", codexLang,
+                "input", input != null ? input : ""
+        );
+
+        String requestBody = MAPPER.writeValueAsString(payload);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(CODEX_API_URL))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(10))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        long elapsed = System.currentTimeMillis() - overallStartTime;
+
+        if (response.statusCode() != 200) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "CodeX returned HTTP " + response.statusCode()
+            );
+        }
+
+        JsonNode root = MAPPER.readTree(response.body());
+        boolean success = root.path("success").asBoolean(true);
+        String output = root.path("output").asText("");
+        String error = root.path("error").asText("");
+
+        if (!error.isBlank() && output.isEmpty()) {
+            boolean isCompileErr = error.contains("error:") || error.contains("SyntaxError") ||
+                    error.contains("javac") || error.contains("Compilation error");
+            String status = isCompileErr ? "COMPILATION_ERROR" : "RUNTIME_ERROR";
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    status, elapsed, error.trim()
+            );
+        }
+
+        if (!success && !error.isBlank()) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, output.trim(), false,
+                    "RUNTIME_ERROR", elapsed, error.trim()
+            );
+        }
+
+        return evaluateOutput(caseIndex, input, expectedOutput, output, elapsed);
+    }
+
+    // ==========================================
+    // 5. PAIZA.IO COMPILER ENGINE
+    // ==========================================
+    private TestCaseExecutionResult executeViaPaiza(int caseIndex, String code, String normLang,
+                                                   String input, String expectedOutput, long overallStartTime) throws Exception {
+        String paizaLang = mapLanguageForPaiza(normLang);
+        String processedCode = "java".equals(normLang) ? normalizeJavaCode(code) : code;
+
+        String formData = "source_code=" + URLEncoder.encode(processedCode, StandardCharsets.UTF_8)
+                + "&language=" + URLEncoder.encode(paizaLang, StandardCharsets.UTF_8)
+                + "&input=" + URLEncoder.encode(input != null ? input : "", StandardCharsets.UTF_8)
+                + "&api_key=guest";
+
+        HttpRequest createRequest = HttpRequest.newBuilder()
+                .uri(URI.create(PAIZA_CREATE_URL))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .timeout(Duration.ofSeconds(8))
+                .POST(HttpRequest.BodyPublishers.ofString(formData, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> createResponse = HTTP_CLIENT.send(createRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        long elapsed = System.currentTimeMillis() - overallStartTime;
+
+        if (createResponse.statusCode() != 200) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "Paiza.IO returned HTTP " + createResponse.statusCode()
+            );
+        }
+
+        JsonNode createNode = MAPPER.readTree(createResponse.body());
+        String runnerId = createNode.path("id").asText("");
+        if (runnerId.isBlank()) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "Paiza.IO did not return runner ID"
+            );
+        }
+
+        // Poll for completion (up to ~6 seconds)
+        String detailsBody = null;
+        for (int poll = 0; poll < 14; poll++) {
+            Thread.sleep(400);
+            HttpRequest detailsReq = HttpRequest.newBuilder()
+                    .uri(URI.create(PAIZA_DETAILS_URL + "?id=" + runnerId + "&api_key=guest"))
+                    .timeout(Duration.ofSeconds(5))
+                    .GET()
+                    .build();
+            HttpResponse<String> detailsResp = HTTP_CLIENT.send(detailsReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (detailsResp.statusCode() == 200) {
+                JsonNode detailsNode = MAPPER.readTree(detailsResp.body());
+                String status = detailsNode.path("status").asText("");
+                if ("completed".equalsIgnoreCase(status)) {
+                    detailsBody = detailsResp.body();
+                    break;
+                }
+            }
+        }
+
+        elapsed = System.currentTimeMillis() - overallStartTime;
+
+        if (detailsBody == null) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "TIME_LIMIT_EXCEEDED", elapsed, "Paiza.IO execution timed out"
+            );
+        }
+
+        JsonNode res = MAPPER.readTree(detailsBody);
+        int buildExitCode = res.path("build_exit_code").asInt(0);
+        String buildStderr = res.path("build_stderr").asText("");
+        int exitCode = res.path("exit_code").asInt(0);
+        String stdout = res.path("stdout").asText("");
+        String stderr = res.path("stderr").asText("");
+
+        if (buildExitCode != 0) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "COMPILATION_ERROR", elapsed, !buildStderr.isBlank() ? buildStderr.trim() : "Build failed"
+            );
+        }
+
+        if (exitCode != 0) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, stdout.trim(), false,
+                    "RUNTIME_ERROR", elapsed, !stderr.isBlank() ? stderr.trim() : "Process exited with code " + exitCode
+            );
+        }
+
+        return evaluateOutput(caseIndex, input, expectedOutput, stdout, elapsed);
+    }
+
+    // ==========================================
+    // 6. PISTON COMPILER ENGINE (BACKUP)
+    // ==========================================
+    private TestCaseExecutionResult executeViaPiston(int caseIndex, String code, String normLang,
+                                                    String input, String expectedOutput, long overallStartTime) throws Exception {
+        String pistonLang = mapLanguageForPiston(normLang);
+        String processedCode = "java".equals(normLang) ? normalizeJavaCode(code) : code;
+
+        Map<String, Object> payload = Map.of(
+                "language", pistonLang,
+                "version", "*",
+                "files", List.of(Map.of("content", processedCode)),
+                "stdin", input != null ? input : ""
+        );
+
+        String requestBody = MAPPER.writeValueAsString(payload);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(PISTON_API_URL))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(10))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        long elapsed = System.currentTimeMillis() - overallStartTime;
+
+        if (response.statusCode() != 200) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "RUNTIME_ERROR", elapsed, "Piston returned HTTP " + response.statusCode()
+            );
+        }
+
+        JsonNode root = MAPPER.readTree(response.body());
+        JsonNode compileNode = root.path("compile");
+        JsonNode runNode = root.path("run");
+
+        int compileCode = compileNode.path("code").asInt(0);
+        String compileStderr = compileNode.path("stderr").asText("");
+        String compileOutput = compileNode.path("output").asText("");
+
+        if (compileCode != 0) {
+            String errMsg = !compileStderr.isBlank() ? compileStderr : compileOutput;
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, "", false,
+                    "COMPILATION_ERROR", elapsed, errMsg.trim()
+            );
+        }
+
+        int runCode = runNode.path("code").asInt(0);
+        String stdout = runNode.path("stdout").asText("");
+        String stderr = runNode.path("stderr").asText("");
+
+        if (runCode != 0) {
+            return new TestCaseExecutionResult(
+                    caseIndex, input, expectedOutput, stdout.trim(), false,
+                    "RUNTIME_ERROR", elapsed, !stderr.isBlank() ? stderr.trim() : "Execution exited with code " + runCode
+            );
+        }
+
+        return evaluateOutput(caseIndex, input, expectedOutput, stdout, elapsed);
+    }
+
+    // ==========================================
+    // LANGUAGE & COMPILER MAPPINGS
+    // ==========================================
+    private String mapCompilerForWandbox(String normLang) {
+        return switch (normLang) {
             case "java" -> "openjdk-jdk-21+35";
             case "c", "gcc", "clang" -> "gcc-13.2.0-c";
             case "cpp", "c++", "g++" -> "gcc-13.2.0";
             case "js", "javascript", "node" -> "nodejs-20.17.0";
             default -> "cpython-3.12.7";
+        };
+    }
+
+    private int mapLanguageIdForJudge0(String normLang) {
+        return switch (normLang) {
+            case "java" -> 62;
+            case "c", "gcc", "clang" -> 50;
+            case "cpp", "c++", "g++" -> 54;
+            case "js", "javascript", "node" -> 63;
+            default -> 71;
+        };
+    }
+
+    private int mapLanguageIdForRextester(String normLang) {
+        return switch (normLang) {
+            case "java" -> 4;
+            case "c", "gcc", "clang" -> 6;
+            case "cpp", "c++", "g++" -> 7;
+            case "js", "javascript", "node" -> 23;
+            default -> 24;
+        };
+    }
+
+    private String mapLanguageForCodeX(String normLang) {
+        return switch (normLang) {
+            case "java" -> "java";
+            case "c", "gcc", "clang" -> "c";
+            case "cpp", "c++", "g++" -> "cpp";
+            case "js", "javascript", "node" -> "js";
+            default -> "py";
+        };
+    }
+
+    private String mapLanguageForPaiza(String normLang) {
+        return switch (normLang) {
+            case "java" -> "java";
+            case "c", "gcc", "clang" -> "c";
+            case "cpp", "c++", "g++" -> "cpp";
+            case "js", "javascript", "node" -> "javascript";
+            default -> "python3";
+        };
+    }
+
+    private String mapLanguageForPiston(String normLang) {
+        return switch (normLang) {
+            case "java" -> "java";
+            case "c", "gcc", "clang" -> "c";
+            case "cpp", "c++", "g++" -> "cpp";
+            case "js", "javascript", "node" -> "javascript";
+            default -> "python";
         };
     }
 

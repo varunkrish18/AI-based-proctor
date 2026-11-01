@@ -853,7 +853,50 @@ public class ExamAdminService {
     public List<ExamQuestion> listQuestions(Long examId, String staffEmail) {
         Exam exam = getById(examId);
         verifyExamAccess(exam, staffEmail);
-        return questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+        List<ExamQuestion> all = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+        if (staffEmail == null || staffEmail.isBlank()) {
+            return all;
+        }
+
+        String email = staffEmail.trim().toLowerCase();
+        Admin admin = adminRepository.findByEmail(email).orElse(null);
+        Professor prof = professorRepository.findByEmailIgnoreCase(email).orElse(null);
+
+        boolean isProf = (admin != null && ("EXAMINER".equalsIgnoreCase(admin.getRole()) || "FACULTY".equalsIgnoreCase(admin.getRole()) || "PROFESSOR".equalsIgnoreCase(admin.getRole())))
+                || (prof != null);
+        boolean isCoordinator = admin != null && "COURSE_COORDINATOR".equalsIgnoreCase(admin.getRole());
+
+        if (isProf) {
+            Long callerId = prof != null ? prof.getId() : (admin != null ? admin.getId() : null);
+            // Prof A sees Coordinator questions + questions added by Prof A. Does NOT see Prof B's questions!
+            return all.stream()
+                    .filter(q -> isCoordinatorQuestion(q, exam) || (callerId != null && callerId.equals(q.getCreatedBy())))
+                    .toList();
+        } else if (isCoordinator) {
+            // Coordinator sees only Coordinator questions. Prof A & Prof B questions do NOT reflect for Coordinator!
+            return all.stream()
+                    .filter(q -> isCoordinatorQuestion(q, exam))
+                    .toList();
+        }
+
+        return all;
+    }
+
+    public boolean isCoordinatorQuestion(ExamQuestion q, Exam exam) {
+        if (q == null) return false;
+        if (Boolean.TRUE.equals(q.getCreatedByCoordinator()) || "COURSE_COORDINATOR".equalsIgnoreCase(q.getCreatedByRole())) {
+            return true;
+        }
+        if (exam != null && exam.getCreatedBy() != null) {
+            Admin examCreator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
+            if (examCreator != null && "COURSE_COORDINATOR".equalsIgnoreCase(examCreator.getRole())) {
+                if (!"PROFESSOR".equalsIgnoreCase(q.getCreatedByRole())
+                        && (q.getCreatedBy() == null || q.getCreatedBy().equals(examCreator.getId()))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public List<ExamQuestion> listQuestions(Long examId) {
@@ -1249,9 +1292,30 @@ public class ExamAdminService {
             }
 
             // Shuffle a copy and take the first N
-            List<ExamQuestion> shuffled = new ArrayList<>(bank);
+            Long assignerId = enrollment.getAssignedByProfessorId();
+            String assignerEmail = enrollment.getAssignedByProfessorEmail();
+            if (assignerId == null && assignerEmail != null && !assignerEmail.isBlank()) {
+                Professor p = professorRepository.findByEmailIgnoreCase(assignerEmail.trim()).orElse(null);
+                if (p != null) assignerId = p.getId();
+                else {
+                    Admin a = adminRepository.findByEmail(assignerEmail.trim().toLowerCase()).orElse(null);
+                    if (a != null) assignerId = a.getId();
+                }
+            }
+
+            final Long targetProfId = assignerId;
+            List<ExamQuestion> studentBank = bank.stream()
+                    .filter(q -> isCoordinatorQuestion(q, exam) || (targetProfId != null && targetProfId.equals(q.getCreatedBy())))
+                    .toList();
+
+            if (studentBank.isEmpty()) {
+                studentBank = bank;
+            }
+
+            List<ExamQuestion> shuffled = new ArrayList<>(studentBank);
             Collections.shuffle(shuffled, rng);
-            List<ExamQuestion> chosen = shuffled.subList(0, questionsPerStudent);
+            int takeCount = Math.min(questionsPerStudent, shuffled.size());
+            List<ExamQuestion> chosen = shuffled.subList(0, takeCount);
 
             List<Long> chosenIds = chosen.stream().map(ExamQuestion::getId).toList();
             String idsJson;

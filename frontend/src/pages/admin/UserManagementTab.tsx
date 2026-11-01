@@ -19,6 +19,9 @@ export default function UserManagementTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  type UserSearchFieldOption = "ALL" | "NAME" | "EMAIL" | "DEPARTMENT" | "ROLE";
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchField, setSearchField] = useState<UserSearchFieldOption>("ALL");
   const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("ALL");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
 
@@ -199,6 +202,21 @@ export default function UserManagementTab() {
   );
 
   const filteredUsers = users.filter((u) => {
+    // Search filter across fields
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesName = (u.fullName || "").toLowerCase().includes(q);
+      const matchesEmail = (u.email || "").toLowerCase().includes(q);
+      const matchesDept = (u.department || "").toLowerCase().includes(q);
+      const matchesRole = (u.role || "").toLowerCase().includes(q);
+
+      if (searchField === "NAME" && !matchesName) return false;
+      else if (searchField === "EMAIL" && !matchesEmail) return false;
+      else if (searchField === "DEPARTMENT" && !matchesDept) return false;
+      else if (searchField === "ROLE" && !matchesRole) return false;
+      else if (searchField === "ALL" && !matchesName && !matchesEmail && !matchesDept && !matchesRole) return false;
+    }
+
     if (selectedDeptFilter !== "ALL") {
       if (selectedDeptFilter === "NONE") {
         if (u.department) return false;
@@ -257,9 +275,58 @@ export default function UserManagementTab() {
         </div>
       </div>
 
-      {/* Filter Toolbar */}
+      {/* Filter & Search Toolbar */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 flex-1">
+          {/* Search Field Dropdown Option */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition shrink-0">
+            <span className="text-slate-400 text-xs">Search:</span>
+            <select
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as UserSearchFieldOption)}
+              className="bg-transparent text-slate-700 font-semibold text-xs focus:outline-none cursor-pointer"
+            >
+              <option value="ALL">All Fields</option>
+              <option value="NAME">Name</option>
+              <option value="EMAIL">Email</option>
+              <option value="DEPARTMENT">Department</option>
+              <option value="ROLE">Role</option>
+            </select>
+          </div>
+
+          {/* Search Input Box */}
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              🔍
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={
+                searchField === "NAME"
+                  ? "Search by full name..."
+                  : searchField === "EMAIL"
+                  ? "Search by email address..."
+                  : searchField === "DEPARTMENT"
+                  ? "Search by department..."
+                  : searchField === "ROLE"
+                  ? "Search by role (e.g. ADMIN, FACULTY)..."
+                  : "Search across name, email, department, role..."
+              }
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold"
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-500">Department:</span>
             <select

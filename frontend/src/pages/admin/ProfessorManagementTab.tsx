@@ -29,7 +29,9 @@ export default function ProfessorManagementTab() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Search & Filters
+  type SearchFieldOption = "ALL" | "STAFF_CODE" | "NAME" | "EMAIL" | "DEPARTMENT" | "YEAR";
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchField, setSearchField] = useState<SearchFieldOption>("ALL");
   const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("ALL");
   const [selectedYearFilter, setSelectedYearFilter] = useState<string>("ALL");
 
@@ -525,13 +527,30 @@ export default function ProfessorManagementTab() {
   // Filtered professors based on search and filters
   const filteredProfessors = useMemo(() => {
     return professors.filter((p) => {
-      // Search by name and prof code (staff code)
+      // Search by specific field or across all fields
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesName = (p.fullName || "").toLowerCase().includes(q);
         const matchesCode = (p.staffCode || "").toLowerCase().includes(q);
         const matchesEmail = (p.email || "").toLowerCase().includes(q);
-        if (!matchesName && !matchesCode && !matchesEmail) return false;
+        const matchesDept = (p.department || "").toLowerCase().includes(q);
+        const matchesYear = (p.year || "").toLowerCase().includes(q);
+
+        if (searchField === "STAFF_CODE" && !matchesCode) return false;
+        else if (searchField === "NAME" && !matchesName) return false;
+        else if (searchField === "EMAIL" && !matchesEmail) return false;
+        else if (searchField === "DEPARTMENT" && !matchesDept) return false;
+        else if (searchField === "YEAR" && !matchesYear) return false;
+        else if (
+          searchField === "ALL" &&
+          !matchesName &&
+          !matchesCode &&
+          !matchesEmail &&
+          !matchesDept &&
+          !matchesYear
+        ) {
+          return false;
+        }
       }
 
       // Department filter
@@ -554,7 +573,7 @@ export default function ProfessorManagementTab() {
 
       return true;
     });
-  }, [professors, searchQuery, selectedDeptFilter, selectedYearFilter]);
+  }, [professors, searchQuery, searchField, selectedDeptFilter, selectedYearFilter]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -636,7 +655,24 @@ export default function ProfessorManagementTab() {
       {/* Search and Filters Toolbar */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
-          {/* Search by Name & Prof Code */}
+          {/* Search Field Dropdown Option */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-violet-500 focus-within:border-violet-500 transition shrink-0">
+            <span className="text-slate-400 text-xs">Search:</span>
+            <select
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value as SearchFieldOption)}
+              className="bg-transparent text-slate-700 font-semibold text-xs focus:outline-none cursor-pointer"
+            >
+              <option value="ALL">All Fields</option>
+              <option value="STAFF_CODE">Staff Code</option>
+              <option value="NAME">Professor Name</option>
+              <option value="EMAIL">Email Address</option>
+              <option value="DEPARTMENT">Department</option>
+              <option value="YEAR">Handling Year</option>
+            </select>
+          </div>
+
+          {/* Search Input Box with Dynamic Placeholder */}
           <div className="relative flex-1 min-w-[220px] max-w-md">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
               🔍
@@ -645,13 +681,26 @@ export default function ProfessorManagementTab() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name or prof code..."
+              placeholder={
+                searchField === "STAFF_CODE"
+                  ? "Search by staff code (e.g. PROF-CS-01)..."
+                  : searchField === "NAME"
+                  ? "Search by professor name..."
+                  : searchField === "EMAIL"
+                  ? "Search by email address..."
+                  : searchField === "DEPARTMENT"
+                  ? "Search by department..."
+                  : searchField === "YEAR"
+                  ? "Search by handling year..."
+                  : "Search across name, staff code, email, dept..."
+              }
               className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 focus:outline-none transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
                 className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold"
+                title="Clear search"
               >
                 ✕
               </button>

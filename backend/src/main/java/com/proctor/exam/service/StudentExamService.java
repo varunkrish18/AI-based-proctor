@@ -29,6 +29,8 @@ public class StudentExamService {
     private final ExamQuestionTestCaseRepository testCaseRepository;
     private final CodeExecutionService codeExecutionService;
     private final StudentQuestionAssignmentRepository sqaRepository;
+    private final AdminRepository adminRepository;
+    private final ProfessorRepository professorRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public StudentExamService(ExamRepository examRepository,
@@ -42,7 +44,9 @@ public class StudentExamService {
                                TrustedTimeService trustedTimeService,
                                ExamQuestionTestCaseRepository testCaseRepository,
                                CodeExecutionService codeExecutionService,
-                               StudentQuestionAssignmentRepository sqaRepository) {
+                               StudentQuestionAssignmentRepository sqaRepository,
+                               AdminRepository adminRepository,
+                               ProfessorRepository professorRepository) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
@@ -55,6 +59,8 @@ public class StudentExamService {
         this.testCaseRepository = testCaseRepository;
         this.codeExecutionService = codeExecutionService;
         this.sqaRepository = sqaRepository;
+        this.adminRepository = adminRepository;
+        this.professorRepository = professorRepository;
     }
 
     /**
@@ -244,8 +250,28 @@ public class StudentExamService {
                     orderedQuestionIds = List.of();
                 }
             } else {
-                // Use questions from the bank without creating unassigned random SQA records
-                List<ExamQuestion> bank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+                // Filter bank so student only receives Course Coordinator questions + questions from their assigned professor
+                List<ExamQuestion> allBank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+
+                Long assignerId = assignmentOpt.map(ExamAssignment::getAssignedByProfessorId).orElse(null);
+                String assignerEmail = assignmentOpt.map(ExamAssignment::getAssignedByProfessorEmail).orElse(null);
+                if (assignerId == null && assignerEmail != null && !assignerEmail.isBlank()) {
+                    Professor p = professorRepository.findByEmailIgnoreCase(assignerEmail.trim()).orElse(null);
+                    if (p != null) assignerId = p.getId();
+                    else {
+                        Admin a = adminRepository.findByEmail(assignerEmail.trim().toLowerCase()).orElse(null);
+                        if (a != null) assignerId = a.getId();
+                    }
+                }
+
+                final Long targetProfId = assignerId;
+                List<ExamQuestion> bank = allBank.stream()
+                        .filter(q -> isCoordinatorQuestion(q, exam) || (targetProfId != null && targetProfId.equals(q.getCreatedBy())))
+                        .toList();
+
+                if (bank.isEmpty()) {
+                    bank = allBank;
+                }
                 List<ExamQuestion> selected = new ArrayList<>(bank);
                 if (Boolean.TRUE.equals(exam.getRandomizeQuestions())) {
                     Collections.shuffle(selected);
@@ -591,5 +617,22 @@ public class StudentExamService {
                 exam.getEndAt(),
                 null
         );
+    }
+
+    private boolean isCoordinatorQuestion(ExamQuestion q, Exam exam) {
+        if (q == null) return false;
+        if (Boolean.TRUE.equals(q.getCreatedByCoordinator()) || "COURSE_COORDINATOR".equalsIgnoreCase(q.getCreatedByRole())) {
+            return true;
+        }
+        if (exam != null && exam.getCreatedBy() != null) {
+            Admin examCreator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
+            if (examCreator != null && "COURSE_COORDINATOR".equalsIgnoreCase(examCreator.getRole())) {
+                if (!"PROFESSOR".equalsIgnoreCase(q.getCreatedByRole())
+                        && (q.getCreatedBy() == null || q.getCreatedBy().equals(examCreator.getId()))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
