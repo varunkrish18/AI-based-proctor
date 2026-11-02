@@ -182,6 +182,11 @@ export default function ExamDetail() {
   if (error) return <p className="max-w-3xl mx-auto px-4 py-10 text-red-600">{error}</p>;
   if (!exam) return <p className="max-w-3xl mx-auto px-4 py-10 text-slate-500">Loading…</p>;
 
+  const isClassMode = Boolean(exam.isClass);
+  const coordinatorQuestionCount = questions.filter(
+    (q) => Boolean(q.createdByCoordinator) || q.createdByRole === "COURSE_COORDINATOR"
+  ).length;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <button onClick={() => navigate("/admin/dashboard")} className="text-sm text-slate-500 hover:underline mb-4 cursor-pointer">
@@ -205,9 +210,19 @@ export default function ExamDetail() {
           <div className="text-slate-500 text-sm flex items-center gap-2 flex-wrap mt-0.5">
             <span>{exam.subject ?? "General"}</span>
             <span>&middot;</span>
-            <span className={questions.length > exam.numQuestions ? "text-amber-700 font-semibold" : ""}>
-              {questions.length}/{exam.numQuestions} questions added
-            </span>
+            {isClassMode && isProfessorUser ? (
+              <span className="font-semibold text-slate-700">
+                {questions.length} questions configured
+              </span>
+            ) : isClassMode && isCoordinator ? (
+              <span className={coordinatorQuestionCount > exam.numQuestions ? "text-amber-700 font-semibold" : ""}>
+                {coordinatorQuestionCount}/{exam.numQuestions} coordinator questions added
+              </span>
+            ) : (
+              <span className={questions.length > exam.numQuestions ? "text-amber-700 font-semibold" : ""}>
+                {questions.length}/{exam.numQuestions} questions added
+              </span>
+            )}
             {!isProfessorUser && questions.length > exam.numQuestions && (
               <button
                 type="button"
@@ -3421,17 +3436,40 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     }
   }
 
+  const [revokingAll, setRevokingAll] = useState(false);
+
   async function unassignStudent(id: number, email: string) {
-    if (!window.confirm(`Unassign student ${email}?`)) return;
+    if (!window.confirm(`Revoke and delete assignment for student ${email}?`)) return;
     setUnassigningId(id);
     try {
       await api.delete(`/api/admin/exams/${examId}/assignments/${id}`, "admin");
       setAssignments((prev) => prev.filter((a) => a.id !== id));
-      setStatus(`✓ Unassigned ${email}.`);
+      setStatus(`✓ Revoked and deleted assignment for ${email}.`);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to unassign student.");
     } finally {
       setUnassigningId(null);
+    }
+  }
+
+  async function revokeAllAssignments() {
+    if (assignments.length === 0) return;
+    const isProf = isProfessorUserRole();
+    const confirmMsg = isProf
+      ? `Are you sure you want to revoke and delete all (${assignments.length}) students assigned by you for this exam? They will immediately lose access.`
+      : `Are you sure you want to revoke and delete all (${assignments.length}) assigned students for this exam? They will immediately lose access.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setRevokingAll(true);
+    try {
+      await api.delete(`/api/admin/exams/${examId}/assignments`, "admin");
+      setAssignments([]);
+      setStatus("✓ Successfully revoked and deleted assigned students.");
+      loadAssignments();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to revoke assigned students.");
+    } finally {
+      setRevokingAll(false);
     }
   }
 
@@ -4003,6 +4041,16 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                 >
                   📥 Export CSV
                 </button>
+                <button
+                  type="button"
+                  onClick={revokeAllAssignments}
+                  disabled={revokingAll}
+                  className="text-xs text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded font-medium transition cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                  title="Revoke and delete all assigned students for this exam"
+                >
+                  <span>🗑️</span>
+                  <span>{revokingAll ? "Revoking…" : "Revoke All"}</span>
+                </button>
               </>
             )}
             <button
@@ -4067,10 +4115,11 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   type="button"
                   onClick={() => unassignStudent(a.id, a.studentEmail)}
                   disabled={unassigningId === a.id}
-                  className="text-rose-600 hover:text-rose-800 text-[11px] font-medium bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded transition-colors cursor-pointer disabled:opacity-50"
-                  title="Remove student assignment"
+                  className="text-rose-600 hover:text-rose-800 text-[11px] font-medium bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                  title="Revoke and delete student assignment"
                 >
-                  {unassigningId === a.id ? "…" : "Remove"}
+                  <span>✕</span>
+                  <span>{unassigningId === a.id ? "…" : "Revoke"}</span>
                 </button>
               </div>
             ))}

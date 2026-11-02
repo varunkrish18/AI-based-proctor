@@ -339,7 +339,7 @@ public class StudentExamService {
                 if (Boolean.TRUE.equals(exam.getRandomizeQuestions())) {
                     Collections.shuffle(selected);
                 }
-                int take = (exam.getNumQuestions() != null && exam.getNumQuestions() > 0)
+                int take = (exam.getNumQuestions() != null && exam.getNumQuestions() > 0 && !Boolean.TRUE.equals(exam.getIsClass()))
                         ? Math.min(exam.getNumQuestions(), selected.size())
                         : selected.size();
                 selected = selected.subList(0, take);

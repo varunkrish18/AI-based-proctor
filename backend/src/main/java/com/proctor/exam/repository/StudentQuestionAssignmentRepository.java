@@ -18,4 +18,9 @@ public interface StudentQuestionAssignmentRepository extends JpaRepository<Stude
     @Transactional
     @Query("DELETE FROM StudentQuestionAssignment s WHERE s.exam.id = :examId")
     void deleteByExamId(@Param("examId") Long examId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("DELETE FROM StudentQuestionAssignment s WHERE s.exam.id = :examId AND LOWER(s.studentEmail) = LOWER(:studentEmail)")
+    void deleteByExamIdAndStudentEmailIgnoreCase(@Param("examId") Long examId, @Param("studentEmail") String studentEmail);
 }

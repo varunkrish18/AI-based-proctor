@@ -604,14 +604,16 @@ public class ExamAdminService {
         verifyExamAccess(exam, adminEmail);
         long currentCount = questionRepository.countByExamId(examId);
         int maxQ = exam.getNumQuestions() != null ? exam.getNumQuestions() : 0;
-        if (currentCount >= maxQ) {
-            if (Boolean.TRUE.equals(exam.getIsClass())) {
-                exam.setNumQuestions((int) currentCount + 1);
-                examRepository.save(exam);
-            } else {
-                throw new ApiException(HttpStatus.BAD_REQUEST,
-                        "Exam question limit reached (" + maxQ + " max questions). Increase the exam question limit or delete an existing question.");
-            }
+        boolean isClassMode = Boolean.TRUE.equals(exam.getIsClass());
+        boolean isProf = isProfessorUser(adminEmail);
+
+        if (!isClassMode && currentCount >= maxQ) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    "Exam question limit reached (" + maxQ + " max questions). Increase the exam question limit or delete an existing question.");
+        }
+        if (isClassMode && !isProf && currentCount >= maxQ) {
+            exam.setNumQuestions((int) currentCount + 1);
+            examRepository.save(exam);
         }
         int order = (int) currentCount;
         String qType = req.questionType() != null && !req.questionType().isBlank() ? req.questionType().toUpperCase() : "MCQ";
@@ -709,7 +711,9 @@ public class ExamAdminService {
 
         long currentCount = questionRepository.countByExamId(examId);
         int totalNeeded = (int) currentCount + requests.size();
-        if (totalNeeded > exam.getNumQuestions()) {
+        boolean isClassMode = Boolean.TRUE.equals(exam.getIsClass());
+        boolean isProf = isProfessorUser(adminEmail);
+        if ((!isClassMode || !isProf) && totalNeeded > exam.getNumQuestions()) {
             exam.setNumQuestions(totalNeeded);
             examRepository.save(exam);
         }
@@ -1094,19 +1098,55 @@ public class ExamAdminService {
             String caller = adminEmail.trim().toLowerCase();
             Professor callerProf = professorRepository.findByEmailIgnoreCase(caller).orElse(null);
             Admin callerAdmin = adminRepository.findByEmail(caller).orElse(null);
-            Long callerId = callerProf != null ? callerProf.getId() : (callerAdmin != null ? callerAdmin.getId() : null);
+            Long profId = callerProf != null ? callerProf.getId() : null;
+            Long adminId = callerAdmin != null ? callerAdmin.getId() : null;
 
             boolean isOwner = (assignment.getAssignedByProfessorEmail() != null && assignment.getAssignedByProfessorEmail().equalsIgnoreCase(caller))
-                    || (callerId != null && assignment.getAssignedByProfessorId() != null && assignment.getAssignedByProfessorId().equals(callerId));
+                    || (profId != null && assignment.getAssignedByProfessorId() != null && assignment.getAssignedByProfessorId().equals(profId))
+                    || (adminId != null && assignment.getAssignedByProfessorId() != null && assignment.getAssignedByProfessorId().equals(adminId));
 
             if (!isOwner) {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Access denied: You can only remove students that you assigned.");
             }
         }
 
+        sqaRepository.deleteByExamIdAndStudentEmailIgnoreCase(examId, assignment.getStudentEmail());
         assignmentRepository.delete(assignment);
         auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "STUDENT_UNASSIGNED",
                 "Unassigned " + assignment.getStudentEmail() + " from exam ID " + examId);
+    }
+
+    @Transactional
+    public void revokeAllAssignments(Long examId, String adminEmail) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, adminEmail);
+        List<ExamAssignment> assignments = assignmentRepository.findByExamIdOrderByCreatedAtDesc(examId);
+
+        if (adminEmail != null && !adminEmail.isBlank() && isProfessorUser(adminEmail)) {
+            String caller = adminEmail.trim().toLowerCase();
+            Professor callerProf = professorRepository.findByEmailIgnoreCase(caller).orElse(null);
+            Admin callerAdmin = adminRepository.findByEmail(caller).orElse(null);
+            Long profId = callerProf != null ? callerProf.getId() : null;
+            Long adminId = callerAdmin != null ? callerAdmin.getId() : null;
+
+            List<ExamAssignment> toDelete = assignments.stream()
+                    .filter(a -> (a.getAssignedByProfessorEmail() != null && a.getAssignedByProfessorEmail().equalsIgnoreCase(caller))
+                            || (profId != null && a.getAssignedByProfessorId() != null && a.getAssignedByProfessorId().equals(profId))
+                            || (adminId != null && a.getAssignedByProfessorId() != null && a.getAssignedByProfessorId().equals(adminId)))
+                    .toList();
+
+            for (ExamAssignment a : toDelete) {
+                sqaRepository.deleteByExamIdAndStudentEmailIgnoreCase(examId, a.getStudentEmail());
+                assignmentRepository.delete(a);
+            }
+            auditLogService.logAdmin(adminEmail, "ASSIGNMENTS_REVOKED", "Revoked " + toDelete.size() + " student assignments by professor from exam ID " + examId);
+        } else {
+            for (ExamAssignment a : assignments) {
+                sqaRepository.deleteByExamIdAndStudentEmailIgnoreCase(examId, a.getStudentEmail());
+                assignmentRepository.delete(a);
+            }
+            auditLogService.logAdmin(adminEmail != null ? adminEmail : "admin", "ASSIGNMENTS_REVOKED_ALL", "Revoked all " + assignments.size() + " student assignments from exam ID " + examId);
+        }
     }
 
     @Transactional

@@ -142,6 +142,12 @@ public class AdminExamController {
         examAdminService.unassignStudent(examId, assignmentId, auth != null ? auth.getName() : "admin");
     }
 
+    @DeleteMapping("/{examId}/assignments")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void revokeAllAssignments(@PathVariable Long examId, Authentication auth) {
+        examAdminService.revokeAllAssignments(examId, auth != null ? auth.getName() : "admin");
+    }
+
     @PutMapping("/{examId}/questions/{questionId}")
     public ExamQuestion updateQuestion(@PathVariable Long examId,
                                        @PathVariable Long questionId,
