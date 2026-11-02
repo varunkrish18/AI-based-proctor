@@ -636,7 +636,7 @@ public class ExamAdminService {
             String email = adminEmail.trim().toLowerCase();
             Admin callerAdmin = adminRepository.findByEmail(email).orElse(null);
             Professor callerProf = professorRepository.findByEmailIgnoreCase(email).orElse(null);
-            boolean isProf = callerProf != null || (callerAdmin != null && ("PROFESSOR".equalsIgnoreCase(callerAdmin.getRole()) || "EXAMINER".equalsIgnoreCase(callerAdmin.getRole()) || "FACULTY".equalsIgnoreCase(callerAdmin.getRole())));
+            isProf = callerProf != null || (callerAdmin != null && ("PROFESSOR".equalsIgnoreCase(callerAdmin.getRole()) || "EXAMINER".equalsIgnoreCase(callerAdmin.getRole()) || "FACULTY".equalsIgnoreCase(callerAdmin.getRole())));
 
             if (isProf) {
                 creatorId = callerProf != null ? callerProf.getId() : callerAdmin.getId();
@@ -754,7 +754,9 @@ public class ExamAdminService {
 
         long currentCount = questionRepository.countByExamId(examId);
         int totalNeeded = (int) currentCount + aiQuestions.size();
-        if (totalNeeded > exam.getNumQuestions()) {
+        boolean isClassMode = Boolean.TRUE.equals(exam.getIsClass());
+        boolean isProf = isProfessorUser(adminEmail);
+        if ((!isClassMode || !isProf) && totalNeeded > exam.getNumQuestions()) {
             exam.setNumQuestions(totalNeeded);
             examRepository.save(exam);
         }
