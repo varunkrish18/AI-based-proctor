@@ -523,39 +523,25 @@ export default function Home() {
                         {exam.subject && (
                           <p className="text-xs text-indigo-600 font-medium mb-1">{exam.subject}</p>
                         )}
-                        {exam.assignedProfessorName && (
+                        {exam.assignedProfessorName && !exam.assignedProfessorName.toLowerCase().startsWith("all department faculty") && (
                           <p className="text-[11px] text-slate-600 mb-2">
                             👨‍🏫 Faculty: <span className="font-semibold text-slate-800">{exam.assignedProfessorName}</span>
                           </p>
                         )}
                         <p className="text-xs text-slate-500 line-clamp-2 mb-4">
-                          {exam.numQuestions} Questions • {exam.isClass ? "Class Assessment (Infinite Attempts)" : "Monitored Session"}
+                          {exam.numQuestions} Questions • {exam.isClass ? "Class Assessment" : "Monitored Session"}
                         </p>
                       </div>
 
                       <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                         <div className="text-[11px] text-slate-500">
-                          {exam.isClass ? (
-                            exam.studentAttemptStatus === "COMPLETED" ? (
-                              <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                                <span>✓</span> Completed (Retake Available)
-                              </span>
-                            ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
-                              <span className="text-amber-700 font-medium flex items-center gap-1">
-                                <span>⚠️</span> Terminated (Resume available)
-                              </span>
-                            ) : isOpen ? (
-                              <span className="text-emerald-600 font-medium">Ready to take • Infinite Attempts</span>
-                            ) : (
-                              <span>Ended</span>
-                            )
-                          ) : exam.studentAttemptStatus === "COMPLETED" ? (
+                          {exam.studentAttemptStatus === "COMPLETED" ? (
                             <span className="text-emerald-700 font-semibold flex items-center gap-1">
                               <span>✓</span> Submitted &amp; Locked
                             </span>
                           ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
                             <span className="text-amber-700 font-medium flex items-center gap-1">
-                              <span>⚠️</span> Terminated without submitting
+                              <span>⚠️</span> Terminated (Resume available)
                             </span>
                           ) : isOpen ? (
                             <span className="text-emerald-600 font-medium">Ready to take</span>
@@ -566,11 +552,11 @@ export default function Home() {
                           )}
                         </div>
 
-                        {(!exam.isClass && exam.studentAttemptStatus === "COMPLETED") ? (
+                        {exam.studentAttemptStatus === "COMPLETED" ? (
                           <button
                             disabled
                             className="bg-slate-100 text-slate-400 font-semibold text-xs px-3.5 py-1.5 rounded-lg border border-slate-200 cursor-not-allowed flex items-center gap-1"
-                            title="You have already submitted and completed this exam. Re-taking is not allowed."
+                            title="You have already submitted and completed this session. Re-taking is not allowed."
                           >
                             <span>✓</span>
                             <span>Completed</span>
@@ -581,15 +567,11 @@ export default function Home() {
                             className={`font-semibold text-xs px-3.5 py-1.5 rounded-lg shadow-sm transition-all ${
                               exam.studentAttemptStatus === "INCOMPLETE"
                                 ? "bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white"
-                                : exam.isClass && exam.studentAttemptStatus === "COMPLETED"
-                                ? "bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white"
                                 : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
                             }`}
                           >
                             {exam.studentAttemptStatus === "INCOMPLETE"
                               ? `Resume ${exam.isClass ? "Class" : "Exam"} →`
-                              : exam.isClass && exam.studentAttemptStatus === "COMPLETED"
-                              ? "Retake Class ↻"
                               : `Start ${exam.isClass ? "Class" : "Exam"} →`}
                           </Link>
                         ) : (

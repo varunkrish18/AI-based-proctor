@@ -130,9 +130,165 @@ export default function ProfessorStudentReportTab({ exam }: Props) {
     document.body.removeChild(link);
   }
 
-  // Export / Print to PDF
+  // Export / Print to PDF - Clean Report Only
   function exportToPdf() {
-    window.print();
+    if (!filteredStudents.length) return;
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Popup blocked! Please allow popups for this site to generate and print the report.");
+      return;
+    }
+
+    const rowsHtml = filteredStudents.map((s, idx) => `
+      <tr style="border-bottom: 1px solid #e2e8f0; ${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+        <td style="padding: 9px 12px; font-family: monospace; font-weight: bold; color: #0f172a; border-right: 1px solid #e2e8f0;">${(s.registerNumber || "—").replace(/</g, "&lt;")}</td>
+        <td style="padding: 9px 12px; font-weight: 600; color: #1e293b; border-right: 1px solid #e2e8f0;">${(s.name || "—").replace(/</g, "&lt;")}</td>
+        <td style="padding: 9px 12px; text-align: center; font-weight: 700; color: #4338ca; border-right: 1px solid #e2e8f0;">${s.totalQuestions}</td>
+        <td style="padding: 9px 12px; text-align: center; font-weight: 700; color: #15803d; border-right: 1px solid #e2e8f0;">${s.completedQuestions}</td>
+        <td style="padding: 9px 12px; text-align: center; font-weight: 700; color: #b45309;">${s.incompleteQuestions}</td>
+      </tr>
+    `).join("");
+
+    const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${(exam.name || "Exam").replace(/</g, "&lt;")} - Professor Student Report</title>
+  <style>
+    @page {
+      size: landscape;
+      margin: 12mm 15mm;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #0f172a;
+      background: #ffffff;
+      margin: 0;
+      padding: 12px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .header {
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: -0.5px;
+    }
+    .subtitle {
+      font-size: 13px;
+      font-weight: 600;
+      color: #4338ca;
+      margin-top: 2px;
+    }
+    .meta {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .summary-box {
+      display: flex;
+      gap: 16px;
+      background: #f1f5f9;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      border: 1px solid #cbd5e1;
+    }
+    thead {
+      display: table-header-group;
+    }
+    tr {
+      page-break-inside: avoid;
+    }
+    th {
+      background-color: #0f172a !important;
+      color: #ffffff !important;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      padding: 10px 12px;
+      border-right: 1px solid #334155;
+      text-align: left;
+    }
+    th:last-child {
+      border-right: none;
+    }
+    .footer {
+      margin-top: 20px;
+      padding-top: 8px;
+      border-top: 1px solid #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="title">Professor Assigned Student Report</div>
+      <div class="subtitle">Exam / Class: ${(exam.name || "Exam").replace(/</g, "&lt;")} (ID: ${exam.id})</div>
+      <div class="meta">Generated: ${new Date().toLocaleString()} &bull; Total Filtered Students: ${filteredStudents.length}</div>
+    </div>
+    <div class="summary-box">
+      <div>Assigned Students: <strong>${data?.students.length ?? 0}</strong></div>
+      <div>Total Questions: <strong>${data?.totalQuestions ?? 0}</strong> (${data?.coordinatorQuestionsCount ?? 0} Coord + ${data?.professorQuestionsCount ?? 0} Prof)</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 140px;">Register number</th>
+        <th>Name</th>
+        <th style="text-align: center; width: 140px;">Total number of question</th>
+        <th style="text-align: center; width: 90px;">Completed</th>
+        <th style="text-align: center; width: 95px;">In complete</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <div>AI Exam & Proctoring Portal &bull; Confidential Student Record</div>
+    <div>Page 1 of Report</div>
+  </div>
+
+  <script>
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        window.focus();
+        window.print();
+      }, 300);
+    });
+  </script>
+</body>
+</html>`;
+
+    printWindow.document.open();
+    printWindow.document.write(fullHtml);
+    printWindow.document.close();
   }
 
   if (loading) {
@@ -211,7 +367,7 @@ export default function ProfessorStudentReportTab({ exam }: Props) {
         </div>
 
         {/* Quick Summary Badges */}
-        <div className="mt-5 pt-4 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div className="mt-5 pt-4 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
           <div className="bg-slate-850/80 p-2.5 rounded-xl border border-slate-800">
             <div className="text-slate-400">Assigned Students</div>
             <div className="text-lg font-bold text-white mt-0.5">{data?.students.length ?? 0}</div>
@@ -220,18 +376,6 @@ export default function ProfessorStudentReportTab({ exam }: Props) {
             <div className="text-slate-400">Total Questions</div>
             <div className="text-lg font-bold text-indigo-400 mt-0.5">
               {data?.totalQuestions ?? 0}
-            </div>
-          </div>
-          <div className="bg-slate-850/80 p-2.5 rounded-xl border border-slate-800">
-            <div className="text-slate-400">Completed Qs</div>
-            <div className="text-lg font-bold text-emerald-400 mt-0.5">
-              {data?.students.reduce((acc, s) => acc + s.completedQuestions, 0) ?? 0}
-            </div>
-          </div>
-          <div className="bg-slate-850/80 p-2.5 rounded-xl border border-slate-800">
-            <div className="text-slate-400">Incomplete Qs</div>
-            <div className="text-lg font-bold text-amber-400 mt-0.5">
-              {data?.students.reduce((acc, s) => acc + s.incompleteQuestions, 0) ?? 0}
             </div>
           </div>
         </div>

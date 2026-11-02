@@ -166,6 +166,10 @@ export default function ExamTake() {
         .post<StartExamResponse>(`/api/student/exams/${examId}/start`, undefined, "student")
         .then((res) => {
           setSession(res);
+          if (res.warningStrikes !== undefined) {
+            setWarningStrikes(res.warningStrikes);
+            strikesRef.current = res.warningStrikes;
+          }
           if (res.savedAnswers) {
             setAnswers(res.savedAnswers);
           }
@@ -321,7 +325,7 @@ export default function ExamTake() {
           totalQuestions: session.questions?.length ?? 0,
           answeredQuestions:
             Object.values(answers).filter((v) => v !== undefined).length +
-            Object.values(codingAnswers).filter((ca) => ca && ca.code && ca.code.trim().length > 0).length,
+            Array.from(lockedCodingQuestions).length,
           submitReason: reasonStr || "Examination session concluded.",
         };
       }
@@ -344,7 +348,7 @@ export default function ExamTake() {
           totalQuestions: session.questions?.length ?? 0,
           answeredQuestions:
             Object.values(answers).filter((v) => v !== undefined).length +
-            Object.values(codingAnswers).filter((ca) => ca && ca.code && ca.code.trim().length > 0).length,
+            Array.from(lockedCodingQuestions).length,
           submitReason: reasonStr || "Examination concluded.",
         })
       );
@@ -386,7 +390,8 @@ export default function ExamTake() {
       if (now - lastStrikeTimeRef.current < 3500) return;
       lastStrikeTimeRef.current = now;
 
-      const nextStrikes = Math.min(strikesRef.current + 1, 3);
+      const maxAllowedStrikes = session?.maxWarnings ?? (session?.isClass ? 10 : 3);
+      const nextStrikes = Math.min(strikesRef.current + 1, maxAllowedStrikes);
       strikesRef.current = nextStrikes;
       setWarningStrikes(nextStrikes);
 
@@ -405,9 +410,9 @@ export default function ExamTake() {
         description,
       });
 
-      setWarning(`STRIKE ${nextStrikes}/3: ${reason}`);
+      setWarning(`STRIKE ${nextStrikes}/${maxAllowedStrikes}: ${reason}`);
 
-      if (nextStrikes >= 3) {
+      if (nextStrikes >= maxAllowedStrikes) {
         // Warning 3: Terminate and auto-submit the examination after short delay
         setTimeout(() => {
           handleSubmit();
@@ -1731,9 +1736,57 @@ export default function ExamTake() {
   // (Warning polling removed — proctoring infractions are now handled directly
   //  via the issueWarningStrike() 3-Strike system without any server round-trip.)
 
-  // Copy / right-click / dangerous keyboard shortcut blocking
+  // Copy / right-click / dangerous keyboard shortcut & Trackpad gesture navigation blocking
   useEffect(() => {
     if (!session || !screenGatePassed) return;
+
+    // 1. Native CSS lock against trackpad gesture navigation
+    const origHtmlOverscroll = document.documentElement.style.overscrollBehavior;
+    const origBodyOverscroll = document.body.style.overscrollBehavior;
+    const origHtmlTouchAction = document.documentElement.style.touchAction;
+    const origBodyTouchAction = document.body.style.touchAction;
+
+    document.documentElement.style.overscrollBehavior = "none";
+    document.body.style.overscrollBehavior = "none";
+    document.documentElement.style.touchAction = "pan-y";
+    document.body.style.touchAction = "pan-y";
+
+    // 2. Browser History Lock (Traps 2-finger trackpad swipe-back gestures)
+    window.history.pushState(null, "", window.location.href);
+    function onPopState(e: PopStateEvent) {
+      e.preventDefault();
+      window.history.pushState(null, "", window.location.href);
+      logEvent("TRACKPAD_NAVIGATION_BLOCKED", undefined, {
+        reason: "Candidate attempted trackpad/browser backward gesture navigation",
+      });
+      flushNow();
+      issueWarningStrike(
+        "Trackpad / Navigation Violation",
+        "Navigating backward or leaving the examination via trackpad gestures or browser history is strictly prohibited."
+      );
+    }
+    window.addEventListener("popstate", onPopState);
+
+    // 3. Trackpad Horizontal Swipe & Pinch-to-Zoom Gesture Interceptor
+    function onWheel(e: WheelEvent) {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 20) {
+        e.preventDefault();
+      }
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("wheel", onWheel, { passive: false });
+
+    // 4. Page Unload / Departure Warning
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!submittedRef.current) {
+        e.preventDefault();
+        e.returnValue = "Leaving or reloading will cause your active attempt to be terminated.";
+        return e.returnValue;
+      }
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
 
     function blockContextMenu(e: MouseEvent) {
       e.preventDefault();
@@ -1788,6 +1841,13 @@ export default function ExamTake() {
     document.addEventListener("keyup", blockKeyShortcuts, { capture: true, passive: false });
 
     return () => {
+      document.documentElement.style.overscrollBehavior = origHtmlOverscroll;
+      document.body.style.overscrollBehavior = origBodyOverscroll;
+      document.documentElement.style.touchAction = origHtmlTouchAction;
+      document.body.style.touchAction = origBodyTouchAction;
+      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("contextmenu", blockContextMenu);
       document.removeEventListener("copy", blockCopy);
       window.removeEventListener("keydown", blockKeyShortcuts, { capture: true });
@@ -1795,7 +1855,7 @@ export default function ExamTake() {
       document.removeEventListener("keydown", blockKeyShortcuts, { capture: true });
       document.removeEventListener("keyup", blockKeyShortcuts, { capture: true });
     };
-  }, [session, screenGatePassed, logEvent]);
+  }, [session, screenGatePassed, logEvent, flushNow, issueWarningStrike]);
 
   const lastAttentionLossTime = useRef<number | null>(null);
 
@@ -1828,6 +1888,55 @@ export default function ExamTake() {
   useEffect(() => {
     if (!session || !screenGatePassed) return;
 
+    let fullscreenAwayInterval: any = null;
+
+    function startFullscreenAwayTicker() {
+      if (fullscreenAwayInterval) return;
+      fullscreenAwayInterval = setInterval(() => {
+        if (submittedRef.current) {
+          clearInterval(fullscreenAwayInterval);
+          fullscreenAwayInterval = null;
+          return;
+        }
+
+        const isFullscreen = Boolean(
+          document.fullscreenElement ||
+          (document as any).webkitFullscreenElement ||
+          (document as any).mozFullScreenElement ||
+          (document as any).msFullscreenElement
+        );
+
+        if (!isFullscreen) {
+          fullscreenViolationCount.current += 1;
+          const maxAllowedStrikes = session?.maxWarnings ?? (session?.isClass ? 10 : 3);
+          const strikes = fullscreenViolationCount.current;
+
+          logEvent("FULLSCREEN_AWAY_2S_TICK", undefined, {
+            count: strikes,
+            action: strikes >= maxAllowedStrikes ? "EXAM_TERMINATED" : "STRIKE_ISSUED",
+            reason: "Candidate remained out of fullscreen for >= 2 seconds",
+          });
+          flushNow();
+
+          if (strikes >= maxAllowedStrikes) {
+            clearInterval(fullscreenAwayInterval);
+            fullscreenAwayInterval = null;
+            handleSubmit(
+              `Exam Terminated: Maximum violations exceeded (${strikes}/${maxAllowedStrikes} strikes). You remained out of fullscreen.`
+            );
+          } else {
+            issueWarningStrike(
+              `Fullscreen Out Strike (${strikes}/${maxAllowedStrikes})`,
+              "You are out of fullscreen! An additional strike is triggered every 2 seconds until you return to fullscreen mode."
+            );
+          }
+        } else {
+          clearInterval(fullscreenAwayInterval);
+          fullscreenAwayInterval = null;
+        }
+      }, 2000);
+    }
+
     function onFullscreenChange() {
       const isFullscreen = Boolean(
         document.fullscreenElement ||
@@ -1845,28 +1954,43 @@ export default function ExamTake() {
         if (submittedRef.current) return;
 
         setFullscreenExited(true);
+        // Immediate Strike 1
         fullscreenViolationCount.current += 1;
 
+        const maxAllowedStrikes = session?.maxWarnings ?? (session?.isClass ? 10 : 3);
         const strikes = fullscreenViolationCount.current;
         logEvent("FULLSCREEN_EXIT", undefined, {
           count: strikes,
-          action: strikes >= 3 ? "EXAM_TERMINATED" : "WARNING_ISSUED",
-          reason: "Candidate exited fullscreen mode",
+          action: strikes >= maxAllowedStrikes ? "EXAM_TERMINATED" : "WARNING_ISSUED",
+          reason: "Candidate exited fullscreen mode (Immediate Strike)",
         });
         flushNow();
 
-        if (strikes >= 3) {
+        if (strikes >= maxAllowedStrikes) {
           handleSubmit(
-            "Exam Terminated: Maximum fullscreen violations exceeded (3 strikes). Fullscreen is strictly mandatory at all times."
+            `Exam Terminated: Maximum fullscreen violations exceeded (${strikes}/${maxAllowedStrikes} strikes). Fullscreen is strictly mandatory at all times.`
           );
         } else {
           issueWarningStrike(
-            `Fullscreen Exited (Strike ${strikes}/3)`,
-            "You exited fullscreen mode. Fullscreen is strictly mandatory. Please click 'Re-enter Fullscreen' immediately."
+            `Fullscreen Exited (Strike ${strikes}/${maxAllowedStrikes})`,
+            "You exited fullscreen mode! This is Strike 1. Fullscreen is strictly mandatory. An additional strike will trigger every 2 seconds until you return to fullscreen."
           );
+          // Start 2-second recurring strike ticker
+          startFullscreenAwayTicker();
         }
       } else {
         setFullscreenExited(false);
+        if (fullscreenAwayInterval) {
+          clearInterval(fullscreenAwayInterval);
+          fullscreenAwayInterval = null;
+        }
+        try {
+          if ("keyboard" in navigator && (navigator as any).keyboard?.lock) {
+            (navigator as any).keyboard.lock([
+              "Escape", "F11", "AltLeft", "AltRight", "Tab", "MetaLeft", "MetaRight", "ControlLeft", "ControlRight"
+            ]).catch(() => {});
+          }
+        } catch {}
         checkScreenIntegrity();
       }
     }
@@ -1945,6 +2069,10 @@ export default function ExamTake() {
       window.removeEventListener("focus", onWindowFocus);
       window.removeEventListener("resize", onWindowResize);
       clearInterval(integrityInterval);
+      if (fullscreenAwayInterval) {
+        clearInterval(fullscreenAwayInterval);
+        fullscreenAwayInterval = null;
+      }
       stopAllMediaStreams();
     };
   }, [session, screenGatePassed, logEvent, flushNow, stopAllMediaStreams, issueWarningStrike, handleSubmit, checkScreenIntegrity]);
@@ -2543,14 +2671,14 @@ export default function ExamTake() {
 
   const answeredCount =
     Object.values(answers).filter((v) => v !== undefined).length +
-    Object.values(codingAnswers).filter((ca) => ca && ca.code && ca.code.trim().length > 0).length;
+    Array.from(lockedCodingQuestions).length;
   const mm = remainingSeconds !== null ? String(Math.floor(remainingSeconds / 60)).padStart(2, "0") : "00";
   const ss = remainingSeconds !== null ? String(remainingSeconds % 60).padStart(2, "0") : "00";
 
   const warningStyle =
-    warningStrikes >= 3
+    warningStrikes >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3))
       ? "bg-red-600 text-white border-red-700 font-bold"
-      : warningStrikes === 2
+      : warningStrikes >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1
       ? "bg-orange-500 text-white border-orange-600 font-bold"
       : warningStrikes === 1
       ? "bg-amber-500 text-slate-950 border-amber-600 font-semibold"
@@ -2558,23 +2686,45 @@ export default function ExamTake() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Fullscreen Recovery Overlay */}
+      {/* Fullscreen Recovery Overlay - Inescapable Lockdown Shield */}
       {fullscreenExited && !submittedRef.current && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-6 text-center animate-in fade-in duration-200">
-          <div className="bg-slate-900 border-2 border-red-500 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-4">
-            <div className="w-16 h-16 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-pulse">
+        <div
+          onClick={async () => {
+            try {
+              if (document.documentElement.requestFullscreen) {
+                await document.documentElement.requestFullscreen();
+              }
+              setFullscreenExited(false);
+            } catch (e) {
+              console.warn("Fullscreen request error:", e);
+            }
+          }}
+          className="fixed inset-0 z-[999999] bg-slate-950/98 backdrop-blur-2xl flex items-center justify-center p-6 text-center animate-in fade-in duration-150 cursor-pointer select-none"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-900 border-2 border-red-500 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-4"
+          >
+            <div className="w-16 h-16 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-bounce">
               ⚠️
             </div>
-            <h2 className="text-xl font-bold text-white">Fullscreen Mode Required</h2>
+            <h2 className="text-xl font-bold text-white tracking-tight">Fullscreen Mode Mandatory</h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              You exited fullscreen mode. Proctoring policy requires the examination to remain in fullscreen at all times.
+              You exited fullscreen mode. Proctoring policy strictly requires the examination to remain in fullscreen at all times.
             </p>
-            <div className="bg-red-950/60 border border-red-800/80 rounded-lg p-3 text-red-300 text-xs font-semibold">
-              Warning Strike {Math.min(fullscreenViolationCount.current, 3)} of 3
-              {fullscreenViolationCount.current >= 3 ? " — Examination Terminating" : " — Re-enter immediately"}
+            <div className="bg-red-950/70 border border-red-800 text-red-300 text-xs p-3.5 rounded-xl font-semibold space-y-1">
+              <p className="font-bold text-red-200">
+                Warning Strike {Math.min(fullscreenViolationCount.current, session?.maxWarnings ?? (session?.isClass ? 10 : 3))} of {session?.maxWarnings ?? (session?.isClass ? 10 : 3)}
+              </p>
+              <p className="text-[11px] text-red-400">
+                {fullscreenViolationCount.current >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3))
+                  ? "Examination Terminating..."
+                  : "A strike is triggered every 2 seconds until you return to fullscreen!"}
+              </p>
             </div>
-            {fullscreenViolationCount.current < 3 && (
+            {fullscreenViolationCount.current < (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) && (
               <button
+                type="button"
                 onClick={async () => {
                   try {
                     if (document.documentElement.requestFullscreen) {
@@ -2585,9 +2735,9 @@ export default function ExamTake() {
                     console.warn("Fullscreen request error:", e);
                   }
                 }}
-                className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg cursor-pointer text-sm"
+                className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl transition shadow-lg cursor-pointer text-sm"
               >
-                ⤢ Re-enter Fullscreen Mode
+                ⤢ Click Anywhere to Re-enter Fullscreen
               </button>
             )}
           </div>
@@ -2669,9 +2819,9 @@ export default function ExamTake() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div
             className={`bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 sm:p-8 border-4 text-center ${
-              activeWarningModal.strike >= 3
+              activeWarningModal.strike >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3))
                 ? "border-red-600 shadow-red-500/30"
-                : activeWarningModal.strike === 2
+                : activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1
                 ? "border-orange-500 shadow-orange-500/30"
                 : "border-amber-500 shadow-amber-500/30"
             }`}
@@ -2680,33 +2830,33 @@ export default function ExamTake() {
             <div className="flex flex-col items-center mb-4">
               <div
                 className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mb-3 shadow-inner ${
-                  activeWarningModal.strike >= 3
+                  activeWarningModal.strike >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3))
                     ? "bg-red-100 text-red-600 border-2 border-red-300 animate-bounce"
-                    : activeWarningModal.strike === 2
+                    : activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1
                     ? "bg-orange-100 text-orange-600 border-2 border-orange-300"
                     : "bg-amber-100 text-amber-600 border-2 border-amber-300"
                 }`}
               >
-                {activeWarningModal.strike >= 3 ? "⛔" : activeWarningModal.strike === 2 ? "🚨" : "⚠️"}
+                {activeWarningModal.strike >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) ? "⛔" : activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1 ? "🚨" : "⚠️"}
               </div>
               <span
                 className={`inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
-                  activeWarningModal.strike >= 3
+                  activeWarningModal.strike >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3))
                     ? "bg-red-600 text-white"
-                    : activeWarningModal.strike === 2
+                    : activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1
                     ? "bg-orange-600 text-white"
                     : "bg-amber-500 text-white"
                 }`}
               >
-                Strike {activeWarningModal.strike} of 3
+                Strike {activeWarningModal.strike} of {session?.maxWarnings ?? (session?.isClass ? 10 : 3)}
               </span>
             </div>
 
             <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">
-              {activeWarningModal.strike >= 3
-                ? "Examination Terminated: Strike 3 Reached"
-                : activeWarningModal.strike === 2
-                ? "FINAL WARNING: Strike 2 Issued"
+              {activeWarningModal.strike >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3))
+                ? `Examination Terminated: Strike ${session?.maxWarnings ?? (session?.isClass ? 10 : 3)} Reached`
+                : activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1
+                ? `FINAL WARNING: Strike ${activeWarningModal.strike} Issued`
                 : "Proctoring Warning: Strike 1 Issued"}
             </h3>
 
@@ -2722,17 +2872,17 @@ export default function ExamTake() {
               </div>
             </div>
 
-            {activeWarningModal.strike < 3 ? (
+            {activeWarningModal.strike < (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) ? (
               <>
                 <p className="text-xs text-slate-600 mb-6 leading-relaxed">
-                  {activeWarningModal.strike === 2
+                  {activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1
                     ? "This is your LAST warning. Any subsequent violation (tab switch, continuous look-away, or exiting fullscreen) will immediately terminate and submit your examination."
-                    : "Please remain focused on your examination screen. Reaching 3 strikes will automatically terminate your session."}
+                    : `Please remain focused on your examination screen. Reaching ${session?.maxWarnings ?? (session?.isClass ? 10 : 3)} strikes will automatically terminate your session.`}
                 </p>
                 <button
                   onClick={() => setActiveWarningModal(null)}
                   className={`w-full py-3 px-6 rounded-xl font-bold text-white text-base shadow-lg transition-transform active:scale-98 cursor-pointer ${
-                    activeWarningModal.strike === 2
+                    activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1
                       ? "bg-orange-600 hover:bg-orange-700 shadow-orange-500/25"
                       : "bg-amber-600 hover:bg-amber-700 shadow-amber-500/25"
                   }`}
@@ -3010,7 +3160,7 @@ export default function ExamTake() {
                 ? "bg-slate-800 text-slate-300 border-slate-700"
                 : warningStrikes === 1
                 ? "bg-amber-500/20 text-amber-300 border-amber-500/60"
-                : warningStrikes === 2
+                : warningStrikes >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1
                 ? "bg-orange-500/30 text-orange-300 border-orange-500 animate-pulse"
                 : "bg-red-500/40 text-red-200 border-red-500 animate-bounce"
             }`}
@@ -3025,7 +3175,7 @@ export default function ExamTake() {
                   : "bg-red-600 text-white"
               }`}
             >
-              {warningStrikes} / 3
+              {warningStrikes} / {session?.maxWarnings ?? (session?.isClass ? 10 : 3)}
             </span>
           </div>
           {/* Hardware indicators */}
@@ -3315,7 +3465,8 @@ export default function ExamTake() {
                     )}
                     <div className="flex-1 min-h-0">
                       <CodeEditor
-                        initialCode={codingAnswers[q.questionId]?.code || q.codeTemplate}
+                        key={q.questionId}
+                        initialCode={codingAnswers[q.questionId]?.code ?? q.codeTemplate ?? ""}
                         initialLanguage={effectiveInitialLang}
                         allowedLanguages={parsedAllowed}
                         sampleTestCases={q.sampleTestCases || []}
@@ -3449,8 +3600,8 @@ export default function ExamTake() {
                     </button>
                   )}
 
-                  {/* If on final question or all questions completed, allow Final Class/Exam Submission */}
-                  {(allCompleted || current === questions.length - 1) && (
+                  {/* If all questions completed (strictly required for class sessions), allow Final Class/Exam Submission */}
+                  {(session?.isClass ? allCompleted : (allCompleted || current === questions.length - 1)) && (
                     <button
                       type="button"
                       onClick={() => handleSubmit()}
@@ -3482,7 +3633,7 @@ export default function ExamTake() {
             const isCoding = String(qq.questionType || "").trim().toUpperCase() === "CODING";
             const isAnswered =
               isCoding
-                ? lockedCodingQuestions.has(qq.questionId) || Boolean(questionTestCasesPassed[qq.questionId])
+                ? lockedCodingQuestions.has(qq.questionId)
                 : answers[qq.questionId] !== undefined;
 
             return (
@@ -3550,7 +3701,7 @@ export default function ExamTake() {
                 {questions.map((qq, idx) => {
                   const isCoding = String(qq.questionType || "").trim().toUpperCase() === "CODING";
                   const isAnswered = isCoding
-                    ? lockedCodingQuestions.has(qq.questionId) || Boolean(questionTestCasesPassed[qq.questionId])
+                    ? lockedCodingQuestions.has(qq.questionId)
                     : answers[qq.questionId] !== undefined;
                   const isCurrent = idx === current;
 

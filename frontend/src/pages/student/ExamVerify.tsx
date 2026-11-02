@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { api, getCurrentUser, setToken } from "../../api/client";
 
 interface VerifyResponse {
@@ -87,9 +87,13 @@ export default function ExamVerify() {
               );
               navigate(`/exam/${examId}/system-check`, { replace: true });
               return;
+            } else if (!res.verified && res.message) {
+              setError(res.message);
+              return;
             }
           } catch (autoErr: any) {
-            console.warn("Class auto-verify fallback to manual entry:", autoErr);
+            console.warn("Class auto-verify error:", autoErr);
+            setError(autoErr instanceof Error ? autoErr.message : "Verification error");
           } finally {
             setSubmitting(false);
           }
@@ -166,7 +170,7 @@ export default function ExamVerify() {
               <span className={`px-2 py-0.5 rounded-full font-semibold text-[11px] ${
                 examMeta.isClass ? "bg-indigo-100 text-indigo-800" : examMeta.durationMinutes ? "bg-blue-100 text-blue-800" : "bg-indigo-100 text-indigo-800"
               }`}>
-                {examMeta.isClass ? "♾️ Untimed Class (Infinite Attempts)" : examMeta.durationMinutes ? `${examMeta.durationMinutes} mins` : "♾️ Untimed"}
+                {examMeta.isClass ? "♾️ Untimed Class Assessment" : examMeta.durationMinutes ? `${examMeta.durationMinutes} mins` : "♾️ Untimed"}
               </span>
             </div>
             {examMeta.subject && (
@@ -278,16 +282,28 @@ export default function ExamVerify() {
           )}
 
           {error && (
-            <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-800 text-xs flex items-start gap-2">
-              <span className="text-red-500 font-bold">✕</span>
-              <span>{error}</span>
+            <div className="rounded-lg bg-red-50 border border-red-200 p-3.5 text-red-800 text-xs flex items-start gap-2">
+              <span className="text-red-500 font-bold text-sm shrink-0">✕</span>
+              <div className="flex-1">
+                <span className="font-semibold">{error}</span>
+                {error.toLowerCase().includes("already completed") && (
+                  <div className="mt-2.5">
+                    <Link
+                      to="/"
+                      className="inline-flex items-center gap-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md font-bold text-xs transition shadow-xs"
+                    >
+                      ← Return to Dashboard
+                    </Link>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           <button
             type="submit"
-            disabled={submitting}
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-50 shadow-sm cursor-pointer"
+            disabled={submitting || (error !== null && error.toLowerCase().includes("already completed"))}
+            className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm cursor-pointer"
           >
             {submitting
               ? "Entering Session…"

@@ -17,8 +17,9 @@ public record StartExamResponse(
         Map<Long, Integer> savedAnswers,
         Map<Long, SavedCodeAnswer> savedCodingAnswers,
         Boolean isClass,
-        List<Long> completedQuestionIds
+        List<Long> completedQuestionIds,
+        Integer warningStrikes,
+        Integer maxWarnings
 ) {
     public record SavedCodeAnswer(String code, String language) {}
 }
-

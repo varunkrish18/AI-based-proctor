@@ -15,6 +15,9 @@ public interface ExamAttemptRepository extends JpaRepository<ExamAttempt, Long>,
 
     List<ExamAttempt> findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(Long examId, String studentEmail);
 
+    @Query("SELECT a FROM ExamAttempt a WHERE a.exam.id = :examId AND LOWER(a.studentEmail) IN :identifiers ORDER BY a.attemptNumber DESC")
+    List<ExamAttempt> findByExamIdAndStudentIdentifiers(@Param("examId") Long examId, @Param("identifiers") java.util.Collection<String> identifiers);
+
     List<ExamAttempt> findByStudentEmailIgnoreCaseIn(java.util.Collection<String> studentEmails);
 
     Optional<ExamAttempt> findByIdAndStudentEmailIgnoreCase(Long id, String studentEmail);

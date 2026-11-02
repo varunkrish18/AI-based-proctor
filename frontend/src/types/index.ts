@@ -120,6 +120,8 @@ export interface StartExamResponse {
   savedCodingAnswers?: Record<number, { code: string; language: string }>;
   isClass?: boolean;
   completedQuestionIds?: number[];
+  warningStrikes?: number;
+  maxWarnings?: number;
 }
 
 export interface AttemptResult {

@@ -111,7 +111,7 @@ export default function Exams() {
                   {exam.numQuestions} questions &middot;{" "}
                   {exam.isClass ? "♾️ Untimed Class" : exam.durationMinutes ? `${exam.durationMinutes} min` : "♾️ Untimed"}
                 </p>
-                {exam.assignedProfessorName && (
+                {exam.assignedProfessorName && !exam.assignedProfessorName.toLowerCase().startsWith("all department faculty") && (
                   <p className="text-xs text-indigo-700 font-semibold flex items-center gap-1">
                     <span>👨‍🏫</span> Faculty: {exam.assignedProfessorName}
                   </p>
@@ -121,8 +121,8 @@ export default function Exams() {
                 </p>
               </div>
               <div className="mt-auto">
-                {(!exam.isClass && exam.studentAttemptStatus === "COMPLETED") ? (
-                  <button disabled className="w-full bg-slate-100 text-slate-400 py-2 rounded-md font-semibold text-sm cursor-not-allowed flex items-center justify-center gap-1">
+                {exam.studentAttemptStatus === "COMPLETED" ? (
+                  <button disabled className="w-full bg-slate-100 text-slate-400 py-2 rounded-md font-semibold text-sm cursor-not-allowed flex items-center justify-center gap-1" title="You have already submitted and completed this session. Re-taking is not allowed.">
                     <span>✓</span> Completed
                   </button>
                 ) : effectiveStatus === "OPEN" ? (
@@ -131,15 +131,11 @@ export default function Exams() {
                     className={`block text-center text-white py-2 rounded-md font-semibold text-sm transition-colors ${
                       exam.studentAttemptStatus === "INCOMPLETE"
                         ? "bg-amber-600 hover:bg-amber-700"
-                        : exam.isClass && exam.studentAttemptStatus === "COMPLETED"
-                        ? "bg-indigo-600 hover:bg-indigo-700"
                         : "bg-blue-600 hover:bg-blue-700"
                     }`}
                   >
                     {exam.studentAttemptStatus === "INCOMPLETE"
                       ? "Resume Class"
-                      : exam.isClass && exam.studentAttemptStatus === "COMPLETED"
-                      ? "Retake Class ↻"
                       : `Start ${exam.isClass ? "Class" : "Exam"}`}
                   </Link>
                 ) : (
