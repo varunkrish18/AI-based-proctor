@@ -92,8 +92,9 @@ public class UnifiedAuthService {
             admin.setLockedUntil(null);
             adminRepository.save(admin);
 
-            boolean mustReset = Boolean.TRUE.equals(admin.getMustResetPassword());
             String role = admin.getRole() != null ? admin.getRole().toUpperCase() : "ADMIN";
+            boolean isAdmin = "ADMIN".equalsIgnoreCase(role) || "SUPER_ADMIN".equalsIgnoreCase(role);
+            boolean mustReset = !isAdmin && Boolean.TRUE.equals(admin.getMustResetPassword());
             String accessToken = jwtService.generateUserToken(admin.getEmail(), role, admin.getDepartment(), admin.getFullName(), null, mustReset);
             String rawRefreshToken = issueRefreshToken(admin);
 
@@ -225,13 +226,15 @@ public class UnifiedAuthService {
 
         Admin admin = adminRepository.findByEmail(callerEmail.toLowerCase()).orElse(null);
         if (admin != null) {
+            String adminRole = admin.getRole() != null ? admin.getRole().toUpperCase() : "ADMIN";
+            boolean isActualAdmin = "ADMIN".equalsIgnoreCase(adminRole) || "SUPER_ADMIN".equalsIgnoreCase(adminRole);
             return Map.of(
                     "email", admin.getEmail(),
                     "fullName", admin.getFullName(),
                     "role", admin.getRole(),
                     "department", admin.getDepartment() != null ? admin.getDepartment() : "",
                     "identifier", "",
-                    "mustResetPassword", Boolean.TRUE.equals(admin.getMustResetPassword())
+                    "mustResetPassword", !isActualAdmin && Boolean.TRUE.equals(admin.getMustResetPassword())
             );
         }
 

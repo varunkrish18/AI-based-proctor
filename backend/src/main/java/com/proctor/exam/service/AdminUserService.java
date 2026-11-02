@@ -114,6 +114,7 @@ public class AdminUserService {
                 : null;
 
 
+        boolean isCreatedAdmin = "ADMIN".equalsIgnoreCase(role) || "SUPER_ADMIN".equalsIgnoreCase(role);
         Admin admin = Admin.builder()
                 .email(email)
                 .fullName(request.fullName().trim())
@@ -121,6 +122,7 @@ public class AdminUserService {
                 .displayPassword(rawPassword)
                 .role(role)
                 .department(department)
+                .mustResetPassword(!isCreatedAdmin)
                 .failedAttempts(0)
                 .lockedUntil(null)
                 .createdAt(Instant.now())

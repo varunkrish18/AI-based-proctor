@@ -293,18 +293,43 @@ public class StudentExamService {
 
                 Long assignerId = assignmentOpt.map(ExamAssignment::getAssignedByProfessorId).orElse(null);
                 String assignerEmail = assignmentOpt.map(ExamAssignment::getAssignedByProfessorEmail).orElse(null);
-                if (assignerId == null && assignerEmail != null && !assignerEmail.isBlank()) {
+                if (assignerId == null && assignerEmail == null) {
+                    assignerId = exam.getAssignedProfessorId();
+                    assignerEmail = exam.getAssignedProfessorEmail();
+                }
+
+                Long targetProfId = null;
+                Long targetAdminId = null;
+
+                if (assignerEmail != null && !assignerEmail.isBlank() && !"ALL_PROFESSORS".equalsIgnoreCase(assignerEmail)) {
                     Professor p = professorRepository.findByEmailIgnoreCase(assignerEmail.trim()).orElse(null);
-                    if (p != null) assignerId = p.getId();
-                    else {
-                        Admin a = adminRepository.findByEmail(assignerEmail.trim().toLowerCase()).orElse(null);
-                        if (a != null) assignerId = a.getId();
+                    Admin a = adminRepository.findByEmail(assignerEmail.trim().toLowerCase()).orElse(null);
+                    if (p != null) targetProfId = p.getId();
+                    if (a != null) targetAdminId = a.getId();
+                }
+                if (targetProfId == null && assignerId != null) {
+                    Professor p = professorRepository.findById(assignerId).orElse(null);
+                    if (p != null) {
+                        targetProfId = p.getId();
+                        Admin a = adminRepository.findByEmail(p.getEmail().toLowerCase()).orElse(null);
+                        if (a != null) targetAdminId = a.getId();
+                    } else {
+                        Admin a = adminRepository.findById(assignerId).orElse(null);
+                        if (a != null) {
+                            targetAdminId = a.getId();
+                            Professor pFromA = professorRepository.findByEmailIgnoreCase(a.getEmail()).orElse(null);
+                            if (pFromA != null) targetProfId = pFromA.getId();
+                        }
                     }
                 }
 
-                final Long targetProfId = assignerId;
+                final Long finalProfId = targetProfId;
+                final Long finalAdminId = targetAdminId;
+
                 List<ExamQuestion> bank = allBank.stream()
-                        .filter(q -> isCoordinatorQuestion(q, exam) || (targetProfId != null && targetProfId.equals(q.getCreatedBy())))
+                        .filter(q -> isCoordinatorQuestion(q, exam) 
+                                || (finalProfId != null && finalProfId.equals(q.getCreatedBy()))
+                                || (finalAdminId != null && finalAdminId.equals(q.getCreatedBy())))
                         .toList();
 
                 if (bank.isEmpty()) {

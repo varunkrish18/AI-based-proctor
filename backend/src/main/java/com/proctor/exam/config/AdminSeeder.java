@@ -26,6 +26,7 @@ public class AdminSeeder implements CommandLineRunner {
                     .passwordHash(passwordEncoder.encode("admin123"))
                     .displayPassword("admin123")
                     .role("ADMIN")
+                    .mustResetPassword(false)
                     .build();
             adminRepository.save(admin);
             System.out.println("Default admin created: admin@proctor.com / admin123");
@@ -33,6 +34,7 @@ public class AdminSeeder implements CommandLineRunner {
             adminRepository.findByEmail("admin@proctor.com").ifPresent(admin -> {
                 if (admin.getDisplayPassword() == null || admin.getDisplayPassword().isBlank()) {
                     admin.setDisplayPassword("admin123");
+                    admin.setMustResetPassword(false);
                     adminRepository.save(admin);
                 }
             });
@@ -45,6 +47,7 @@ public class AdminSeeder implements CommandLineRunner {
                     .passwordHash(passwordEncoder.encode("proctor123"))
                     .displayPassword("proctor123")
                     .role("ADMIN")
+                    .mustResetPassword(false)
                     .build();
             adminRepository.save(proctor);
             System.out.println("Second user created: proctor@proctor.com / proctor123");
@@ -52,6 +55,7 @@ public class AdminSeeder implements CommandLineRunner {
             adminRepository.findByEmail("proctor@proctor.com").ifPresent(proctor -> {
                 if (proctor.getDisplayPassword() == null || proctor.getDisplayPassword().isBlank()) {
                     proctor.setDisplayPassword("proctor123");
+                    proctor.setMustResetPassword(false);
                     adminRepository.save(proctor);
                 }
             });
@@ -62,6 +66,7 @@ public class AdminSeeder implements CommandLineRunner {
             admin.setDisplayPassword("admin123");
             admin.setFailedAttempts(0);
             admin.setLockedUntil(null);
+            admin.setMustResetPassword(false);
             adminRepository.save(admin);
             System.out.println("admin@example.com password set to: admin123");
         });

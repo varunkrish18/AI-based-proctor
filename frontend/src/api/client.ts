@@ -401,7 +401,13 @@ export function isUserAuthenticated(): boolean {
 
 export function getMustResetPassword(): boolean {
   const user = getCurrentUser();
-  return !!user?.mustResetPassword;
+  if (!user) return false;
+  const role = user.role?.toUpperCase();
+  // Admin is permanently exempt from password reset
+  if (role === "ADMIN" || role === "SUPER_ADMIN") {
+    return false;
+  }
+  return !!user.mustResetPassword;
 }
 
 export function clearAllAuth() {

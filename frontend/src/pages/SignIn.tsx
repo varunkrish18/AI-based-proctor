@@ -22,7 +22,9 @@ export default function SignIn() {
 
     try {
       const auth = await unifiedLogin(identifier.trim(), password);
-      if (auth.mustResetPassword) {
+      const role = auth.role?.toUpperCase();
+      const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+      if (auth.mustResetPassword && !isAdmin) {
         navigate("/reset-password", { replace: true });
       } else {
         navigate("/", { replace: true });
@@ -78,9 +80,7 @@ export default function SignIn() {
                 🆔
               </div>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              E.g., <span className="font-mono text-slate-600">PROF-CS-01</span>, <span className="font-mono text-slate-600">2117250020032</span>, or registered email
-            </p>
+
           </div>
 
           <div>
@@ -143,11 +143,7 @@ export default function SignIn() {
           </button>
         </form>
 
-        <div className="mt-6 pt-5 border-t border-slate-200 text-center">
-          <p className="text-[11px] text-slate-500">
-            First time logging in? Use the temporary credentials provided by your Administrator. You will be prompted to reset your password.
-          </p>
-        </div>
+
       </div>
     </div>
   );

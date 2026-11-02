@@ -475,8 +475,11 @@ public class ExamAdminService {
                     String email = staffEmail.trim().toLowerCase();
                     Admin callerAdmin = adminRepository.findByEmail(email).orElse(null);
                     Professor callerProf = professorRepository.findByEmailIgnoreCase(email).orElse(null);
-                    Long callerId = callerProf != null ? callerProf.getId() : (callerAdmin != null ? callerAdmin.getId() : null);
-                    if (q.getCreatedBy() == null || !q.getCreatedBy().equals(callerId) || !"PROFESSOR".equalsIgnoreCase(q.getCreatedByRole())) {
+                    Long profEntityId = callerProf != null ? callerProf.getId() : null;
+                    Long adminEntityId = callerAdmin != null ? callerAdmin.getId() : null;
+                    boolean isMyQuestion = (profEntityId != null && profEntityId.equals(q.getCreatedBy()))
+                            || (adminEntityId != null && adminEntityId.equals(q.getCreatedBy()));
+                    if (!isMyQuestion || !"PROFESSOR".equalsIgnoreCase(q.getCreatedByRole())) {
                         isCoordinatorQuestion = true;
                     }
                 }
@@ -631,16 +634,18 @@ public class ExamAdminService {
             String email = adminEmail.trim().toLowerCase();
             Admin callerAdmin = adminRepository.findByEmail(email).orElse(null);
             Professor callerProf = professorRepository.findByEmailIgnoreCase(email).orElse(null);
-            if (callerAdmin != null) {
+            boolean isProf = callerProf != null || (callerAdmin != null && ("PROFESSOR".equalsIgnoreCase(callerAdmin.getRole()) || "EXAMINER".equalsIgnoreCase(callerAdmin.getRole()) || "FACULTY".equalsIgnoreCase(callerAdmin.getRole())));
+
+            if (isProf) {
+                creatorId = callerProf != null ? callerProf.getId() : callerAdmin.getId();
+                creatorRole = "PROFESSOR";
+                coordinatorFlag = false;
+            } else if (callerAdmin != null) {
                 creatorId = callerAdmin.getId();
                 creatorRole = callerAdmin.getRole() != null ? callerAdmin.getRole().toUpperCase() : "ADMIN";
                 if ("COURSE_COORDINATOR".equalsIgnoreCase(callerAdmin.getRole())) {
                     coordinatorFlag = true;
                 }
-            } else if (callerProf != null) {
-                creatorId = callerProf.getId();
-                creatorRole = "PROFESSOR";
-                coordinatorFlag = false;
             }
         }
 
@@ -867,10 +872,13 @@ public class ExamAdminService {
         boolean isCoordinator = admin != null && "COURSE_COORDINATOR".equalsIgnoreCase(admin.getRole());
 
         if (isProf) {
-            Long callerId = prof != null ? prof.getId() : (admin != null ? admin.getId() : null);
-            // Prof A sees Coordinator questions + questions added by Prof A. Does NOT see Prof B's questions!
+            Long profEntityId = prof != null ? prof.getId() : null;
+            Long adminEntityId = admin != null ? admin.getId() : null;
+            // Prof A sees Coordinator questions + questions added by Prof A (matches either professors.id or synced admins.id)
             return all.stream()
-                    .filter(q -> isCoordinatorQuestion(q, exam) || (callerId != null && callerId.equals(q.getCreatedBy())))
+                    .filter(q -> isCoordinatorQuestion(q, exam) 
+                            || (profEntityId != null && profEntityId.equals(q.getCreatedBy()))
+                            || (adminEntityId != null && adminEntityId.equals(q.getCreatedBy())))
                     .toList();
         } else if (isCoordinator) {
             // Coordinator sees only Coordinator questions. Prof A & Prof B questions do NOT reflect for Coordinator!
@@ -1294,18 +1302,43 @@ public class ExamAdminService {
             // Shuffle a copy and take the first N
             Long assignerId = enrollment.getAssignedByProfessorId();
             String assignerEmail = enrollment.getAssignedByProfessorEmail();
-            if (assignerId == null && assignerEmail != null && !assignerEmail.isBlank()) {
+            if (assignerId == null && assignerEmail == null) {
+                assignerId = exam.getAssignedProfessorId();
+                assignerEmail = exam.getAssignedProfessorEmail();
+            }
+
+            Long targetProfId = null;
+            Long targetAdminId = null;
+
+            if (assignerEmail != null && !assignerEmail.isBlank() && !"ALL_PROFESSORS".equalsIgnoreCase(assignerEmail)) {
                 Professor p = professorRepository.findByEmailIgnoreCase(assignerEmail.trim()).orElse(null);
-                if (p != null) assignerId = p.getId();
-                else {
-                    Admin a = adminRepository.findByEmail(assignerEmail.trim().toLowerCase()).orElse(null);
-                    if (a != null) assignerId = a.getId();
+                Admin a = adminRepository.findByEmail(assignerEmail.trim().toLowerCase()).orElse(null);
+                if (p != null) targetProfId = p.getId();
+                if (a != null) targetAdminId = a.getId();
+            }
+            if (targetProfId == null && assignerId != null) {
+                Professor p = professorRepository.findById(assignerId).orElse(null);
+                if (p != null) {
+                    targetProfId = p.getId();
+                    Admin a = adminRepository.findByEmail(p.getEmail().toLowerCase()).orElse(null);
+                    if (a != null) targetAdminId = a.getId();
+                } else {
+                    Admin a = adminRepository.findById(assignerId).orElse(null);
+                    if (a != null) {
+                        targetAdminId = a.getId();
+                        Professor pFromA = professorRepository.findByEmailIgnoreCase(a.getEmail()).orElse(null);
+                        if (pFromA != null) targetProfId = pFromA.getId();
+                    }
                 }
             }
 
-            final Long targetProfId = assignerId;
+            final Long finalProfId = targetProfId;
+            final Long finalAdminId = targetAdminId;
+
             List<ExamQuestion> studentBank = bank.stream()
-                    .filter(q -> isCoordinatorQuestion(q, exam) || (targetProfId != null && targetProfId.equals(q.getCreatedBy())))
+                    .filter(q -> isCoordinatorQuestion(q, exam) 
+                            || (finalProfId != null && finalProfId.equals(q.getCreatedBy()))
+                            || (finalAdminId != null && finalAdminId.equals(q.getCreatedBy())))
                     .toList();
 
             if (studentBank.isEmpty()) {
