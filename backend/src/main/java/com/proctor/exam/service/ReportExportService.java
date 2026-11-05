@@ -839,6 +839,7 @@ public class ReportExportService {
     }
 
     private void renderWarningStrikesDoc(com.lowagie.text.Document doc, Exam exam, List<ExamAttempt> attempts) throws com.lowagie.text.DocumentException {
+        int maxStrikes = Boolean.TRUE.equals(exam.getIsClass()) ? 10 : 3;
         com.lowagie.text.Font titleFont = new com.lowagie.text.Font(
                 com.lowagie.text.Font.HELVETICA, 14, com.lowagie.text.Font.BOLD, new java.awt.Color(185, 28, 28));
         com.lowagie.text.Font subTitleFont = new com.lowagie.text.Font(
@@ -928,7 +929,7 @@ public class ReportExportService {
             addPdfInfoCell(candInfo, "Student Name:", metaLabelFont, studentName, metaValFont);
             addPdfInfoCell(candInfo, "Register Number:", metaLabelFont, regNumber, metaValFont);
             addPdfInfoCell(candInfo, "Mail ID (Email):", metaLabelFont, studentEmail, metaValFont);
-            addPdfInfoCell(candInfo, "Total Strikes Incurred:", metaLabelFont, strikes.size() + " / 3 Strikes (" + (strikes.size() >= 3 ? "EXAM TERMINATED" : (strikes.size() == 2 ? "FINAL WARNING" : "WARNING ISSUED")) + ")", strikeBadgeFont);
+            addPdfInfoCell(candInfo, "Total Strikes Incurred:", metaLabelFont, strikes.size() + " / " + maxStrikes + " Strikes (" + (strikes.size() >= maxStrikes ? "EXAM TERMINATED" : (strikes.size() >= maxStrikes - 1 ? "FINAL WARNING" : "WARNING ISSUED")) + ")", strikeBadgeFont);
 
             doc.add(candInfo);
 
@@ -945,7 +946,7 @@ public class ReportExportService {
             addStyledHeaderCell(sTable, "Action Taken", tableHeaderFont);
 
             for (StrikeDetail s : strikes) {
-                addStyledBodyCell(sTable, "Strike " + s.strike + " of 3", strikeBadgeFont, com.lowagie.text.Element.ALIGN_CENTER, new java.awt.Color(254, 242, 242));
+                addStyledBodyCell(sTable, "Strike " + s.strike + " of " + maxStrikes, strikeBadgeFont, com.lowagie.text.Element.ALIGN_CENTER, new java.awt.Color(254, 242, 242));
                 addStyledBodyCell(sTable, s.occurredAt != null ? FMT.format(s.occurredAt) : "—", cellFont, com.lowagie.text.Element.ALIGN_CENTER, null);
                 addStyledBodyCell(sTable, s.violationType, cellFont, com.lowagie.text.Element.ALIGN_LEFT, null);
                 addStyledBodyCell(sTable, s.reason, cellFont, com.lowagie.text.Element.ALIGN_LEFT, null);
@@ -962,6 +963,7 @@ public class ReportExportService {
     }
 
     private List<StrikeDetail> getStrikesForAttempt(ExamAttempt attempt) {
+        int maxStrikes = (attempt.getExam() != null && Boolean.TRUE.equals(attempt.getExam().getIsClass())) ? 10 : 3;
         List<StrikeDetail> strikes = new ArrayList<>();
         Map<Integer, StrikeDetail> strikeByLevel = new HashMap<>();
 
@@ -969,7 +971,7 @@ public class ReportExportService {
         List<Warning> warnings = warningRepository.findByAttemptIdOrderByCreatedAtAsc(attempt.getId());
         for (Warning w : warnings) {
             int lvl = w.getLevel() != null ? w.getLevel().intValue() : 1;
-            String action = lvl >= 3 ? "EXAM_TERMINATED" : (lvl == 2 ? "FINAL_WARNING" : "WARNING_ISSUED");
+            String action = lvl >= maxStrikes ? "EXAM_TERMINATED" : (lvl >= maxStrikes - 1 ? "FINAL_WARNING" : "WARNING_ISSUED");
             strikeByLevel.put(lvl, new StrikeDetail(
                     lvl,
                     w.getCreatedAt(),
@@ -1006,7 +1008,7 @@ public class ReportExportService {
                     } catch (Exception ignored) {}
                 }
                 String combinedReason = desc.isBlank() ? reason : (reason + " (" + desc + ")");
-                action = strikeNum >= 3 ? "EXAM_TERMINATED" : (strikeNum == 2 ? "FINAL_WARNING" : "WARNING_ISSUED");
+                action = strikeNum >= maxStrikes ? "EXAM_TERMINATED" : (strikeNum >= maxStrikes - 1 ? "FINAL_WARNING" : "WARNING_ISSUED");
                 strikeByLevel.put(strikeNum, new StrikeDetail(
                         strikeNum,
                         ev.getOccurredAt(),

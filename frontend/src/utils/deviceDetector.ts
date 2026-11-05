@@ -57,7 +57,14 @@ export function checkIsMobileDevice(): DeviceCheckResult {
   
   const coarsePointer = Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
   const anyCoarsePointer = Boolean(window.matchMedia && window.matchMedia("(any-pointer: coarse)").matches);
-  const noHover = Boolean(window.matchMedia && window.matchMedia("(hover: none)").matches);
+  const finePointer = Boolean(window.matchMedia && window.matchMedia("(any-pointer: fine)").matches) || Boolean(window.matchMedia && window.matchMedia("(pointer: fine)").matches);
+  const hasHover = Boolean(window.matchMedia && window.matchMedia("(any-hover: hover)").matches) || Boolean(window.matchMedia && window.matchMedia("(hover: hover)").matches);
+  const noHover = Boolean(window.matchMedia && window.matchMedia("(hover: none)").matches) && !hasHover;
+
+  const isWindowsDesktop = ua.includes("windows nt") || platform.includes("win");
+  const isMacDesktop = (ua.includes("macintosh") || ua.includes("mac os x") || platform.includes("mac")) && !ua.includes("ipad") && !ua.includes("iphone");
+  const isLinuxDesktop = (ua.includes("x11") || platform.includes("linux")) && !ua.includes("android");
+  const isChromeOs = ua.includes("cros");
 
   const screenWidth = window.screen?.width || window.innerWidth || 1024;
   const screenHeight = window.screen?.height || window.innerHeight || 768;
@@ -65,6 +72,8 @@ export function checkIsMobileDevice(): DeviceCheckResult {
   const availHeight = window.screen?.availHeight || screenHeight;
   const minScreenDimension = Math.min(screenWidth, screenHeight);
   const webglRenderer = getWebGLRenderer();
+
+  const isPhysicalDesktopOrLaptop = (isWindowsDesktop || isMacDesktop || isLinuxDesktop || isChromeOs) && finePointer && minScreenDimension >= 600;
 
   const details = {
     userAgent: ua,
@@ -111,12 +120,14 @@ export function checkIsMobileDevice(): DeviceCheckResult {
   // 3. WebGL Mobile GPU Detection (Even in 'Desktop Site' mode, mobile GPUs are exposed)
   // Adreno (Qualcomm), Mali (ARM), PowerVR (Imagination), Immortalis, Apple GPU on mobile
   const isMobileGpu =
-    webglRenderer.includes("adreno") ||
-    webglRenderer.includes("mali") ||
-    webglRenderer.includes("powervr") ||
-    webglRenderer.includes("immortalis") ||
-    webglRenderer.includes("bifrost") ||
-    (webglRenderer.includes("apple") && maxTouchPoints > 1);
+    !isPhysicalDesktopOrLaptop && (
+      webglRenderer.includes("adreno") ||
+      webglRenderer.includes("mali") ||
+      webglRenderer.includes("powervr") ||
+      webglRenderer.includes("immortalis") ||
+      webglRenderer.includes("bifrost") ||
+      (webglRenderer.includes("apple") && maxTouchPoints > 1 && !isMacDesktop)
+    );
 
   if (isMobileGpu) {
     return {
@@ -127,12 +138,15 @@ export function checkIsMobileDevice(): DeviceCheckResult {
   }
 
   // 4. Platform Architecture (Android in desktop mode reports 'Linux armv8l' / 'Linux aarch64')
-  if (platform.includes("arm") || platform.includes("aarch64") || platform.includes("android") || platform.includes("iphone") || platform.includes("ipad")) {
-    return {
-      isMobile: true,
-      reason: `Mobile ARM architecture detected (${platform}). Physical desktop PC or laptop required.`,
-      details,
-    };
+  // Do NOT block Macs (Apple Silicon M1-M4 is ARM) or Windows on ARM PCs with physical mouse & desktop OS
+  if (!isPhysicalDesktopOrLaptop && !isMacDesktop && !isWindowsDesktop) {
+    if (platform.includes("arm") || platform.includes("aarch64") || platform.includes("android") || platform.includes("iphone") || platform.includes("ipad")) {
+      return {
+        isMobile: true,
+        reason: `Mobile ARM architecture detected (${platform}). Physical desktop PC or laptop required.`,
+        details,
+      };
+    }
   }
 
   // 5. Apple iPad / iPhone in "Request Desktop Website" mode
@@ -148,7 +162,8 @@ export function checkIsMobileDevice(): DeviceCheckResult {
 
   // 6. Android in "Desktop site" mode:
   // Android sets viewport to 980px, but physical touch screen has multi-touch (5+ touch points)
-  if (maxTouchPoints >= 5 && (hasTouchEvents || anyCoarsePointer)) {
+  // Do NOT block physical touchscreen laptops that have desktop OS and fine mouse/trackpad!
+  if (!isPhysicalDesktopOrLaptop && maxTouchPoints >= 5 && (hasTouchEvents || anyCoarsePointer)) {
     return {
       isMobile: true,
       reason: "Multi-touch smartphone/tablet capacitive screen detected (Desktop site active).",
@@ -176,7 +191,7 @@ export function checkIsMobileDevice(): DeviceCheckResult {
   }
 
   // 9. Coarse pointer with no mouse hover (touch screen phone)
-  if (hasTouchEvents && (coarsePointer || anyCoarsePointer) && noHover) {
+  if (!isPhysicalDesktopOrLaptop && hasTouchEvents && (coarsePointer || anyCoarsePointer) && noHover) {
     return {
       isMobile: true,
       reason: "Touchscreen mobile device detected with coarse pointer and no physical mouse.",

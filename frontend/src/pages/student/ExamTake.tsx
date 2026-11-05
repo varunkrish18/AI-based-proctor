@@ -35,14 +35,21 @@ function checkIsEntireScreen(videoTrack: MediaStreamTrack): { isEntireScreen: bo
     }
   }
 
-  // 2. Secondary heuristic check if displaySurface is omitted by browser
+  // 2. Secondary heuristic check if displaySurface is omitted by browser (Safari / macOS)
   const isWindowOrTab = /window|tab|chrome|edge|firefox|opera|brave|application/i.test(trackLabel);
-  const isScreenOrDisplay = /screen|monitor|display|entire/i.test(trackLabel);
-
-  if (isWindowOrTab || !isScreenOrDisplay) {
+  if (isWindowOrTab) {
     return {
       isEntireScreen: false,
-      reason: `Access Denied: Could not verify Entire Screen sharing (detected: "${trackLabel || "Unknown surface"}"). Please click the 'Entire Screen' tab in the browser dialog.`,
+      reason: `Access Denied: You selected a Window or Tab ("${trackLabel}"). You MUST choose 'Entire Screen' to take the examination.`,
+    };
+  }
+
+  // If trackLabel is empty (Safari on macOS privacy mode) or contains screen/monitor/display/entire/built-in/retina/macintosh
+  const isScreenOrDisplay = !trackLabel || /screen|monitor|display|entire|built-in|retina|macintosh|capture/i.test(trackLabel);
+  if (!isScreenOrDisplay) {
+    return {
+      isEntireScreen: false,
+      reason: `Access Denied: Could not verify Entire Screen sharing (detected: "${trackLabel}"). Please click the 'Entire Screen' tab in the browser dialog.`,
     };
   }
 
@@ -96,8 +103,10 @@ export default function ExamTake() {
   const [micAudioLevel, setMicAudioLevel] = useState<number>(0);
   const [screenStatus, setScreenStatus] = useState<string>("UNKNOWN");
   const [fullscreenExited, setFullscreenExited] = useState<boolean>(false);
+  const [fullscreenLockout, setFullscreenLockout] = useState<number>(0);
   const [pendingFullscreen, setPendingFullscreen] = useState<boolean>(false);
   const [isWindowBlurred, setIsWindowBlurred] = useState<boolean>(false);
+  const [defocusLockout, setDefocusLockout] = useState<number>(0);
   const [sidePanelDetected, setSidePanelDetected] = useState<boolean>(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiFrameAnalysisResponse | null>(null);
   const [cameraMinimized, setCameraMinimized] = useState<boolean>(false);
@@ -430,6 +439,23 @@ export default function ExamTake() {
     }, 5000);
     return () => clearTimeout(t);
   }, [voiceWarningPopup]);
+
+  // Lockout countdown timers for Fullscreen and Window Focus infractions
+  useEffect(() => {
+    if (fullscreenLockout <= 0) return;
+    const timer = setInterval(() => {
+      setFullscreenLockout((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [fullscreenLockout]);
+
+  useEffect(() => {
+    if (defocusLockout <= 0) return;
+    const timer = setInterval(() => {
+      setDefocusLockout((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [defocusLockout]);
 
   // Auto-dismiss gaze warning popup after 5 seconds
   useEffect(() => {
@@ -1954,6 +1980,7 @@ export default function ExamTake() {
         if (submittedRef.current) return;
 
         setFullscreenExited(true);
+        setFullscreenLockout(5);
         // Immediate Strike 1
         fullscreenViolationCount.current += 1;
 
@@ -1997,6 +2024,7 @@ export default function ExamTake() {
 
     function beginAttentionLoss(source: "visibility_hidden" | "window_blur") {
       setIsWindowBlurred(true);
+      setDefocusLockout(5);
       setWarning("Warning: please remain on the examination page.");
       if (lastAttentionLossTime.current === null) {
         lastAttentionLossTime.current = Date.now();
@@ -2632,7 +2660,7 @@ export default function ExamTake() {
 
   // Submitting / Exam Concluding Overlay
   if (submitting) {
-    const isViolationTermination = fullscreenExited || warningStrikes >= 3;
+    const isViolationTermination = fullscreenExited || warningStrikes >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3));
     return (
       <div
         className="fixed inset-0 z-[10000] flex flex-col items-center justify-center p-4 select-none backdrop-blur-md"
@@ -2690,6 +2718,7 @@ export default function ExamTake() {
       {fullscreenExited && !submittedRef.current && (
         <div
           onClick={async () => {
+            if (fullscreenLockout > 0) return;
             try {
               if (document.documentElement.requestFullscreen) {
                 await document.documentElement.requestFullscreen();
@@ -2699,7 +2728,7 @@ export default function ExamTake() {
               console.warn("Fullscreen request error:", e);
             }
           }}
-          className="fixed inset-0 z-[999999] bg-slate-950/98 backdrop-blur-2xl flex items-center justify-center p-6 text-center animate-in fade-in duration-150 cursor-pointer select-none"
+          className={`fixed inset-0 z-[999999] bg-slate-950/98 backdrop-blur-2xl flex items-center justify-center p-6 text-center animate-in fade-in duration-150 select-none ${fullscreenLockout > 0 ? "cursor-not-allowed" : "cursor-pointer"}`}
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -2725,7 +2754,9 @@ export default function ExamTake() {
             {fullscreenViolationCount.current < (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) && (
               <button
                 type="button"
+                disabled={fullscreenLockout > 0}
                 onClick={async () => {
+                  if (fullscreenLockout > 0) return;
                   try {
                     if (document.documentElement.requestFullscreen) {
                       await document.documentElement.requestFullscreen();
@@ -2735,9 +2766,15 @@ export default function ExamTake() {
                     console.warn("Fullscreen request error:", e);
                   }
                 }}
-                className="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl transition shadow-lg cursor-pointer text-sm"
+                className={`w-full text-white font-bold py-3.5 px-6 rounded-xl transition shadow-lg text-sm ${
+                  fullscreenLockout > 0
+                    ? "bg-slate-700 cursor-not-allowed opacity-75"
+                    : "bg-blue-600 hover:bg-blue-500 active:bg-blue-700 cursor-pointer"
+                }`}
               >
-                ⤢ Click Anywhere to Re-enter Fullscreen
+                {fullscreenLockout > 0
+                  ? `🔒 Locked: Wait ${fullscreenLockout}s to re-enter fullscreen`
+                  : "⤢ Click Anywhere to Re-enter Fullscreen"}
               </button>
             )}
           </div>
@@ -2784,12 +2821,16 @@ export default function ExamTake() {
       {isWindowBlurred && !sidePanelDetected && !fullscreenExited && !submittedRef.current && (
         <div
           onClick={() => {
+            if (defocusLockout > 0) return;
             window.focus();
             setIsWindowBlurred(false);
           }}
-          className="fixed inset-0 z-[110] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6 text-center animate-in fade-in duration-150 cursor-pointer"
+          className={`fixed inset-0 z-[110] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6 text-center animate-in fade-in duration-150 ${defocusLockout > 0 ? "cursor-not-allowed" : "cursor-pointer"}`}
         >
-          <div className="bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-4">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-4"
+          >
             <div className="w-16 h-16 bg-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-pulse">
               🔒
             </div>
@@ -2798,17 +2839,26 @@ export default function ExamTake() {
               Examination questions are hidden because your active focus moved to another application or window.
             </p>
             <div className="bg-rose-950/60 border border-rose-800 text-rose-300 text-xs p-3 rounded-lg font-semibold">
-              Click anywhere on this screen to restore focus and continue your examination.
+              Focus must remain strictly on the examination. Navigating away triggers mandatory infractions.
             </div>
             <button
+              type="button"
+              disabled={defocusLockout > 0}
               onClick={(e) => {
                 e.stopPropagation();
+                if (defocusLockout > 0) return;
                 window.focus();
                 setIsWindowBlurred(false);
               }}
-              className="w-full bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg text-sm cursor-pointer"
+              className={`w-full text-white font-bold py-3 px-6 rounded-xl transition shadow-lg text-sm ${
+                defocusLockout > 0
+                  ? "bg-slate-700 cursor-not-allowed opacity-75"
+                  : "bg-rose-600 hover:bg-rose-500 active:bg-rose-700 cursor-pointer"
+              }`}
             >
-              Click to Resume Exam Focus
+              {defocusLockout > 0
+                ? `🔒 Locked: Resume available in ${defocusLockout}s...`
+                : "Click to Resume Exam Focus"}
             </button>
           </div>
         </div>

@@ -489,7 +489,7 @@ export default function ExamDetail() {
         <ProfessorStudentReportTab exam={exam} />
       )}
       {tab === "assign" && <AssignTab exam={exam} onExamUpdated={setExam} />}
-      {tab === "results" && <ResultsTab examId={exam.id} />}
+      {tab === "results" && <ResultsTab examId={exam.id} exam={exam} />}
       {tab === "qassign" && (
         <QuestionAssignTab
           examId={exam.id}
@@ -4203,7 +4203,8 @@ function formatAttemptTime(isoString?: string | null): { relative: string; date:
   }
 }
 
-function ResultsTab({ examId }: { examId: number }) {
+function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
+  const maxStrikes = exam?.isClass ? 10 : 3;
   const [attempts, setAttempts] = useState<AdminAttemptSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -4652,6 +4653,13 @@ function ResultsTab({ examId }: { examId: number }) {
           <div className="flex items-center gap-3">
             <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
               <span>Student Attempts ({attempts.length})</span>
+              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                exam?.isClass 
+                  ? "bg-amber-100 text-amber-800 border-amber-300" 
+                  : "bg-blue-100 text-blue-800 border-blue-300"
+              }`}>
+                ⚠️ Strike Policy: {maxStrikes} Strikes {exam?.isClass ? "(Class Session)" : "(Standard Exam)"}
+              </span>
               {dateFilter === "TODAY" && (
                 <span className="text-xs font-semibold text-blue-700 bg-blue-100 border border-blue-200 px-2.5 py-0.5 rounded-full">
                   🌟 Today
@@ -4698,7 +4706,7 @@ function ResultsTab({ examId }: { examId: number }) {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
               title="Download Warning Strikes PDF describing students involved in strikes with student name & register number"
             >
-              <span>⚠️ {exportingStrikesPdf ? "Generating PDF…" : "Warning Strikes Report (PDF)"}</span>
+              <span>⚠️ {exportingStrikesPdf ? "Generating PDF…" : `Warning Strikes Report (${maxStrikes} Strikes Max)`}</span>
             </button>
           </div>
         </div>
@@ -5039,9 +5047,14 @@ function ResultsTab({ examId }: { examId: number }) {
           {/* Warnings History */}
           {riskTimeline && riskTimeline.warnings && riskTimeline.warnings.length > 0 && (
             <div className="bg-amber-50/70 border border-amber-200 rounded-lg p-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 mb-2.5">
-                Issued Warnings ({riskTimeline.warnings.length})
-              </h4>
+              <div className="flex items-center justify-between mb-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                  Issued Warnings ({riskTimeline.warnings.length} / {maxStrikes} Strikes Allowed)
+                </h4>
+                <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded">
+                  {exam?.isClass ? "Class Exam: 10 Strikes Maximum" : "Standard Exam: 3 Strikes Maximum"}
+                </span>
+              </div>
               <div className="space-y-2">
                 {riskTimeline.warnings.map((w: WarningResponse) => (
                   <div
