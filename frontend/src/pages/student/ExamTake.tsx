@@ -124,6 +124,7 @@ export default function ExamTake() {
 
   // Tracks how many times the student has exited fullscreen
   const fullscreenViolationCount = useRef(0);
+  const fullscreenAwayIntervalRef = useRef<any>(null);
 
   const webcamStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -390,18 +391,29 @@ export default function ExamTake() {
     }
   }, [session, terminating, flushNow, stopAllMediaStreams, logEvent, navigate]);
 
+  // Stable refs for event listeners and timers
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+
+  const logEventRef = useRef(logEvent);
+  logEventRef.current = logEvent;
+
+  const flushNowRef = useRef(flushNow);
+  flushNowRef.current = flushNow;
+
   // Explicit 3-Strike Proctoring Enforcement System
   const issueWarningStrike = useCallback(
-    (reason: string, description: string) => {
+    (reason: string, description: string, bypassDebounce: boolean = false) => {
       if (submittedRef.current) return;
       const now = Date.now();
-      // Debounce strikes by at least 3.5s to give candidate time to adjust
-      if (now - lastStrikeTimeRef.current < 3500) return;
+      // Debounce strikes by at least 3.5s unless explicitly bypassed (e.g. 2-second fullscreen escalation)
+      if (!bypassDebounce && now - lastStrikeTimeRef.current < 3500) return;
       lastStrikeTimeRef.current = now;
 
       const maxAllowedStrikes = session?.maxWarnings ?? (session?.isClass ? 10 : 3);
       const nextStrikes = Math.min(strikesRef.current + 1, maxAllowedStrikes);
       strikesRef.current = nextStrikes;
+      fullscreenViolationCount.current = nextStrikes;
       setWarningStrikes(nextStrikes);
 
       logEvent("WARNING_STRIKE", undefined, {
@@ -422,14 +434,33 @@ export default function ExamTake() {
       setWarning(`STRIKE ${nextStrikes}/${maxAllowedStrikes}: ${reason}`);
 
       if (nextStrikes >= maxAllowedStrikes) {
-        // Warning 3: Terminate and auto-submit the examination after short delay
+        if (fullscreenAwayIntervalRef.current) {
+          clearInterval(fullscreenAwayIntervalRef.current);
+          fullscreenAwayIntervalRef.current = null;
+        }
+        // Auto-submit immediately once max allowed strikes are reached
         setTimeout(() => {
-          handleSubmit();
-        }, 3000);
+          handleSubmitRef.current(
+            `Exam Terminated: Maximum proctoring warning strikes reached (${nextStrikes}/${maxAllowedStrikes}). ${reason}`
+          );
+        }, 500);
       }
     },
-    [handleSubmit, logEvent, flushNow]
+    [session, logEvent, flushNow]
   );
+
+  const issueWarningStrikeRef = useRef(issueWarningStrike);
+  issueWarningStrikeRef.current = issueWarningStrike;
+
+  // Cleanup ticker on unmount
+  useEffect(() => {
+    return () => {
+      if (fullscreenAwayIntervalRef.current) {
+        clearInterval(fullscreenAwayIntervalRef.current);
+        fullscreenAwayIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   // Auto-dismiss voice warning popup after 5 seconds
   useEffect(() => {
@@ -1910,18 +1941,21 @@ export default function ExamTake() {
     }
   }, []);
 
+  const checkScreenIntegrityRef = useRef(checkScreenIntegrity);
+  checkScreenIntegrityRef.current = checkScreenIntegrity;
+
   // Fullscreen, tab visibility, side-panel and application-window focus tracking.
   useEffect(() => {
     if (!session || !screenGatePassed) return;
 
-    let fullscreenAwayInterval: any = null;
-
     function startFullscreenAwayTicker() {
-      if (fullscreenAwayInterval) return;
-      fullscreenAwayInterval = setInterval(() => {
+      if (fullscreenAwayIntervalRef.current) return;
+      fullscreenAwayIntervalRef.current = setInterval(() => {
         if (submittedRef.current) {
-          clearInterval(fullscreenAwayInterval);
-          fullscreenAwayInterval = null;
+          if (fullscreenAwayIntervalRef.current) {
+            clearInterval(fullscreenAwayIntervalRef.current);
+            fullscreenAwayIntervalRef.current = null;
+          }
           return;
         }
 
@@ -1933,32 +1967,39 @@ export default function ExamTake() {
         );
 
         if (!isFullscreen) {
-          fullscreenViolationCount.current += 1;
           const maxAllowedStrikes = session?.maxWarnings ?? (session?.isClass ? 10 : 3);
-          const strikes = fullscreenViolationCount.current;
+          const nextStrikes = strikesRef.current + 1;
 
-          logEvent("FULLSCREEN_AWAY_2S_TICK", undefined, {
-            count: strikes,
-            action: strikes >= maxAllowedStrikes ? "EXAM_TERMINATED" : "STRIKE_ISSUED",
+          logEventRef.current("FULLSCREEN_AWAY_2S_TICK", undefined, {
+            count: nextStrikes,
+            action: nextStrikes >= maxAllowedStrikes ? "EXAM_TERMINATED" : "STRIKE_ISSUED",
             reason: "Candidate remained out of fullscreen for >= 2 seconds",
           });
-          flushNow();
+          flushNowRef.current();
 
-          if (strikes >= maxAllowedStrikes) {
-            clearInterval(fullscreenAwayInterval);
-            fullscreenAwayInterval = null;
-            handleSubmit(
-              `Exam Terminated: Maximum violations exceeded (${strikes}/${maxAllowedStrikes} strikes). You remained out of fullscreen.`
+          if (nextStrikes >= maxAllowedStrikes) {
+            if (fullscreenAwayIntervalRef.current) {
+              clearInterval(fullscreenAwayIntervalRef.current);
+              fullscreenAwayIntervalRef.current = null;
+            }
+            issueWarningStrikeRef.current(
+              `Fullscreen Violation Limit Exceeded (${maxAllowedStrikes}/${maxAllowedStrikes})`,
+              "You remained out of fullscreen for too long. Maximum warning strikes reached.",
+              true
             );
           } else {
-            issueWarningStrike(
-              `Fullscreen Out Strike (${strikes}/${maxAllowedStrikes})`,
-              "You are out of fullscreen! An additional strike is triggered every 2 seconds until you return to fullscreen mode."
+            issueWarningStrikeRef.current(
+              `Fullscreen Out Strike (${nextStrikes}/${maxAllowedStrikes})`,
+              "You are out of fullscreen! An additional strike is triggered every 2 seconds until you return to fullscreen mode.",
+              true
             );
           }
         } else {
-          clearInterval(fullscreenAwayInterval);
-          fullscreenAwayInterval = null;
+          if (fullscreenAwayIntervalRef.current) {
+            clearInterval(fullscreenAwayIntervalRef.current);
+            fullscreenAwayIntervalRef.current = null;
+          }
+          setFullscreenExited(false);
         }
       }, 2000);
     }
@@ -1981,35 +2022,32 @@ export default function ExamTake() {
 
         setFullscreenExited(true);
         setFullscreenLockout(5);
-        // Immediate Strike 1
-        fullscreenViolationCount.current += 1;
 
         const maxAllowedStrikes = session?.maxWarnings ?? (session?.isClass ? 10 : 3);
-        const strikes = fullscreenViolationCount.current;
-        logEvent("FULLSCREEN_EXIT", undefined, {
-          count: strikes,
-          action: strikes >= maxAllowedStrikes ? "EXAM_TERMINATED" : "WARNING_ISSUED",
+        const nextStrikes = strikesRef.current + 1;
+
+        logEventRef.current("FULLSCREEN_EXIT", undefined, {
+          count: nextStrikes,
+          action: nextStrikes >= maxAllowedStrikes ? "EXAM_TERMINATED" : "WARNING_ISSUED",
           reason: "Candidate exited fullscreen mode (Immediate Strike)",
         });
-        flushNow();
+        flushNowRef.current();
 
-        if (strikes >= maxAllowedStrikes) {
-          handleSubmit(
-            `Exam Terminated: Maximum fullscreen violations exceeded (${strikes}/${maxAllowedStrikes} strikes). Fullscreen is strictly mandatory at all times.`
-          );
-        } else {
-          issueWarningStrike(
-            `Fullscreen Exited (Strike ${strikes}/${maxAllowedStrikes})`,
-            "You exited fullscreen mode! This is Strike 1. Fullscreen is strictly mandatory. An additional strike will trigger every 2 seconds until you return to fullscreen."
-          );
+        issueWarningStrikeRef.current(
+          `Fullscreen Exited (Strike ${nextStrikes}/${maxAllowedStrikes})`,
+          `You exited fullscreen mode! This is Strike ${nextStrikes}. Fullscreen is strictly mandatory. An additional strike will trigger every 2 seconds until you return to fullscreen.`,
+          true
+        );
+
+        if (nextStrikes < maxAllowedStrikes) {
           // Start 2-second recurring strike ticker
           startFullscreenAwayTicker();
         }
       } else {
         setFullscreenExited(false);
-        if (fullscreenAwayInterval) {
-          clearInterval(fullscreenAwayInterval);
-          fullscreenAwayInterval = null;
+        if (fullscreenAwayIntervalRef.current) {
+          clearInterval(fullscreenAwayIntervalRef.current);
+          fullscreenAwayIntervalRef.current = null;
         }
         try {
           if ("keyboard" in navigator && (navigator as any).keyboard?.lock) {
@@ -2018,7 +2056,7 @@ export default function ExamTake() {
             ]).catch(() => {});
           }
         } catch {}
-        checkScreenIntegrity();
+        checkScreenIntegrityRef.current();
       }
     }
 
@@ -2029,10 +2067,10 @@ export default function ExamTake() {
       if (lastAttentionLossTime.current === null) {
         lastAttentionLossTime.current = Date.now();
         // Emit immediate event and flush so the server records infraction right away
-        logEvent("TAB_SWITCH", undefined, { trigger: source, status: "started" });
-        flushNow();
+        logEventRef.current("TAB_SWITCH", undefined, { trigger: source, status: "started" });
+        flushNowRef.current();
 
-        issueWarningStrike(
+        issueWarningStrikeRef.current(
           "Tab Switch / Window Defocus Detected",
           "You switched tabs or navigated away from the examination window. Focus must stay on the exam at all times."
         );
@@ -2044,8 +2082,8 @@ export default function ExamTake() {
       if (lastAttentionLossTime.current !== null) {
         const dur = (Date.now() - lastAttentionLossTime.current) / 1000;
         lastAttentionLossTime.current = null;
-        logEvent("TAB_SWITCH", dur, { status: "ended" });
-        flushNow();
+        logEventRef.current("TAB_SWITCH", dur, { status: "ended" });
+        flushNowRef.current();
       }
     }
 
@@ -2056,24 +2094,24 @@ export default function ExamTake() {
       } else if (document.hasFocus()) {
         setIsWindowBlurred(false);
         endAttentionLoss();
-        checkScreenIntegrity();
+        checkScreenIntegrityRef.current();
       }
     }
 
     function onWindowBlur() {
       setIsWindowBlurred(true);
       beginAttentionLoss("window_blur");
-      checkScreenIntegrity();
+      checkScreenIntegrityRef.current();
     }
 
     function onWindowFocus() {
       setIsWindowBlurred(false);
       endAttentionLoss();
-      checkScreenIntegrity();
+      checkScreenIntegrityRef.current();
     }
 
     function onWindowResize() {
-      checkScreenIntegrity();
+      checkScreenIntegrityRef.current();
     }
 
     document.addEventListener("fullscreenchange", onFullscreenChange);
@@ -2085,7 +2123,9 @@ export default function ExamTake() {
     window.addEventListener("focus", onWindowFocus);
     window.addEventListener("resize", onWindowResize);
 
-    const integrityInterval = setInterval(checkScreenIntegrity, 1000);
+    const integrityInterval = setInterval(() => {
+      checkScreenIntegrityRef.current();
+    }, 1000);
 
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
@@ -2097,13 +2137,12 @@ export default function ExamTake() {
       window.removeEventListener("focus", onWindowFocus);
       window.removeEventListener("resize", onWindowResize);
       clearInterval(integrityInterval);
-      if (fullscreenAwayInterval) {
-        clearInterval(fullscreenAwayInterval);
-        fullscreenAwayInterval = null;
+      if (fullscreenAwayIntervalRef.current) {
+        clearInterval(fullscreenAwayIntervalRef.current);
+        fullscreenAwayIntervalRef.current = null;
       }
-      stopAllMediaStreams();
     };
-  }, [session, screenGatePassed, logEvent, flushNow, stopAllMediaStreams, issueWarningStrike, handleSubmit, checkScreenIntegrity]);
+  }, [session?.attemptId, screenGatePassed]);
 
   // Real-time synchronization with server: reflects examiner time additions & instant termination without refresh
   useEffect(() => {
@@ -2724,6 +2763,10 @@ export default function ExamTake() {
                 await document.documentElement.requestFullscreen();
               }
               setFullscreenExited(false);
+              if (fullscreenAwayIntervalRef.current) {
+                clearInterval(fullscreenAwayIntervalRef.current);
+                fullscreenAwayIntervalRef.current = null;
+              }
             } catch (e) {
               console.warn("Fullscreen request error:", e);
             }
@@ -2743,15 +2786,15 @@ export default function ExamTake() {
             </p>
             <div className="bg-red-950/70 border border-red-800 text-red-300 text-xs p-3.5 rounded-xl font-semibold space-y-1">
               <p className="font-bold text-red-200">
-                Warning Strike {Math.min(fullscreenViolationCount.current, session?.maxWarnings ?? (session?.isClass ? 10 : 3))} of {session?.maxWarnings ?? (session?.isClass ? 10 : 3)}
+                Warning Strike {Math.min(warningStrikes, session?.maxWarnings ?? (session?.isClass ? 10 : 3))} of {session?.maxWarnings ?? (session?.isClass ? 10 : 3)}
               </p>
               <p className="text-[11px] text-red-400">
-                {fullscreenViolationCount.current >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3))
+                {warningStrikes >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3))
                   ? "Examination Terminating..."
                   : "A strike is triggered every 2 seconds until you return to fullscreen!"}
               </p>
             </div>
-            {fullscreenViolationCount.current < (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) && (
+            {warningStrikes < (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) && (
               <button
                 type="button"
                 disabled={fullscreenLockout > 0}
@@ -2762,6 +2805,10 @@ export default function ExamTake() {
                       await document.documentElement.requestFullscreen();
                     }
                     setFullscreenExited(false);
+                    if (fullscreenAwayIntervalRef.current) {
+                      clearInterval(fullscreenAwayIntervalRef.current);
+                      fullscreenAwayIntervalRef.current = null;
+                    }
                   } catch (e) {
                     console.warn("Fullscreen request error:", e);
                   }

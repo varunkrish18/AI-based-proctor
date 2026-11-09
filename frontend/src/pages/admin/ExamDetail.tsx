@@ -3147,7 +3147,8 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
   const [allStudents, setAllStudents] = useState<StudentUser[]>([]);
   const [classSections, setClassSections] = useState<ClassSectionItem[]>([]);
   const [selectedYear, setSelectedYear] = useState<string>("ALL");
-  const [selectedSectionId, setSelectedSectionId] = useState<string>("");
+  const [numSections, setNumSections] = useState<number>(1);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<string[]>([""]);
   const [previewSearch, setPreviewSearch] = useState<string>("");
 
   useEffect(() => {
@@ -3158,7 +3159,10 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         const sections = loadSavedClassSections(data);
         setClassSections(sections);
         if (sections.length > 0) {
-          setSelectedSectionId(sections[0].id);
+          setSelectedSectionIds((prev) => {
+            if (prev.length > 0 && prev[0]) return prev;
+            return [sections[0].id];
+          });
         }
       })
       .catch((err) => {
@@ -3166,7 +3170,10 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         const fallback = loadSavedClassSections();
         setClassSections(fallback);
         if (fallback.length > 0) {
-          setSelectedSectionId(fallback[0].id);
+          setSelectedSectionIds((prev) => {
+            if (prev.length > 0 && prev[0]) return prev;
+            return [fallback[0].id];
+          });
         }
       });
   }, []);
@@ -3188,22 +3195,53 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     return classSections.filter((s) => matchesYear(s.year, selectedYear));
   }, [classSections, selectedYear]);
 
-  // Keep selectedSectionId valid when availableSections change
+  // Keep selectedSectionIds valid when availableSections or numSections changes
   useEffect(() => {
-    if (availableSections.length > 0) {
-      if (!availableSections.some((s) => s.id === selectedSectionId)) {
-        setSelectedSectionId(availableSections[0].id);
-      }
-    } else {
-      setSelectedSectionId("");
+    if (availableSections.length === 0) {
+      setSelectedSectionIds([]);
+      return;
     }
-  }, [availableSections, selectedSectionId]);
+    setSelectedSectionIds((prev) => {
+      const next: string[] = [];
+      for (let i = 0; i < numSections; i++) {
+        const cur = prev[i];
+        if (cur && availableSections.some((s) => s.id === cur)) {
+          next.push(cur);
+        } else {
+          const unused = availableSections.find((s) => !next.includes(s.id));
+          next.push(unused ? unused.id : availableSections[0].id);
+        }
+      }
+      return next;
+    });
+  }, [availableSections, numSections]);
+
+  function handleNumSectionsChange(count: number) {
+    const validCount = Math.max(1, Math.min(count, 10));
+    setNumSections(validCount);
+  }
+
+  function handleSectionChange(index: number, newId: string) {
+    setSelectedSectionIds((prev) => {
+      const next = [...prev];
+      next[index] = newId;
+      return next;
+    });
+  }
 
   const [allAssignedEmails, setAllAssignedEmails] = useState<string[]>([]);
 
-  const activeSection = useMemo(() => {
-    return classSections.find((s) => s.id === selectedSectionId) || null;
-  }, [classSections, selectedSectionId]);
+  const activeSections = useMemo(() => {
+    const list: ClassSectionItem[] = [];
+    const set = new Set<string>();
+    for (const id of selectedSectionIds) {
+      if (!id || set.has(id)) continue;
+      set.add(id);
+      const found = classSections.find((s) => s.id === id);
+      if (found) list.push(found);
+    }
+    return list;
+  }, [classSections, selectedSectionIds]);
 
   const assignedEmailSet = useMemo(() => {
     const set = new Set<string>();
@@ -3212,12 +3250,23 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     return set;
   }, [allAssignedEmails, assignments]);
 
-  // Completely filter out any student already assigned to this exam so another professor cannot see them
+  // Completely filter out any student already assigned to this exam across all selected sections
   const sectionStudents = useMemo(() => {
-    if (!activeSection) return [];
-    const all = getStudentsForClassSection(activeSection, allStudents);
-    return all.filter((s) => !assignedEmailSet.has((s.email || "").toLowerCase().trim()));
-  }, [activeSection, allStudents, assignedEmailSet]);
+    if (activeSections.length === 0) return [];
+    const combined: StudentUser[] = [];
+    const seen = new Set<string>();
+    for (const sec of activeSections) {
+      const all = getStudentsForClassSection(sec, allStudents);
+      for (const s of all) {
+        const em = (s.email || "").toLowerCase().trim();
+        if (em && !assignedEmailSet.has(em) && !seen.has(em)) {
+          seen.add(em);
+          combined.push(s);
+        }
+      }
+    }
+    return combined;
+  }, [activeSections, allStudents, assignedEmailSet]);
 
   const filteredPreviewStudents = useMemo(() => {
     const q = previewSearch.toLowerCase().trim();
@@ -3231,10 +3280,11 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
   }, [sectionStudents, previewSearch]);
 
   async function assignSectionStudents() {
-    if (!activeSection) return;
+    if (activeSections.length === 0) return;
     const emailsToAssign = sectionStudents.map((s) => s.email.trim()).filter(Boolean);
+    const sectionNames = activeSections.map((s) => s.className).join(", ");
     if (emailsToAssign.length === 0) {
-      setStatus(`No unassigned students found in Section "${activeSection.className}".`);
+      setStatus(`No unassigned students found in ${activeSections.length > 1 ? "the selected sections" : `Section "${sectionNames}"`}.`);
       return;
     }
     setSubmitting(true);
@@ -3247,7 +3297,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
       }>(`/api/admin/exams/${examId}/assign`, { emails: emailsToAssign }, "admin");
 
       setStatus(
-        `✓ Assigned ${res.assigned} student(s) from Section "${activeSection.className}". Random passwords generated.`
+        `✓ Assigned ${res.assigned} student(s) from ${sectionNames}. Random passwords generated.`
       );
       if (res.credentials && res.credentials.length > 0) {
         setRecentCredentials(res.credentials);
@@ -3762,10 +3812,68 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
               </div>
             </div>
 
-            {/* Step 2: Select Section (Strictly from Group Student page) */}
+            {/* Step 2: How many sections are you going to assign? */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                2. Select Class Section:
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-700">
+                  2. How many sections are you going to assign?
+                </label>
+                <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  {numSections === 1 ? "1 Section" : `${numSections} Sections`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="grid grid-cols-5 gap-1.5 flex-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => handleNumSectionsChange(n)}
+                      className={`py-1.5 px-1 rounded-lg text-xs font-bold text-center transition-all cursor-pointer ${
+                        numSections === n
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                      }`}
+                    >
+                      {n} {n === 1 ? "Sec" : "Secs"}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleNumSectionsChange(numSections - 1)}
+                    disabled={numSections <= 1}
+                    className="w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold disabled:opacity-40 cursor-pointer text-sm"
+                    title="Decrease sections"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={numSections}
+                    onChange={(e) => handleNumSectionsChange(parseInt(e.target.value) || 1)}
+                    className="w-12 h-8 text-center text-xs font-bold border border-slate-300 rounded-lg bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleNumSectionsChange(numSections + 1)}
+                    disabled={numSections >= 10}
+                    className="w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold disabled:opacity-40 cursor-pointer text-sm"
+                    title="Increase sections"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 3: Select Class Section(s) - Iterates numSections times */}
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-slate-700">
+                3. Select Class Section{numSections > 1 ? "s" : ""}:
                 <span className="text-[11px] font-normal text-slate-500 ml-1.5">
                   ({availableSections.length} section{availableSections.length === 1 ? "" : "s"} available for {selectedYear === "ALL" ? "all years" : selectedYear})
                 </span>
@@ -3779,41 +3887,61 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   </p>
                 </div>
               ) : (
-                <select
-                  value={selectedSectionId}
-                  onChange={(e) => setSelectedSectionId(e.target.value)}
-                  className="input text-xs w-full font-medium py-2 bg-white"
-                >
-                  {availableSections.map((sec) => (
-                    <option key={sec.id} value={sec.id}>
-                      {sec.className} — {sec.department || "Dept"} ({sec.startReg || "..."} to {sec.endReg || "..."})
-                    </option>
+                <div className="space-y-2.5">
+                  {Array.from({ length: numSections }).map((_, idx) => (
+                    <div key={idx} className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/90 space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
+                            {idx + 1}
+                          </span>
+                          <span>Section {idx + 1} of {numSections}:</span>
+                        </span>
+                        {selectedSectionIds[idx] && (
+                          <span className="text-[10px] text-blue-700 font-bold bg-blue-100/70 px-2 py-0.5 rounded">
+                            {classSections.find((s) => s.id === selectedSectionIds[idx])?.className}
+                          </span>
+                        )}
+                      </div>
+                      <select
+                        value={selectedSectionIds[idx] || ""}
+                        onChange={(e) => handleSectionChange(idx, e.target.value)}
+                        className="input text-xs w-full font-medium py-2 bg-white"
+                      >
+                        <option value="" disabled>-- Select Section {idx + 1} --</option>
+                        {availableSections.map((sec) => (
+                          <option key={sec.id} value={sec.id}>
+                            {sec.className} — {sec.department || "Dept"} ({sec.startReg || "..."} to {sec.endReg || "..."})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   ))}
-                </select>
+                </div>
               )}
             </div>
 
-            {/* Step 3: Section Details & Matching Students Preview Card */}
-            {activeSection && (
+            {/* Step 4: Section Details & Matching Students Preview Card */}
+            {activeSections.length > 0 && (
               <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-4 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 text-sm">
-                        {activeSection.className}
-                      </span>
-                      <span className="text-[11px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-semibold">
-                        {activeSection.year || "Year"}
-                      </span>
-                      <span className="text-[11px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded">
-                        {activeSection.department || "All Depts"}
-                      </span>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Selected:</span>
+                      {activeSections.map((sec) => (
+                        <span key={sec.id} className="inline-flex items-center gap-1 bg-white border border-slate-300 px-2 py-0.5 rounded-md text-xs font-bold text-slate-800 shadow-2xs">
+                          <span>🏫</span>
+                          <span>{sec.className}</span>
+                          <span className="text-[10px] text-slate-500 font-normal">({sec.department || "Dept"})</span>
+                        </span>
+                      ))}
                     </div>
-                    <div className="text-[11px] text-slate-600 mt-1 flex items-center gap-2">
-                      <span>Register Range:</span>
-                      <code className="bg-white border border-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800 font-bold">
-                        {activeSection.startReg || "Start"} → {activeSection.endReg || "End"}
-                      </code>
+                    <div className="text-[11px] text-slate-600 flex items-center gap-2 flex-wrap">
+                      {activeSections.map((sec) => (
+                        <span key={sec.id} className="text-[10px] bg-slate-200/70 px-1.5 py-0.5 rounded text-slate-700 font-mono">
+                          {sec.className}: {sec.startReg || "Start"} → {sec.endReg || "End"}
+                        </span>
+                      ))}
                     </div>
                   </div>
 
@@ -3827,7 +3955,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                 {/* Assignment Status Pill Breakdown */}
                 <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
                   <div>
-                    <span className="text-slate-500 block text-[11px]">Unassigned in this Section:</span>
+                    <span className="text-slate-500 block text-[11px]">Unassigned in Selected Section{activeSections.length > 1 ? "s" : ""}:</span>
                     <span className="font-bold text-emerald-600 text-base">{sectionStudents.length}</span>
                     <span className="text-[11px] text-slate-400 ml-1">students ready</span>
                   </div>
@@ -3849,7 +3977,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                       {sectionStudents.length > 5 && (
                         <input
                           type="text"
-                          placeholder="Search in section..."
+                          placeholder="Search in sections..."
                           value={previewSearch}
                           onChange={(e) => setPreviewSearch(e.target.value)}
                           className="input text-[11px] py-0.5 px-2 w-36 bg-white"
@@ -3876,9 +4004,9 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   </div>
                 ) : (
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
-                    <p className="font-semibold">✓ All students in this section are already assigned!</p>
+                    <p className="font-semibold">✓ All students in the selected section{activeSections.length > 1 ? "s" : ""} are already assigned!</p>
                     <p className="mt-0.5 text-[11px] text-slate-500">
-                      No remaining unassigned students in <strong>{activeSection.className}</strong>.
+                      No remaining unassigned students found.
                     </p>
                   </div>
                 )}
@@ -3891,12 +4019,12 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 cursor-pointer shadow-xs flex items-center justify-center gap-2"
                 >
                   {submitting ? (
-                    "Assigning Section & Generating Passwords…"
+                    "Assigning Sections & Generating Passwords…"
                   ) : (
                     <>
                       <span>🏫</span>
                       <span>
-                        Assign {sectionStudents.length} Students from {activeSection.className}
+                        Assign {sectionStudents.length} Students from {activeSections.length > 1 ? `${activeSections.length} Sections (${activeSections.map(s => s.className).join(", ")})` : activeSections[0]?.className}
                       </span>
                     </>
                   )}
@@ -4235,6 +4363,44 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
   const [quickScore, setQuickScore] = useState<string>("");
   const [savingQuickScore, setSavingQuickScore] = useState<boolean>(false);
 
+  // Section filter state (strictly sections assigned by this professor for this exam)
+  const [allStudents, setAllStudents] = useState<StudentUser[]>([]);
+  const [assignedSections, setAssignedSections] = useState<ClassSectionItem[]>([]);
+  const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>("ALL");
+
+  useEffect(() => {
+    Promise.all([
+      api.get<StudentUser[]>("/api/admin/students", "admin").catch(() => [] as StudentUser[]),
+      api.get<ExamAssignmentItem[]>(`/api/admin/exams/${examId}/assignments`, "admin").catch(() => [] as ExamAssignmentItem[])
+    ]).then(([students, assignments]) => {
+      setAllStudents(students);
+      const sections = loadSavedClassSections(students);
+      const assignedEmailSet = new Set(
+        assignments.map((a) => (a.studentEmail || "").toLowerCase().trim()).filter(Boolean)
+      );
+
+      // Filter to only sections where at least one student was assigned by this professor for this exam
+      const profSections = sections.filter((sec) => {
+        const secStudents = getStudentsForClassSection(sec, students);
+        return secStudents.some((s) => assignedEmailSet.has((s.email || "").toLowerCase().trim()));
+      });
+
+      setAssignedSections(profSections);
+    });
+  }, [examId]);
+
+  const filteredAttempts = useMemo(() => {
+    if (!selectedSectionFilter || selectedSectionFilter === "ALL") {
+      return attempts;
+    }
+    const targetSec = assignedSections.find((s) => s.id === selectedSectionFilter);
+    if (!targetSec) return attempts;
+    const targetEmails = new Set(
+      getStudentsForClassSection(targetSec, allStudents).map((s) => (s.email || "").toLowerCase().trim())
+    );
+    return attempts.filter((a) => targetEmails.has((a.studentEmail || "").toLowerCase().trim()));
+  }, [attempts, selectedSectionFilter, assignedSections, allStudents]);
+
   async function handleExportCumulativePdf() {
     setExportingCumulative(true);
     try {
@@ -4387,6 +4553,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
     setAttemptSeverityFilter("");
     setAttemptEventTypeFilter("");
     setDateFilter("ALL");
+    setSelectedSectionFilter("ALL");
     setCustomFromDate("");
     setCustomToDate("");
     loadAttempts("", "", "", "ALL", "", "");
@@ -4456,30 +4623,30 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <p className="text-xs text-slate-500 uppercase font-semibold">Total Attempts</p>
-          <p className="text-xl font-bold text-slate-900 mt-1">{attempts.length}</p>
+          <p className="text-xl font-bold text-slate-900 mt-1">{filteredAttempts.length}</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <p className="text-xs text-slate-500 uppercase font-semibold">Submitted</p>
           <p className="text-xl font-bold text-green-700 mt-1">
-            {attempts.filter((a) => a.status === "SUBMITTED").length}
+            {filteredAttempts.filter((a) => a.status === "SUBMITTED").length}
           </p>
         </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <p className="text-xs text-slate-500 uppercase font-semibold">In Progress</p>
           <p className="text-xl font-bold text-blue-600 mt-1">
-            {attempts.filter((a) => a.status === "IN_PROGRESS").length}
+            {filteredAttempts.filter((a) => a.status === "IN_PROGRESS").length}
           </p>
         </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <p className="text-xs text-slate-500 uppercase font-semibold">Flagged For Review</p>
           <p className="text-xl font-bold text-rose-600 mt-1">
-            {attempts.filter((a) => a.flaggedForReview).length}
+            {filteredAttempts.filter((a) => a.flaggedForReview).length}
           </p>
         </div>
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <p className="text-xs text-slate-500 uppercase font-semibold">High / Crit Flags</p>
           <p className="text-xl font-bold text-amber-600 mt-1">
-            {attempts.reduce((acc, a) => acc + a.highEvents + a.criticalEvents, 0)}
+            {filteredAttempts.reduce((acc, a) => acc + a.highEvents + a.criticalEvents, 0)}
           </p>
         </div>
       </div>
@@ -4549,13 +4716,29 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               <option value="CUSTOM">📅 Custom Range…</option>
             </select>
           </div>
+          {/* Section Filter (Only sections assigned by this Professor) */}
+          <div>
+            <select
+              value={selectedSectionFilter}
+              onChange={(e) => setSelectedSectionFilter(e.target.value)}
+              className="text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              title="Filter attempts by assigned section"
+            >
+              <option value="ALL">🏫 All Assigned Sections ({assignedSections.length})</option>
+              {assignedSections.map((sec) => (
+                <option key={sec.id} value={sec.id}>
+                  🏫 {sec.className} ({sec.department || "Dept"})
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             type="submit"
             className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors cursor-pointer"
           >
             Filter
           </button>
-          {(studentEmailFilter || attemptSeverityFilter || attemptEventTypeFilter || dateFilter !== "ALL" || customFromDate || customToDate) && (
+          {(studentEmailFilter || attemptSeverityFilter || attemptEventTypeFilter || dateFilter !== "ALL" || selectedSectionFilter !== "ALL" || customFromDate || customToDate) && (
             <button
               type="button"
               onClick={handleClearFilter}
@@ -4652,7 +4835,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
         <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap justify-between items-center gap-3 bg-slate-50/50">
           <div className="flex items-center gap-3">
             <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-              <span>Student Attempts ({attempts.length})</span>
+              <span>Student Attempts ({filteredAttempts.length})</span>
               <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
                 exam?.isClass 
                   ? "bg-amber-100 text-amber-800 border-amber-300" 
@@ -4660,6 +4843,11 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               }`}>
                 ⚠️ Strike Policy: {maxStrikes} Strikes {exam?.isClass ? "(Class Session)" : "(Standard Exam)"}
               </span>
+              {selectedSectionFilter !== "ALL" && (
+                <span className="text-xs font-semibold text-indigo-700 bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 rounded-full">
+                  🏫 {assignedSections.find((s) => s.id === selectedSectionFilter)?.className || "Section"}
+                </span>
+              )}
               {dateFilter === "TODAY" && (
                 <span className="text-xs font-semibold text-blue-700 bg-blue-100 border border-blue-200 px-2.5 py-0.5 rounded-full">
                   🌟 Today
@@ -4686,7 +4874,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handleExportCumulativePdf}
-              disabled={exportingCumulative || attempts.length === 0}
+              disabled={exportingCumulative || filteredAttempts.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
               title="Download cumulative PDF containing all candidate results, verified marks & proctoring audit"
             >
@@ -4694,7 +4882,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
             </button>
             <button
               onClick={handleExportQuestionCompletionPdf}
-              disabled={exportingQuestionPdf || attempts.length === 0}
+              disabled={exportingQuestionPdf || filteredAttempts.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
               title="Download PDF containing student name, register number, mail ID & question completion status (1 page per student)"
             >
@@ -4702,7 +4890,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
             </button>
             <button
               onClick={handleExportWarningStrikesPdf}
-              disabled={exportingStrikesPdf || attempts.length === 0}
+              disabled={exportingStrikesPdf || filteredAttempts.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
               title="Download Warning Strikes PDF describing students involved in strikes with student name & register number"
             >
@@ -4727,7 +4915,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {attempts.map((a) => {
+              {filteredAttempts.map((a) => {
                 const scoreVal = a.currentRiskScore ?? 0;
                 const riskBadgeClass =
                   scoreVal >= 75
@@ -4903,7 +5091,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                   </tr>
                 );
               })}
-              {attempts.length === 0 && (
+              {filteredAttempts.length === 0 && (
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
                     No attempts found matching the selected filters

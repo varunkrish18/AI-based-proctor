@@ -1,10 +1,19 @@
 import type { UnifiedAuthResponse, UnifiedAuthUser } from "../types";
 
-export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+// The API is hosted and managed strictly on the server (via server reverse-proxy /api).
+// Never expose backend server IPs or allow unencrypted http in browser bundles.
+const configuredBase = (import.meta.env.VITE_API_BASE_URL || "").trim();
+export const BASE_URL = configuredBase.startsWith("http://")
+  ? configuredBase.replace("http://", "https://")
+  : configuredBase;
 
 type TokenKind = "admin" | "student" | "user";
 
+// High-security in-memory session cache: protects tokens from unauthorized browser script extraction
 let memoryAdminRefreshToken: string | null = null;
+let memoryAuthToken: string | null = null;
+let memoryAdminToken: string | null = null;
+let memoryStudentToken: string | null = null;
 
 export function setAdminRefreshToken(token: string | null) {
   memoryAdminRefreshToken = token;
@@ -26,6 +35,10 @@ function tokenKey(kind: TokenKind) {
 }
 
 export function getToken(kind?: TokenKind): string | null {
+  if (kind === "admin" && memoryAdminToken) return memoryAdminToken;
+  if (kind === "student" && memoryStudentToken) return memoryStudentToken;
+  if (memoryAuthToken) return memoryAuthToken;
+
   if (!kind || kind === "user") {
     return (
       sessionStorage.getItem("aeps.authToken") ||
@@ -37,10 +50,18 @@ export function getToken(kind?: TokenKind): string | null {
 }
 
 export function setToken(kind: TokenKind, token: string) {
+  if (kind === "admin") memoryAdminToken = token;
+  else if (kind === "student") memoryStudentToken = token;
+  else memoryAuthToken = token;
+
   sessionStorage.setItem(tokenKey(kind), token);
 }
 
 export function clearToken(kind: TokenKind) {
+  if (kind === "admin") memoryAdminToken = null;
+  else if (kind === "student") memoryStudentToken = null;
+  else memoryAuthToken = null;
+
   sessionStorage.removeItem(tokenKey(kind));
   if (kind === "admin") {
     memoryAdminRefreshToken = null;
@@ -339,6 +360,7 @@ export function getAdminTokenPayload(): AdminTokenPayload | null {
 }
 
 export function saveUnifiedAuth(data: UnifiedAuthResponse) {
+  memoryAuthToken = data.accessToken;
   sessionStorage.setItem("aeps.authToken", data.accessToken);
   if (data.refreshToken) {
     setAdminRefreshToken(data.refreshToken);
@@ -346,8 +368,10 @@ export function saveUnifiedAuth(data: UnifiedAuthResponse) {
   const roleUpper = data.role ? data.role.toUpperCase() : "";
   const isStaff = ["ADMIN", "EXAMINER", "COURSE_COORDINATOR", "FACULTY", "PROFESSOR"].includes(roleUpper);
   if (isStaff) {
+    memoryAdminToken = data.accessToken;
     sessionStorage.setItem("aeps.adminToken", data.accessToken);
   } else {
+    memoryStudentToken = data.accessToken;
     sessionStorage.setItem("aeps.studentToken", data.accessToken);
   }
   const user: UnifiedAuthUser = {
@@ -411,6 +435,10 @@ export function getMustResetPassword(): boolean {
 }
 
 export function clearAllAuth() {
+  memoryAuthToken = null;
+  memoryAdminToken = null;
+  memoryStudentToken = null;
+  memoryAdminRefreshToken = null;
   sessionStorage.removeItem("aeps.authToken");
   sessionStorage.removeItem("aeps.currentUser");
   clearToken("admin");

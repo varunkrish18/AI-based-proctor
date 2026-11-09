@@ -26,7 +26,7 @@ export async function syncTrustedTime(): Promise<number> {
 
   isSyncing = true;
   syncPromise = (async () => {
-    // 1. Try backend authoritative time endpoint (anchored to TimeAPI.io / Google HTTP Date)
+    // 1. Authoritative server time endpoint (anchored to NTP/Time sources on the server)
     try {
       const resp = await fetch("/api/exams/time", { cache: "no-store" });
       if (resp.ok) {
@@ -39,47 +39,10 @@ export async function syncTrustedTime(): Promise<number> {
         }
       }
     } catch {
-      // Backend request failed or offline, try direct public Date & Time APIs
+      // Backend request failed or offline
     }
 
-    // 2. Direct fallback to TimeAPI.io
-    try {
-      const resp = await fetch("https://timeapi.io/api/time/current/zone?timeZone=UTC", { cache: "no-store" });
-      if (resp.ok) {
-        const data: TimeResponse = await resp.json();
-        if (data.dateTime) {
-          const iso = data.dateTime.endsWith("Z") ? data.dateTime : `${data.dateTime}Z`;
-          const epoch = new Date(iso).getTime();
-          if (!isNaN(epoch)) {
-            baseNetworkEpochMs = epoch;
-            basePerformanceNow = performance.now();
-            return epoch;
-          }
-        }
-      }
-    } catch {
-      // Direct TimeAPI failed
-    }
-
-    // 3. Direct fallback to WorldTimeAPI
-    try {
-      const resp = await fetch("https://worldtimeapi.org/api/timezone/Etc/UTC", { cache: "no-store" });
-      if (resp.ok) {
-        const data: TimeResponse = await resp.json();
-        if (data.datetime) {
-          const epoch = new Date(data.datetime).getTime();
-          if (!isNaN(epoch)) {
-            baseNetworkEpochMs = epoch;
-            basePerformanceNow = performance.now();
-            return epoch;
-          }
-        }
-      }
-    } catch {
-      // Fallback failed
-    }
-
-    // Fallback: if no network time has ever been obtained, use local clock
+    // Fallback: if no server time has ever been obtained, use local clock
     if (baseNetworkEpochMs === null) {
       baseNetworkEpochMs = Date.now();
       basePerformanceNow = performance.now();
