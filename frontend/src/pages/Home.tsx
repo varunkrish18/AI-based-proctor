@@ -62,23 +62,23 @@ export default function Home() {
                   }`}
                 >
                   {isAdmin
-                    ? " System Administrator"
+                    ? "🛡️ System Administrator"
                     : isCoordinator
-                    ? " Course Coordinator"
+                    ? "👥 Course Coordinator"
                     : isProfessor
-                    ? " Professor / Faculty"
-                    : " Student Candidate"}
+                    ? "👨‍🏫 Professor / Faculty"
+                    : "🎒 Student Candidate"}
                 </span>
 
                 {user?.department && (
                   <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full border border-slate-200">
-                     {user.department}
+                    🏢 {user.department}
                   </span>
                 )}
 
                 {user?.identifier && (
                   <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full border border-indigo-200 font-mono font-medium">
-                     {user.identifier}
+                    🆔 {user.identifier}
                   </span>
                 )}
               </div>
@@ -144,7 +144,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-purple-50 border border-purple-200 text-purple-600 flex items-center justify-center text-lg mb-3">
-                    
+                    👥
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-purple-600 transition-colors">
                     User Accounts
@@ -164,7 +164,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center text-lg mb-3">
-                    
+                    👨‍🏫
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-emerald-600 transition-colors">
                     Professor Login Credentials
@@ -184,7 +184,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center text-lg mb-3">
-                    
+                    🎒
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">
                     Student Login Credentials
@@ -204,7 +204,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center text-lg mb-3">
-                    +
+                    ➕
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">
                     Create Examination
@@ -249,7 +249,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center text-lg mb-3">
-                    
+                    📋
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors">
                     Department Examinations
@@ -269,7 +269,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center text-lg mb-3">
-                    
+                    👨‍🏫
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-emerald-600 transition-colors">
                     Department Faculty &amp; Professors
@@ -289,7 +289,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center text-lg mb-3">
-                    
+                    💻
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">
                     Online Coding Playground
@@ -334,7 +334,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center text-lg mb-3">
-                    
+                    📝
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-emerald-600 transition-colors">
                     Assigned Examinations
@@ -354,7 +354,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center text-lg mb-3">
-                    
+                    🛡️
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">
                     Live Proctoring Feed
@@ -374,7 +374,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-purple-50 border border-purple-200 text-purple-600 flex items-center justify-center text-lg mb-3">
-                    
+                    💻
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-purple-600 transition-colors">
                     Online IDE &amp; Sandbox
@@ -394,7 +394,7 @@ export default function Home() {
               >
                 <div>
                   <div className="w-10 h-10 rounded-lg bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center text-lg mb-3">
-                    
+                    🎒
                   </div>
                   <h3 className="font-bold text-slate-900 text-sm group-hover:text-amber-600 transition-colors">
                     Student Roster
@@ -429,13 +429,13 @@ export default function Home() {
                   to="/instructions"
                   className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-medium px-3.5 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
                 >
-                  <span> Instructions</span>
+                  <span>📖 Instructions</span>
                 </Link>
                 <Link
                   to="/ide"
                   className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-1.5"
                 >
-                  <span> Practice IDE</span>
+                  <span>💻 Practice IDE</span>
                 </Link>
               </div>
             </div>
@@ -447,7 +447,7 @@ export default function Home() {
               </div>
             ) : exams.length === 0 ? (
               <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
-                <span className="text-3xl mb-2 block"></span>
+                <span className="text-3xl mb-2 block">📋</span>
                 <p className="text-sm font-semibold text-slate-800">No Examinations Available</p>
                 <p className="text-xs text-slate-500 mt-1">
                   You are not currently assigned to any active assessments, and there are no open university examinations at this time.
@@ -483,38 +483,38 @@ export default function Home() {
                             </span>
                             {exam.studentAttemptStatus === "COMPLETED" ? (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                                <span></span> Completed
+                                <span>✓</span> Completed
                               </span>
                             ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                                <span></span> Incomplete
+                                <span>⚠️</span> Incomplete
                               </span>
                             ) : null}
                             {exam.openToAll ? (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                                 Open to All
+                                🌐 Open to All
                               </span>
                             ) : exam.isClass ? (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                 Class
+                                🏫 Class
                               </span>
                             ) : (
                               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                                 Assigned
+                                🎯 Assigned
                               </span>
                             )}
                           </div>
                           {exam.isClass ? (
                             <span className="text-xs text-indigo-600 font-semibold font-mono whitespace-nowrap">
-                               Untimed Class
+                              ♾️ Untimed Class
                             </span>
                           ) : exam.durationMinutes ? (
                             <span className="text-xs text-slate-500 font-mono whitespace-nowrap">
-                               {exam.durationMinutes} mins
+                              ⏱️ {exam.durationMinutes} mins
                             </span>
                           ) : (
                             <span className="text-xs text-indigo-600 font-medium font-mono whitespace-nowrap">
-                               Untimed
+                              ♾️ Untimed
                             </span>
                           )}
                         </div>
@@ -525,7 +525,7 @@ export default function Home() {
                         )}
                         {exam.assignedProfessorName && !exam.assignedProfessorName.toLowerCase().startsWith("all department faculty") && (
                           <p className="text-[11px] text-slate-600 mb-2">
-                             Faculty: <span className="font-semibold text-slate-800">{exam.assignedProfessorName}</span>
+                            👨‍🏫 Faculty: <span className="font-semibold text-slate-800">{exam.assignedProfessorName}</span>
                           </p>
                         )}
                         <p className="text-xs text-slate-500 line-clamp-2 mb-4">
@@ -537,11 +537,11 @@ export default function Home() {
                         <div className="text-[11px] text-slate-500">
                           {exam.studentAttemptStatus === "COMPLETED" ? (
                             <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                              <span></span> Submitted &amp; Locked
+                              <span>✓</span> Submitted &amp; Locked
                             </span>
                           ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
                             <span className="text-amber-700 font-medium flex items-center gap-1">
-                              <span></span> Terminated (Resume available)
+                              <span>⚠️</span> Terminated (Resume available)
                             </span>
                           ) : isOpen ? (
                             <span className="text-emerald-600 font-medium">Ready to take</span>
@@ -558,7 +558,7 @@ export default function Home() {
                             className="bg-slate-100 text-slate-400 font-semibold text-xs px-3.5 py-1.5 rounded-lg border border-slate-200 cursor-not-allowed flex items-center gap-1"
                             title="You have already submitted and completed this session. Re-taking is not allowed."
                           >
-                            <span></span>
+                            <span>✓</span>
                             <span>Completed</span>
                           </button>
                         ) : isOpen ? (
@@ -593,7 +593,7 @@ export default function Home() {
             <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center text-lg">
-                  
+                  🛡️
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">System &amp; Hardware Readiness Check</h4>
@@ -628,7 +628,7 @@ export default function Home() {
             className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-md shadow-indigo-600/20 transition-all shrink-0 flex items-center gap-2"
           >
             <span>Launch Online IDE</span>
-            <span></span>
+            <span>🚀</span>
           </Link>
         </div>
       </div>

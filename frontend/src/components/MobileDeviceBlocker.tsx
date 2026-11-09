@@ -26,7 +26,7 @@ export default function MobileDeviceBlocker({ children }: MobileDeviceBlockerPro
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-slate-100 flex items-center justify-center p-4 overflow-y-auto font-sans">
         <div className="max-w-md w-full bg-slate-900 border border-red-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl text-center backdrop-blur-md">
           <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4 text-3xl">
-            
+            📱🚫
           </div>
 
           <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-red-500/20 text-red-400 border border-red-500/40 mb-3">
@@ -50,16 +50,16 @@ export default function MobileDeviceBlocker({ children }: MobileDeviceBlockerPro
               Examination Environment Requirements:
             </h2>
             <div className="flex items-center gap-2 text-xs text-slate-200">
-              <span className="text-emerald-400"></span> Laptop or Desktop PC (Windows, macOS, Linux)
+              <span className="text-emerald-400">✓</span> Laptop or Desktop PC (Windows, macOS, Linux)
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-200">
-              <span className="text-emerald-400"></span> Physical Hardware Keyboard & Mouse / Trackpad
+              <span className="text-emerald-400">✓</span> Physical Hardware Keyboard & Mouse / Trackpad
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-200">
-              <span className="text-emerald-400"></span> Working Web Camera & Microphone
+              <span className="text-emerald-400">✓</span> Working Web Camera & Microphone
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-200">
-              <span className="text-emerald-400"></span> Google Chrome, Microsoft Edge, or Safari on PC
+              <span className="text-emerald-400">✓</span> Google Chrome, Microsoft Edge, or Safari on PC
             </div>
           </div>
 

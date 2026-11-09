@@ -491,7 +491,7 @@ export class AudioSpeechClassifier {
             confirmedDurationMs,
           };
 
-          console.log(`[AudioClassifier]  Confirmed Speech: ${speechType}, Conf: ${Math.round(confidence * 100)}%, RMS: ${metricsToString(rms, snrDb, harmonicity)}`);
+          console.log(`[AudioClassifier] 🗣️ Confirmed Speech: ${speechType}, Conf: ${Math.round(confidence * 100)}%, RMS: ${metricsToString(rms, snrDb, harmonicity)}`);
           this.callbacks.onSpeechConfirmed(confirmedMetrics);
         }
       }

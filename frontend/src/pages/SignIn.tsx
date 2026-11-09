@@ -46,7 +46,7 @@ export default function SignIn() {
         {/* Portal Emblem */}
         <div className="flex flex-col items-center text-center mb-7">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 flex items-center justify-center text-2xl shadow-lg shadow-indigo-500/20 mb-3">
-            
+            🛡️
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Examination Portal</h1>
           <p className="text-xs text-slate-500 mt-1 max-w-xs">
@@ -56,7 +56,7 @@ export default function SignIn() {
 
         {error && (
           <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3.5 py-2.5 rounded-xl text-xs mb-5 flex items-start gap-2 shadow-sm animate-in fade-in">
-            <span className="text-base leading-none"></span>
+            <span className="text-base leading-none">⚠️</span>
             <div className="flex-1 font-medium">{error}</div>
           </div>
         )}
@@ -77,7 +77,7 @@ export default function SignIn() {
                 className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all shadow-sm"
               />
               <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400 text-xs">
-                
+                🆔
               </div>
             </div>
 

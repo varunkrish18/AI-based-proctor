@@ -281,6 +281,7 @@ export interface AdminAttemptReport {
   examName: string;
   examSubject: string | null;
   examDurationMinutes: number;
+  durationMinutes?: number;
   status: string;
   startTime: string;
   endTime: string | null;

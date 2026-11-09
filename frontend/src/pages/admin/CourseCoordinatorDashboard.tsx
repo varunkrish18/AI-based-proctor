@@ -230,7 +230,7 @@ export default function CourseCoordinatorDashboard() {
         undefined,
         "admin"
       );
-      setSuccessMsg(`Successfully assigned unified class to all ${faculties.length} professors in ${departmentName}!`);
+      setSuccessMsg(`✓ Successfully assigned unified class to all ${faculties.length} professors in ${departmentName}!`);
       setReassigningExam(null);
       await loadData();
       setTimeout(() => setSuccessMsg(null), 6000);
@@ -298,7 +298,7 @@ export default function CourseCoordinatorDashboard() {
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-200 text-xs font-semibold">
-              <span></span> Department Course Coordinator
+              <span>🏛️</span> Department Course Coordinator
             </div>
             <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
               {departmentName}
@@ -315,7 +315,7 @@ export default function CourseCoordinatorDashboard() {
               disabled={loading}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition cursor-pointer border border-white/10"
             >
-              <span className={loading ? "animate-spin" : ""}></span> Refresh
+              <span className={loading ? "animate-spin" : ""}>🔄</span> Refresh
             </button>
             <button
               onClick={() => setActiveTab("create-class")}
@@ -328,7 +328,7 @@ export default function CourseCoordinatorDashboard() {
 
         {/* Security / Isolation guarantee pill */}
         <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-2 text-[11px] text-blue-200">
-          <span></span>
+          <span>🛡️</span>
           <span>
             <strong>Assigned Department View:</strong> Only faculty assigned to {departmentName} by the Administrator in the Admin Dashboard are visible here.
           </span>
@@ -345,7 +345,7 @@ export default function CourseCoordinatorDashboard() {
             <p className="text-[11px] text-slate-400 mt-0.5">Assigned to {departmentName}</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 text-xl font-bold">
-            
+            👥
           </div>
         </div>
 
@@ -357,7 +357,7 @@ export default function CourseCoordinatorDashboard() {
             <p className="text-[11px] text-slate-400 mt-0.5">Created for {departmentName}</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 text-xl font-bold">
-            
+            📚
           </div>
         </div>
 
@@ -385,7 +385,7 @@ export default function CourseCoordinatorDashboard() {
             <p className="text-[11px] text-blue-600 font-semibold mt-0.5">Course Coordinator Portal</p>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 text-xl font-bold shrink-0">
-            
+            🏛️
           </div>
         </div>
       </div>
@@ -400,7 +400,7 @@ export default function CourseCoordinatorDashboard() {
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
-          <span></span> Assigned Faculty ({faculties.length})
+          <span>👨‍🏫</span> Assigned Faculty ({faculties.length})
         </button>
 
         <button
@@ -411,7 +411,7 @@ export default function CourseCoordinatorDashboard() {
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
-          <span></span> Department Classes &amp; Exams ({classes.length})
+          <span>📚</span> Department Classes &amp; Exams ({classes.length})
         </button>
 
         <button
@@ -422,7 +422,7 @@ export default function CourseCoordinatorDashboard() {
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
-          <span>+</span> Create Class / Exam
+          <span>➕</span> Create Class / Exam
         </button>
       </div>
 
@@ -430,11 +430,11 @@ export default function CourseCoordinatorDashboard() {
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center justify-between animate-fadeIn">
           <div className="flex items-center gap-2">
-            <span></span>
+            <span>✅</span>
             <span>{successMsg}</span>
           </div>
           <button onClick={() => setSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900 font-bold">
-            
+            ✕
           </button>
         </div>
       )}
@@ -443,7 +443,7 @@ export default function CourseCoordinatorDashboard() {
       {error && (
         <div className="bg-rose-50 border border-rose-300 text-rose-800 px-4 py-3 rounded-2xl text-xs font-semibold flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span></span>
+            <span>⚠️</span>
             <span>{error}</span>
           </div>
           <button onClick={loadData} className="underline text-rose-700 hover:text-rose-900 font-bold">
@@ -477,7 +477,7 @@ export default function CourseCoordinatorDashboard() {
               {/* Input box */}
               <div className="relative flex-1 min-w-[200px]">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                  
+                  🔍
                 </span>
                 <input
                   type="text"
@@ -502,7 +502,7 @@ export default function CourseCoordinatorDashboard() {
                     className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold"
                     title="Clear search"
                   >
-                    
+                    ✕
                   </button>
                 )}
               </div>
@@ -526,7 +526,7 @@ export default function CourseCoordinatorDashboard() {
           {/* Empty state (NO Assign First Faculty button) */}
           {!loading && faculties.length === 0 && (
             <div className="bg-white border border-slate-200 rounded-3xl p-16 text-center text-slate-500 max-w-lg mx-auto">
-              <span className="text-4xl block mb-3"></span>
+              <span className="text-4xl block mb-3">👨‍🏫</span>
               <h3 className="text-base font-bold text-slate-800">No faculty members assigned yet</h3>
               <p className="text-xs text-slate-500 mt-1">
                 Faculty members assigned to <strong className="text-slate-700">{departmentName}</strong> by the Administrator in the Admin Dashboard will appear here.
@@ -557,11 +557,11 @@ export default function CourseCoordinatorDashboard() {
                             {faculty.role || "FACULTY"}
                           </span>
                           <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 truncate max-w-[140px]">
-                             {faculty.department || departmentName}
+                            🏛️ {faculty.department || departmentName}
                           </span>
                           {faculty.locked ? (
                             <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
-                               Locked
+                              🔒 Locked
                             </span>
                           ) : (
                             <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
@@ -585,7 +585,7 @@ export default function CourseCoordinatorDashboard() {
                         onClick={() => copyToClipboard(faculty.email, `email-${faculty.id}`)}
                         className="shrink-0 px-2 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-semibold text-[11px] transition cursor-pointer"
                       >
-                        {copiedField === `email-${faculty.id}` ? "Copied! " : "Copy Email"}
+                        {copiedField === `email-${faculty.id}` ? "Copied! ✓" : "Copy Email"}
                       </button>
                     </div>
 
@@ -603,14 +603,14 @@ export default function CourseCoordinatorDashboard() {
                           className="px-2 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-semibold text-[11px] transition cursor-pointer"
                           title={isPasswordVisible ? "Hide Password" : "Show Password"}
                         >
-                          {isPasswordVisible ? " Hide" : " Reveal"}
+                          {isPasswordVisible ? "🙈 Hide" : "👁️ Reveal"}
                         </button>
                         {faculty.displayPassword && (
                           <button
                             onClick={() => copyToClipboard(faculty.displayPassword!, `pwd-${faculty.id}`)}
                             className="px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-semibold text-[11px] transition cursor-pointer"
                           >
-                            {copiedField === `pwd-${faculty.id}` ? "Copied! " : "Copy Pwd"}
+                            {copiedField === `pwd-${faculty.id}` ? "Copied! ✓" : "Copy Pwd"}
                           </button>
                         )}
                       </div>
@@ -651,7 +651,7 @@ export default function CourseCoordinatorDashboard() {
 
           {classes.length === 0 ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-16 text-center text-slate-500 max-w-lg mx-auto">
-              <span className="text-4xl block mb-3"></span>
+              <span className="text-4xl block mb-3">📖</span>
               <h3 className="text-base font-bold text-slate-800">No classes created yet</h3>
               <p className="text-xs text-slate-500 mt-1 mb-6">
                 Create your first proctored class or exam for <strong className="text-slate-700">{departmentName}</strong> with full exam management features.
@@ -701,7 +701,7 @@ export default function CourseCoordinatorDashboard() {
                         <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2">
                           <div className="overflow-hidden">
                             <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block flex items-center gap-1">
-                              <span></span> Assigned Professor
+                              <span>👨‍🏫</span> Assigned Professor
                             </span>
                             <span className="text-xs font-bold text-slate-900 truncate block mt-0.5">
                               {c.assignedProfessorName || c.assignedProfessorEmail}
@@ -728,7 +728,7 @@ export default function CourseCoordinatorDashboard() {
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between gap-2">
                           <div>
                             <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
-                               No Professor Assigned
+                              ⚠️ No Professor Assigned
                             </span>
                             <span className="text-[11px] text-amber-900 font-medium block">
                               Assign professor to lead this class
@@ -752,10 +752,10 @@ export default function CourseCoordinatorDashboard() {
                     {/* Class Mode Features: Infinite Attempts & Untimed Date Duration */}
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
-                         Infinite Attempts
+                        ♾️ Infinite Attempts
                       </span>
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200">
-                         Untimed (No duration limit)
+                        ⏳ Untimed (No duration limit)
                       </span>
                     </div>
 
@@ -774,9 +774,9 @@ export default function CourseCoordinatorDashboard() {
 
                     <div className="flex items-center gap-1.5 pt-1 text-[11px] text-slate-500">
                       <span>Proctoring:</span>
-                      {c.webcamRequired && <span title="Webcam Required"></span>}
-                      {c.microphoneRequired && <span title="Microphone Required"></span>}
-                      {c.screenRequired && <span title="Screen Capture Required"></span>}
+                      {c.webcamRequired && <span title="Webcam Required">📷</span>}
+                      {c.microphoneRequired && <span title="Microphone Required">🎤</span>}
+                      {c.screenRequired && <span title="Screen Capture Required">🖥️</span>}
                     </div>
                   </div>
 
@@ -789,13 +789,13 @@ export default function CourseCoordinatorDashboard() {
                         to={`/admin/exams/${c.id}?tab=coordinator-report`}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition"
                       >
-                         Whole Report
+                        📊 Whole Report
                       </Link>
                       <Link
                         to={`/admin/exams/${c.id}`}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition"
                       >
-                         Manage
+                        ⚙️ Manage
                       </Link>
                     </div>
                   </div>
@@ -821,13 +821,13 @@ export default function CourseCoordinatorDashboard() {
                     onClick={() => setReassigningExam(null)}
                     className="text-slate-400 hover:text-slate-600 text-sm font-bold"
                   >
-                    
+                    ✕
                   </button>
                 </div>
 
                 <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3.5 text-xs text-blue-900 space-y-1">
                   <p className="font-semibold flex items-center gap-1.5">
-                    <span></span> Coordinator Assignment Protocol
+                    <span>🏛️</span> Coordinator Assignment Protocol
                   </p>
                   <p className="text-[11px] text-blue-800 leading-relaxed">
                     Course Coordinators assign the <strong>Professor</strong> to manage this class. The assigned professor will configure question sets and enroll/assign students. Coordinators do not assign students.
@@ -848,7 +848,7 @@ export default function CourseCoordinatorDashboard() {
                       <option value="">-- Choose a Professor from {departmentName} --</option>
                       {faculties.length > 0 && (
                         <option value="ALL_PROFESSORS" className="font-bold text-blue-700 bg-blue-50">
-                            Assign to ALL Department Faculty ({faculties.length} Professors - Unified Class)
+                          👥 ★ Assign to ALL Department Faculty ({faculties.length} Professors - Unified Class)
                         </option>
                       )}
                       {faculties.map((f) => (
@@ -903,12 +903,12 @@ export default function CourseCoordinatorDashboard() {
           {/* Key Feature Specification Box */}
           <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-slate-50 border border-blue-200/80 rounded-2xl p-4 text-xs text-slate-700 space-y-2 shadow-xs">
             <h4 className="font-bold text-blue-900 flex items-center gap-1.5 text-xs">
-              <span></span> Course Coordinator Class Architecture:
+              <span>📌</span> Course Coordinator Class Architecture:
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
               <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100 shadow-2xs">
                 <span className="font-bold text-indigo-900 block flex items-center gap-1">
-                  <span></span> Infinite Attempts
+                  <span>♾️</span> Infinite Attempts
                 </span>
                 <span className="text-[11px] text-slate-500 mt-0.5 block leading-tight">
                   Students have unlimited attempts to practice and master concepts.
@@ -916,7 +916,7 @@ export default function CourseCoordinatorDashboard() {
               </div>
               <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100 shadow-2xs">
                 <span className="font-bold text-indigo-900 block flex items-center gap-1">
-                  <span></span> No Time Duration
+                  <span>⏳</span> No Time Duration
                 </span>
                 <span className="text-[11px] text-slate-500 mt-0.5 block leading-tight">
                   No 60-min per-attempt countdown. Valid throughout the scheduled date window.
@@ -924,7 +924,7 @@ export default function CourseCoordinatorDashboard() {
               </div>
               <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100 shadow-2xs">
                 <span className="font-bold text-indigo-900 block flex items-center gap-1">
-                  <span></span> Assign Professor
+                  <span>👨‍🏫</span> Assign Professor
                 </span>
                 <span className="text-[11px] text-slate-500 mt-0.5 block leading-tight">
                   You assign the Professor, not the student. The professor enrolls students.
@@ -1025,7 +1025,7 @@ export default function CourseCoordinatorDashboard() {
                     <option value="">-- Choose Professor / Faculty Member from {departmentName} --</option>
                     {faculties.length > 0 && (
                       <option value="ALL_PROFESSORS" className="font-bold text-blue-700 bg-blue-50">
-                          Assign to ALL Department Faculty ({faculties.length} Professors - Unified Class)
+                        👥 ★ Assign to ALL Department Faculty ({faculties.length} Professors - Unified Class)
                       </option>
                     )}
                     {faculties.map((f) => (
@@ -1099,7 +1099,7 @@ export default function CourseCoordinatorDashboard() {
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
                   <div>
-                    <p className="font-semibold text-slate-800"> Webcam Monitoring</p>
+                    <p className="font-semibold text-slate-800">📷 Webcam Monitoring</p>
                     <p className="text-[10px] text-slate-500">Live facial presence &amp; multi-face detection</p>
                   </div>
                 </label>
@@ -1112,7 +1112,7 @@ export default function CourseCoordinatorDashboard() {
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
                   <div>
-                    <p className="font-semibold text-slate-800"> Audio Surveillance</p>
+                    <p className="font-semibold text-slate-800">🎤 Audio Surveillance</p>
                     <p className="text-[10px] text-slate-500">Monitors ambient decibels &amp; conversation spikes</p>
                   </div>
                 </label>
@@ -1125,7 +1125,7 @@ export default function CourseCoordinatorDashboard() {
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
                   <div>
-                    <p className="font-semibold text-slate-800"> Screen Capture &amp; Lock</p>
+                    <p className="font-semibold text-slate-800">🖥️ Screen Capture &amp; Lock</p>
                     <p className="text-[10px] text-slate-500">Tracks tab switches &amp; full-screen enforcement</p>
                   </div>
                 </label>
@@ -1138,7 +1138,7 @@ export default function CourseCoordinatorDashboard() {
                     className="rounded text-blue-600 focus:ring-blue-500"
                   />
                   <div>
-                    <p className="font-semibold text-slate-800"> Shuffle Questions</p>
+                    <p className="font-semibold text-slate-800">🔀 Shuffle Questions</p>
                     <p className="text-[10px] text-slate-500">Randomizes question order per candidate</p>
                   </div>
                 </label>

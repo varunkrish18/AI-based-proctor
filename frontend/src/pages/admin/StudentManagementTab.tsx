@@ -1270,7 +1270,7 @@ export default function StudentManagementTab() {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-2xl"></span>
+            <span className="text-2xl">🎓</span>
             <h2 className="text-xl font-bold text-slate-900">Student User Credentials</h2>
             <span className="bg-emerald-50 text-emerald-700 font-bold text-xs px-2.5 py-0.5 rounded-full border border-emerald-200">
               {students.length} {students.length === 1 ? "Student" : "Students"}
@@ -1288,7 +1288,7 @@ export default function StudentManagementTab() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
             title="Reload student credentials"
           >
-            <span className={loading ? "animate-spin" : ""}></span> Refresh
+            <span className={loading ? "animate-spin" : ""}>🔄</span> Refresh
           </button>
           <button
             onClick={copyAllCredentials}
@@ -1296,7 +1296,7 @@ export default function StudentManagementTab() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
             title="Copy visible credentials table to clipboard"
           >
-            <span></span> Copy All
+            <span>📋</span> Copy All
           </button>
           <button
             onClick={exportCredentialsCsv}
@@ -1304,7 +1304,7 @@ export default function StudentManagementTab() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
             title="Download CSV report"
           >
-            <span></span> Export CSV
+            <span>📥</span> Export CSV
           </button>
           <button
             onClick={() => {
@@ -1317,7 +1317,7 @@ export default function StudentManagementTab() {
             className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
             title="Bulk import students from Excel or CSV spreadsheet"
           >
-            <span></span> Bulk Upload (Excel / CSV)
+            <span>📤</span> Bulk Upload (Excel / CSV)
           </button>
           <button
             onClick={() => {
@@ -1326,7 +1326,7 @@ export default function StudentManagementTab() {
             className="bg-purple-600 hover:bg-purple-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
             title="Group students by register number into classes and sections"
           >
-            <span></span> Group by Section
+            <span>📑</span> Group by Section
           </button>
           <button
             onClick={() => {
@@ -1356,7 +1356,7 @@ export default function StudentManagementTab() {
             className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             title="Delete all student credentials"
           >
-            <span></span> Delete All Credentials
+            <span>🗑️</span> Delete All Credentials
           </button>
         </div>
       </div>
@@ -1373,7 +1373,7 @@ export default function StudentManagementTab() {
                 : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
             }`}
           >
-            <span></span>
+            <span>🎓</span>
             <span>Student Login Credentials</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
@@ -1393,7 +1393,7 @@ export default function StudentManagementTab() {
                 : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
             }`}
           >
-            <span></span>
+            <span>📑</span>
             <span>Group by Section</span>
             <span
               className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
@@ -1415,7 +1415,7 @@ export default function StudentManagementTab() {
           {/* Search by Name & Register Number */}
           <div className="relative flex-1 min-w-[220px] max-w-md">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-              
+              🔍
             </span>
             <input
               type="text"
@@ -1429,7 +1429,7 @@ export default function StudentManagementTab() {
                 onClick={() => setSearchQuery("")}
                 className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold"
               >
-                
+                ✕
               </button>
             )}
           </div>
@@ -1480,11 +1480,11 @@ export default function StudentManagementTab() {
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between animate-fadeIn">
           <div className="flex items-center gap-2">
-            <span></span>
+            <span>✅</span>
             <span>{successMsg}</span>
           </div>
           <button onClick={() => setSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900 font-bold">
-            
+            ✕
           </button>
         </div>
       )}
@@ -1493,7 +1493,7 @@ export default function StudentManagementTab() {
       {error && (
         <div className="bg-rose-50 border border-rose-300 text-rose-800 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span></span>
+            <span>⚠️</span>
             <span>{error}</span>
           </div>
           <button onClick={() => fetchStudents()} className="underline text-rose-700 hover:text-rose-900 font-bold">
@@ -1530,14 +1530,14 @@ export default function StudentManagementTab() {
               {loading && students.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
-                    <span className="inline-block animate-spin text-lg mb-2"></span>
+                    <span className="inline-block animate-spin text-lg mb-2">🔄</span>
                     <p className="font-medium">Loading student credentials…</p>
                   </td>
                 </tr>
               ) : filteredStudents.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
-                    <span className="text-3xl block mb-2"></span>
+                    <span className="text-3xl block mb-2">🎓</span>
                     <p className="font-semibold text-slate-600">No students found matching current filters.</p>
                     <p className="text-[11px] text-slate-400 mt-1">
                       {searchQuery || selectedDeptFilter !== "ALL" || selectedYearFilter !== "ALL"
@@ -1611,9 +1611,9 @@ export default function StudentManagementTab() {
                             title="Copy email"
                           >
                             {copiedField === `email-${st.id}` ? (
-                              <span className="text-[10px] text-emerald-600 font-bold"></span>
+                              <span className="text-[10px] text-emerald-600 font-bold">✓</span>
                             ) : (
-                              <span className="text-[10px]"></span>
+                              <span className="text-[10px]">📋</span>
                             )}
                           </button>
                         </div>
@@ -1633,7 +1633,7 @@ export default function StudentManagementTab() {
                                 className="text-slate-500 hover:text-slate-800 transition p-0.5 cursor-pointer text-xs"
                                 title={isPwdVisible ? "Hide password" : "Show password"}
                               >
-                                {isPwdVisible ? "‍" : ""}
+                                {isPwdVisible ? "👁️‍🗨️" : "👁️"}
                               </button>
                               <button
                                 type="button"
@@ -1642,9 +1642,9 @@ export default function StudentManagementTab() {
                                 title="Copy password"
                               >
                                 {copiedField === `pwd-${st.id}` ? (
-                                  <span className="text-emerald-600 font-bold text-[10px]"></span>
+                                  <span className="text-emerald-600 font-bold text-[10px]">✓</span>
                                 ) : (
-                                  <span></span>
+                                  <span>📋</span>
                                 )}
                               </button>
                             </div>
@@ -1662,14 +1662,14 @@ export default function StudentManagementTab() {
                             className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
                             title="Edit student credentials"
                           >
-                            
+                            ✏️
                           </button>
                           <button
                             onClick={() => setStudentToDelete(st)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
                             title="Delete student"
                           >
-                            
+                            🗑️
                           </button>
                         </div>
                       </td>
@@ -1693,7 +1693,7 @@ export default function StudentManagementTab() {
               {/* Search Option: (section, departement) */}
               <div className="relative flex-1 min-w-[240px] max-w-md">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                  
+                  🔍
                 </span>
                 <input
                   type="text"
@@ -1707,7 +1707,7 @@ export default function StudentManagementTab() {
                     onClick={() => setSectionSearchQuery("")}
                     className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
                   >
-                    
+                    ✕
                   </button>
                 )}
               </div>
@@ -1772,7 +1772,7 @@ export default function StudentManagementTab() {
                 className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                 title="Automatically calculate sections based on registered students"
               >
-                <span></span> Auto-Generate
+                <span>⚡</span> Auto-Generate
               </button>
 
               <button
@@ -1784,12 +1784,12 @@ export default function StudentManagementTab() {
               >
                 {downloadingZip ? (
                   <>
-                    <span className="animate-spin"></span>
+                    <span className="animate-spin">🔄</span>
                     <span>Creating ZIP…</span>
                   </>
                 ) : (
                   <>
-                    <span></span>
+                    <span>📦</span>
                     <span>Download All (ZIP)</span>
                   </>
                 )}
@@ -1830,7 +1830,7 @@ export default function StudentManagementTab() {
                   {filteredClassSections.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="py-12 text-center text-slate-400">
-                        <span className="text-3xl block mb-2"></span>
+                        <span className="text-3xl block mb-2">📑</span>
                         <p className="font-semibold text-slate-600">No classes found matching criteria.</p>
                         <p className="text-[11px] text-slate-400 mt-1">
                           Try searching a different section or department, or switch the Year filter to "All Years".
@@ -1949,14 +1949,14 @@ export default function StudentManagementTab() {
                                     onClick={saveEditSection}
                                     className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
                                   >
-                                    <span></span> Save
+                                    <span>💾</span> Save
                                   </button>
                                   <button
                                     type="button"
                                     onClick={cancelEditSection}
                                     className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs transition cursor-pointer"
                                   >
-                                    <span></span> Cancel
+                                    <span>✕</span> Cancel
                                   </button>
                                 </div>
                               ) : (
@@ -1968,7 +1968,7 @@ export default function StudentManagementTab() {
                                     className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700 font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
                                     title="Edit section name and register number range"
                                   >
-                                    <span></span>
+                                    <span>✏️</span>
                                     <span>Edit</span>
                                   </button>
 
@@ -1979,7 +1979,7 @@ export default function StudentManagementTab() {
                                     className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:border-rose-300 bg-white hover:bg-rose-50 text-rose-700 font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
                                     title="Delete class section"
                                   >
-                                    <span></span>
+                                    <span>🗑️</span>
                                     <span>Delete</span>
                                   </button>
 
@@ -1993,12 +1993,12 @@ export default function StudentManagementTab() {
                                   >
                                     {isDownloading ? (
                                       <>
-                                        <span className="animate-spin"></span>
+                                        <span className="animate-spin">🔄</span>
                                         <span>PDF…</span>
                                       </>
                                     ) : (
                                       <>
-                                        <span></span>
+                                        <span>📥</span>
                                         <span>PDF</span>
                                       </>
                                     )}
@@ -2025,7 +2025,7 @@ export default function StudentManagementTab() {
                                 <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-base"></span>
+                                      <span className="text-base">🎓</span>
                                       <h4 className="font-bold text-slate-800 text-xs">
                                         Students matching {item.className}
                                         <span className="text-slate-400 font-normal ml-1.5 font-mono">
@@ -2096,7 +2096,7 @@ export default function StudentManagementTab() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-scaleUp">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
-                <span className="text-xl"></span>
+                <span className="text-xl">📑</span>
                 <h3 className="text-base font-bold text-slate-900">Add Class / Section</h3>
               </div>
               <button
@@ -2104,7 +2104,7 @@ export default function StudentManagementTab() {
                 onClick={() => setShowAddSectionModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
               >
-                
+                ✕
               </button>
             </div>
 
@@ -2230,14 +2230,14 @@ export default function StudentManagementTab() {
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 animate-scaleUp">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
-                <span className="text-xl"></span>
+                <span className="text-xl">🎓</span>
                 <h3 className="text-base font-bold text-slate-900">Add New Student</h3>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
               >
-                
+                ✕
               </button>
             </div>
 
@@ -2337,7 +2337,7 @@ export default function StudentManagementTab() {
                     onClick={() => setCreateForm({ ...createForm, password: generateRandomPassword() })}
                     className="text-emerald-600 hover:text-emerald-700 text-[11px] font-semibold cursor-pointer"
                   >
-                     Generate Random
+                    🎲 Generate Random
                   </button>
                 </div>
                 <div className="relative">
@@ -2353,7 +2353,7 @@ export default function StudentManagementTab() {
                     onClick={() => setShowCreatePassword(!showCreatePassword)}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
                   >
-                    {showCreatePassword ? "‍" : ""}
+                    {showCreatePassword ? "👁️‍🗨️" : "👁️"}
                   </button>
                 </div>
               </div>
@@ -2386,14 +2386,14 @@ export default function StudentManagementTab() {
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 animate-scaleUp">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
-                <span className="text-xl"></span>
+                <span className="text-xl">✏️</span>
                 <h3 className="text-base font-bold text-slate-900">Edit Student Credentials</h3>
               </div>
               <button
                 onClick={() => setEditingStudent(null)}
                 className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
               >
-                
+                ✕
               </button>
             </div>
 
@@ -2484,7 +2484,7 @@ export default function StudentManagementTab() {
                     onClick={() => setEditForm({ ...editForm, password: generateRandomPassword() })}
                     className="text-emerald-600 hover:text-emerald-700 text-[11px] font-semibold cursor-pointer"
                   >
-                     Generate New
+                    🎲 Generate New
                   </button>
                 </div>
                 <div className="relative">
@@ -2499,7 +2499,7 @@ export default function StudentManagementTab() {
                     onClick={() => setShowEditPassword(!showEditPassword)}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
                   >
-                    {showEditPassword ? "‍" : ""}
+                    {showEditPassword ? "👁️‍🗨️" : "👁️"}
                   </button>
                 </div>
               </div>
@@ -2532,7 +2532,7 @@ export default function StudentManagementTab() {
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 animate-scaleUp text-xs">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xl shrink-0">
-                
+                ⚠️
               </div>
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Delete Student Record?</h3>
@@ -2579,7 +2579,7 @@ export default function StudentManagementTab() {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-scaleUp text-xs">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-11 h-11 rounded-2xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center text-2xl shrink-0">
-                
+                ⚠️
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">Delete All Student Credentials?</h3>
@@ -2636,11 +2636,11 @@ export default function StudentManagementTab() {
               >
                 {deleteAllSubmitting ? (
                   <>
-                    <span className="animate-spin text-sm"></span> Deleting All…
+                    <span className="animate-spin text-sm">🔄</span> Deleting All…
                   </>
                 ) : (
                   <>
-                    <span></span> Delete All Credentials
+                    <span>🗑️</span> Delete All Credentials
                   </>
                 )}
               </button>
@@ -2657,7 +2657,7 @@ export default function StudentManagementTab() {
             <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-xl">
-                  
+                  📤
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -2675,7 +2675,7 @@ export default function StudentManagementTab() {
                 onClick={() => setShowBulkModal(false)}
                 className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold transition"
               >
-                
+                ✕
               </button>
             </div>
 
@@ -2686,7 +2686,7 @@ export default function StudentManagementTab() {
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg"></span>
+                      <span className="text-lg">📥</span>
                       <h4 className="font-bold text-slate-900 text-sm">Download Official Sample Files</h4>
                     </div>
                     <p className="text-slate-600 text-xs leading-relaxed max-w-xl">
@@ -2710,7 +2710,7 @@ export default function StudentManagementTab() {
                       disabled={downloadingSample !== null}
                       className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 font-bold text-xs shadow-xs hover:border-slate-400 transition cursor-pointer disabled:opacity-50"
                     >
-                      <span></span>
+                      <span>📄</span>
                       {downloadingSample === "csv" ? "Downloading…" : "Sample CSV (.csv)"}
                     </button>
                     <button
@@ -2719,7 +2719,7 @@ export default function StudentManagementTab() {
                       disabled={downloadingSample !== null}
                       className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xs transition cursor-pointer disabled:opacity-50"
                     >
-                      <span></span>
+                      <span>📊</span>
                       {downloadingSample === "excel" ? "Downloading…" : "Sample Excel (.xlsx)"}
                     </button>
                   </div>
@@ -2766,7 +2766,7 @@ export default function StudentManagementTab() {
                   <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl transition ${
                     bulkFile ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-700"
                   }`}>
-                    {bulkFile ? "" : ""}
+                    {bulkFile ? "📋" : "📁"}
                   </div>
                   <div>
                     <p className="font-bold text-slate-800 text-sm">
@@ -2793,11 +2793,11 @@ export default function StudentManagementTab() {
               {bulkError && (
                 <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl font-medium flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span></span>
+                    <span>⚠️</span>
                     <span>{bulkError}</span>
                   </div>
                   <button onClick={() => setBulkError(null)} className="text-rose-500 hover:text-rose-700 font-bold">
-                    
+                    ✕
                   </button>
                 </div>
               )}
@@ -2807,7 +2807,7 @@ export default function StudentManagementTab() {
                 <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 font-bold text-emerald-900 text-sm">
-                      <span></span>
+                      <span>🎉</span>
                       <span>Bulk Upload Successful</span>
                     </div>
                     <span className="text-[11px] bg-emerald-200/80 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
@@ -2858,11 +2858,11 @@ export default function StudentManagementTab() {
                     </div>
                     <div className="flex items-center gap-2 text-[11px]">
                       <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
-                        {parsedRows.filter((r) => r.isValid).length} Ready
+                        ✓ {parsedRows.filter((r) => r.isValid).length} Ready
                       </span>
                       {parsedRows.some((r) => !r.isValid) && (
                         <span className="bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-md">
-                           {parsedRows.filter((r) => !r.isValid).length} Issues
+                          ⚠ {parsedRows.filter((r) => !r.isValid).length} Issues
                         </span>
                       )}
                     </div>
@@ -2901,26 +2901,26 @@ export default function StudentManagementTab() {
                                 <span className="font-mono text-slate-700 font-medium">••••••</span>
                               ) : (
                                 <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-semibold border border-amber-200">
-                                   Auto-gen
+                                  🎲 Auto-gen
                                 </span>
                               )}
                             </td>
                             <td className="py-2 px-3 text-right">
                               {row.isValid ? (
                                 <div className="inline-flex items-center gap-1.5 justify-end">
-                                  <span className="text-emerald-600 font-bold">Valid</span>
+                                  <span className="text-emerald-600 font-bold">✓ Valid</span>
                                   {row.note && (
                                     <span
                                       className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-semibold border border-indigo-200"
                                       title={row.note}
                                     >
-                                       Unique Email
+                                      🎲 Unique Email
                                     </span>
                                   )}
                                 </div>
                               ) : (
                                 <span className="text-rose-600 font-bold" title={row.validationError}>
-                                   {row.validationError}
+                                  ⚠ {row.validationError}
                                 </span>
                               )}
                             </td>
@@ -2971,12 +2971,12 @@ export default function StudentManagementTab() {
                 >
                   {bulkSubmitting ? (
                     <>
-                      <span className="animate-spin"></span>
+                      <span className="animate-spin">🔄</span>
                       <span>Importing…</span>
                     </>
                   ) : (
                     <>
-                      <span></span>
+                      <span>🚀</span>
                       <span>
                         Import {parsedRows.filter((r) => r.isValid).length > 0 ? `${parsedRows.filter((r) => r.isValid).length} Students` : "File"}
                       </span>
@@ -2997,7 +2997,7 @@ export default function StudentManagementTab() {
             <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-xl">
-                  
+                  📑
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -3015,7 +3015,7 @@ export default function StudentManagementTab() {
                 onClick={() => setShowGroupingModal(false)}
                 className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold transition"
               >
-                
+                ✕
               </button>
             </div>
 
@@ -3086,7 +3086,7 @@ export default function StudentManagementTab() {
                       className="text-[11px] text-purple-600 hover:text-purple-700 font-bold flex items-center gap-1 cursor-pointer"
                       title="Evenly distribute register numbers across sections"
                     >
-                      <span></span> Auto-Balance Ranges
+                      <span>⚡</span> Auto-Balance Ranges
                     </button>
                   </div>
 
@@ -3128,11 +3128,11 @@ export default function StudentManagementTab() {
               {groupingError && (
                 <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl font-medium flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span></span>
+                    <span>⚠️</span>
                     <span>{groupingError}</span>
                   </div>
                   <button onClick={() => setGroupingError(null)} className="text-rose-500 hover:text-rose-700 font-bold">
-                    
+                    ✕
                   </button>
                 </div>
               )}
@@ -3209,12 +3209,12 @@ export default function StudentManagementTab() {
                             >
                               {isDownloadingThis ? (
                                 <>
-                                  <span className="animate-spin"></span>
+                                  <span className="animate-spin">🔄</span>
                                   <span>Generating…</span>
                                 </>
                               ) : (
                                 <>
-                                  <span></span>
+                                  <span>📥</span>
                                   <span>Download {sec.name} PDF</span>
                                 </>
                               )}
@@ -3326,12 +3326,12 @@ export default function StudentManagementTab() {
                 >
                   {downloadingZip ? (
                     <>
-                      <span className="animate-spin"></span>
+                      <span className="animate-spin">🔄</span>
                       <span>Creating ZIP…</span>
                     </>
                   ) : (
                     <>
-                      <span></span>
+                      <span>📦</span>
                       <span>Download All Sections (ZIP)</span>
                     </>
                   )}

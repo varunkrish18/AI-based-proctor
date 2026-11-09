@@ -42,7 +42,7 @@ export default function NavBar() {
           className="flex items-center gap-2 text-white font-bold text-sm tracking-wide"
         >
           <span className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs shadow-md shadow-indigo-500/20">
-            
+            🛡️
           </span>
           <span>AI Exam &amp; Proctoring Portal</span>
         </NavLink>
@@ -60,7 +60,7 @@ export default function NavBar() {
                 Instructions
               </NavLink>
               <NavLink to="/ide" className={linkClass}>
-                 Online IDE
+                💻 Online IDE
               </NavLink>
 
               {/* Staff controls */}
@@ -68,11 +68,11 @@ export default function NavBar() {
                 <>
                   <div className="h-4 w-px bg-slate-700 mx-1" />
                   <NavLink to="/admin/dashboard" className={linkClass}>
-                     Dashboard
+                    🎛️ Dashboard
                   </NavLink>
                   {role === "ADMIN" && (
                     <NavLink to="/admin/dashboard?tab=users" className={linkClass}>
-                       Users
+                      👥 Users
                     </NavLink>
                   )}
                 </>
@@ -117,7 +117,7 @@ export default function NavBar() {
               to="/sign-in"
               className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
             >
-              <span></span>
+              <span>🔑</span>
               <span>Sign In</span>
             </NavLink>
           )}

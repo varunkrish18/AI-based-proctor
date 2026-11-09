@@ -170,7 +170,7 @@ export default function ExamVerify() {
               <span className={`px-2 py-0.5 rounded-full font-semibold text-[11px] ${
                 examMeta.isClass ? "bg-indigo-100 text-indigo-800" : examMeta.durationMinutes ? "bg-blue-100 text-blue-800" : "bg-indigo-100 text-indigo-800"
               }`}>
-                {examMeta.isClass ? " Untimed Class Assessment" : examMeta.durationMinutes ? `${examMeta.durationMinutes} mins` : " Untimed"}
+                {examMeta.isClass ? "♾️ Untimed Class Assessment" : examMeta.durationMinutes ? `${examMeta.durationMinutes} mins` : "♾️ Untimed"}
               </span>
             </div>
             {examMeta.subject && (
@@ -178,27 +178,27 @@ export default function ExamVerify() {
             )}
             {examMeta.assignedProfessorName && (
               <p className="text-indigo-700 font-semibold text-[11px] mt-1 flex items-center gap-1">
-                <span></span> Faculty in Charge: {examMeta.assignedProfessorName}
+                <span>👨‍🏫</span> Faculty in Charge: {examMeta.assignedProfessorName}
               </p>
             )}
             <div className="mt-3 pt-2.5 border-t border-slate-200 flex flex-wrap items-center gap-2 text-[11px]">
               <span className="text-slate-500 font-medium">Proctoring Requirements:</span>
               {examMeta.webcamRequired ? (
                 <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">
-                   Camera Required
+                  📷 Camera Required
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-medium">
-                   Camera Not Required
+                  📷 Camera Not Required
                 </span>
               )}
               {examMeta.microphoneRequired ? (
                 <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">
-                   Mic Required
+                  🎤 Mic Required
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-medium">
-                   Mic Not Required
+                  🎤 Mic Not Required
                 </span>
               )}
             </div>
@@ -283,7 +283,7 @@ export default function ExamVerify() {
 
           {error && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-3.5 text-red-800 text-xs flex items-start gap-2">
-              <span className="text-red-500 font-bold text-sm shrink-0"></span>
+              <span className="text-red-500 font-bold text-sm shrink-0">✕</span>
               <div className="flex-1">
                 <span className="font-semibold">{error}</span>
                 {error.toLowerCase().includes("already completed") && (

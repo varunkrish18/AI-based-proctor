@@ -315,7 +315,7 @@ export default function CodeEditor({
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-bold tracking-wide">Cloud Online Compiler</span>
             <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium hidden sm:inline">
-              Instant Sandbox
+              ⚡ Instant Sandbox
             </span>
           </div>
 
@@ -346,7 +346,7 @@ export default function CodeEditor({
             className="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-750 transition cursor-pointer"
             title="Copy code to clipboard"
           >
-            {copied ? "Copied" : "Copy"}
+            {copied ? "✓ Copied" : "📋 Copy"}
           </button>
 
           {!readOnly && (
@@ -407,7 +407,7 @@ export default function CodeEditor({
       <div className="bg-slate-900/90 border-b border-slate-800/80 px-3 py-1 flex items-center justify-between text-[11px] text-slate-400 select-none flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <span className="text-emerald-400 font-semibold flex items-center gap-1">
-            <span></span> Smart Indent:
+            <span>⚡</span> Smart Indent:
           </span>
           <span className="text-slate-300">
             Enter auto-indents • Tab &amp; Shift+Tab indents 4 spaces • Auto-pairs () [] &#123;&#125;
@@ -415,7 +415,7 @@ export default function CodeEditor({
         </div>
         <div className="flex items-center gap-2 text-slate-500 text-[10px]">
           <span className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-400/90 font-mono" title="Exam security lock">
-            Exam Lock: Win/Ctrl/Alt/F-keys Disabled
+            🔒 Exam Lock: Win/Ctrl/Alt/F-keys Disabled
           </span>
           <span className="font-mono text-slate-400">
             {lineCount} lines • {code.length} chars
@@ -582,7 +582,7 @@ export default function CodeEditor({
               ) : runError ? (
                 <div className="bg-rose-950/40 border border-rose-800/80 rounded-lg p-3 text-rose-300">
                   <div className="font-bold flex items-center gap-1.5 mb-1">
-                    Execution Failed
+                    <span>⚠️</span> Execution Failed
                   </div>
                   <pre className="text-xs whitespace-pre-wrap font-mono">{runError}</pre>
                 </div>
@@ -601,9 +601,9 @@ export default function CodeEditor({
                         }`}
                       >
                         {runResult.status === "ACCEPTED"
-                          ? "Accepted"
+                          ? "✓ Accepted"
                           : runResult.status === "WRONG_ANSWER"
-                          ? "Wrong Answer"
+                          ? "✗ Wrong Answer"
                           : runResult.status}
                       </span>
                       <span className="text-xs text-slate-400 font-sans">
@@ -629,7 +629,7 @@ export default function CodeEditor({
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-sans font-bold text-xs flex items-center gap-1.5">
                             <span className={res.passed ? "text-emerald-400" : "text-rose-400"}>
-                              {res.passed ? "Passed" : "Failed"}
+                              {res.passed ? "✓" : "✗"}
                             </span>
                             Case {res.testCaseIndex}
                           </span>
