@@ -314,7 +314,7 @@ export default function SystemCheck() {
       {!isSecure && (requirements.webcamRequired || requirements.microphoneRequired) && (
         <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50/80 p-4 text-blue-900 shadow-sm">
           <div className="flex items-start gap-3">
-            <span className="text-2xl mt-0.5">ℹ️</span>
+            <span className="text-2xl mt-0.5">ℹ</span>
             <div className="flex-1">
               <h3 className="font-bold text-xs text-blue-950">
                 Tip for Full Hardware Camera &amp; Microphone Tracking
@@ -327,7 +327,7 @@ export default function SystemCheck() {
                   onClick={switchToHttps}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition shadow-sm cursor-pointer"
                 >
-                  🔒 Switch to HTTPS (https://{window.location.hostname})
+                   Switch to HTTPS (https://{window.location.hostname})
                 </button>
               </div>
             </div>
@@ -339,7 +339,7 @@ export default function SystemCheck() {
       {!stillChecking && (
         allRequiredOk ? (
           <div className="mb-5 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            <span className="text-lg leading-none mt-0.5">✅</span>
+            <span className="text-lg leading-none mt-0.5"></span>
             <div>
               <p className="font-semibold text-xs">Ready for examination</p>
               <p className="mt-0.5 text-xs text-emerald-700">
@@ -349,7 +349,7 @@ export default function SystemCheck() {
           </div>
         ) : (
           <div className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            <span className="text-lg leading-none mt-0.5">⚠️</span>
+            <span className="text-lg leading-none mt-0.5"></span>
             <div>
               <p className="font-semibold text-xs">Required Permissions Needed to Proceed</p>
               <p className="mt-0.5 text-xs text-red-700">
@@ -410,15 +410,15 @@ export default function SystemCheck() {
                       : "text-slate-500"
                   }`}
                 >
-                  {c.status === "ok" && <span className="font-bold text-emerald-600">✓</span>}
+                  {c.status === "ok" && <span className="font-bold text-emerald-600"></span>}
                   {c.status === "not_required" && <span className="font-bold text-slate-400">○</span>}
-                  {c.status === "fail" && <span className="font-bold text-rose-600">✗</span>}
+                  {c.status === "fail" && <span className="font-bold text-rose-600"></span>}
                   {c.detail}
                 </p>
               )}
               {showFix && c.fixHint && (
                 <div className="mt-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
-                  💡 <strong>How to fix:</strong> {c.fixHint}
+                   <strong>How to fix:</strong> {c.fixHint}
                 </div>
               )}
             </div>
@@ -457,9 +457,9 @@ function StatusBadge({ status }: { status: CheckStatus }) {
   const map: Record<CheckStatus, { text: string; cls: string }> = {
     pending: { text: "Pending", cls: "bg-slate-100 text-slate-500" },
     checking: { text: "Checking…", cls: "bg-amber-100 text-amber-700 animate-pulse" },
-    ok: { text: "✓ Ready", cls: "bg-green-100 text-green-700" },
+    ok: { text: "Ready", cls: "bg-green-100 text-green-700" },
     not_required: { text: "○ Not Required", cls: "bg-slate-100 text-slate-500 border border-slate-200" },
-    fail: { text: "✗ Permission Denied / Unavailable", cls: "bg-red-100 text-red-700 font-semibold" },
+    fail: { text: "Permission Denied / Unavailable", cls: "bg-red-100 text-red-700 font-semibold" },
   };
   const { text, cls } = map[status];
   return <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${cls}`}>{text}</span>;

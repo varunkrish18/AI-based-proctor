@@ -352,7 +352,7 @@ export default function ProfessorStudentReportTab({ exam }: Props) {
               className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-sm flex items-center gap-2 cursor-pointer"
               title="Download full report as Excel (.csv)"
             >
-              <span>📊</span>
+              <span></span>
               <span>Download Excel</span>
             </button>
             <button
@@ -360,7 +360,7 @@ export default function ProfessorStudentReportTab({ exam }: Props) {
               className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-sm flex items-center gap-2 cursor-pointer"
               title="Print or Save as PDF"
             >
-              <span>🖨️</span>
+              <span></span>
               <span>Download / Print PDF</span>
             </button>
           </div>
@@ -393,13 +393,13 @@ export default function ProfessorStudentReportTab({ exam }: Props) {
               placeholder="Search by Register number or Name..."
               className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
             />
-            <span className="absolute left-2.5 top-2.5 text-slate-400">🔍</span>
+            <span className="absolute left-2.5 top-2.5 text-slate-400"></span>
             {search && (
               <button
                 onClick={() => setSearch("")}
                 className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
               >
-                ✕
+                
               </button>
             )}
           </div>
@@ -559,7 +559,7 @@ export default function ProfessorStudentReportTab({ exam }: Props) {
               ) : (
                 <tr>
                   <td colSpan={5} className="py-12 text-center text-slate-400">
-                    <div className="text-3xl mb-2">📋</div>
+                    <div className="text-3xl mb-2"></div>
                     <p className="font-semibold text-slate-600">No student records found</p>
                     <p className="text-xs text-slate-400 mt-0.5">
                       {search

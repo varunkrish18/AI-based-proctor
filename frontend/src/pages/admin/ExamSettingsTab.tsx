@@ -25,7 +25,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
     return (
       <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs text-center max-w-2xl mx-auto my-8">
         <div className="w-16 h-16 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-center mx-auto mb-4 text-3xl">
-          🔒
+          
         </div>
         <h2 className="text-xl font-bold text-slate-900 mb-2">Exam Settings &amp; Timing Locked</h2>
         <p className="text-sm text-slate-600 mb-6 leading-relaxed">
@@ -167,7 +167,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <span>⚙️</span> Edit Exam Configuration &amp; Parameters
+              <span></span> Edit Exam Configuration &amp; Parameters
             </h2>
             <p className="text-xs text-slate-500 mt-1">
               Correct any mistakes in timings, attempts, question limits, scoring, or proctoring rules.
@@ -187,7 +187,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
 
       {isClassPolicy && (
         <div className="bg-indigo-50/90 border border-indigo-200 rounded-xl p-4 text-xs text-indigo-950 flex items-start gap-3">
-          <span className="text-xl">🏫</span>
+          <span className="text-xl"></span>
           <div className="space-y-1">
             <p className="font-bold text-indigo-900">Academic Class Policies Enforced</p>
             <p className="text-indigo-800 leading-relaxed">
@@ -195,7 +195,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
             </p>
             {exam.assignedProfessorName && (
               <p className="text-indigo-950 font-semibold pt-0.5">
-                👨‍🏫 Assigned Faculty: {exam.assignedProfessorName} ({exam.assignedProfessorEmail})
+                 Assigned Faculty: {exam.assignedProfessorName} ({exam.assignedProfessorEmail})
               </p>
             )}
           </div>
@@ -204,7 +204,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
 
       {isClassSettingsLocked && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs text-amber-950 flex items-start gap-3 shadow-xs">
-          <span className="text-xl">🔒</span>
+          <span className="text-xl"></span>
           <div className="space-y-1">
             <p className="font-bold text-amber-900">Class Settings Locked by Course Coordinator</p>
             <p className="text-amber-850 leading-relaxed">
@@ -217,10 +217,10 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
       {saveSuccess && (
         <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
           <span className="flex items-center gap-2 font-medium">
-            <span>✓</span> {saveSuccess}
+            <span></span> {saveSuccess}
           </span>
           <button onClick={() => setSaveSuccess(null)} className="text-emerald-700 hover:text-emerald-900 font-bold cursor-pointer">
-            ✕
+            
           </button>
         </div>
       )}
@@ -228,10 +228,10 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
       {saveError && (
         <div className="bg-rose-50 border border-rose-300 text-rose-800 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
           <span className="flex items-center gap-2 font-medium">
-            <span>⚠️</span> {saveError}
+            <span></span> {saveError}
           </span>
           <button onClick={() => setSaveError(null)} className="text-rose-700 hover:text-rose-900 font-bold cursor-pointer">
-            ✕
+            
           </button>
         </div>
       )}
@@ -241,7 +241,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
         {/* SECTION 1: General Details */}
         <div className="space-y-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 pb-2 border-b border-slate-100 flex items-center gap-2">
-            <span>📝</span> Basic Information
+            <span></span> Basic Information
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -297,7 +297,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
         {/* SECTION 2: Schedule & Timing */}
         <div className="space-y-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 pb-2 border-b border-slate-100 flex items-center gap-2">
-            <span>⏰</span> Time Window &amp; Duration
+            <span></span> Time Window &amp; Duration
           </h3>
 
           <div className={`grid grid-cols-1 ${isClassPolicy ? "md:grid-cols-2" : "md:grid-cols-3"} gap-4`}>
@@ -350,7 +350,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
         {/* SECTION 3: Questions, Scoring & Attempts */}
         <div className="space-y-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 pb-2 border-b border-slate-100 flex items-center gap-2">
-            <span>🎯</span> Questions, Scoring &amp; Attempts
+            <span></span> Questions, Scoring &amp; Attempts
           </h3>
 
           <div className={`grid grid-cols-1 ${isClassPolicy ? "" : "sm:grid-cols-2 md:grid-cols-4"} gap-4`}>
@@ -456,7 +456,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
         {/* SECTION 4: Proctoring Rules */}
         <div className="space-y-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 pb-2 border-b border-slate-100 flex items-center gap-2">
-            <span>🛡️</span> AI Proctoring &amp; Monitoring Rules
+            <span></span> AI Proctoring &amp; Monitoring Rules
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -549,7 +549,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
           {isClassSettingsLocked ? (
             <div className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
               <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                <span>🔒</span> Read-Only Mode: Class settings can only be altered by the Course Coordinator
+                <span></span> Read-Only Mode: Class settings can only be altered by the Course Coordinator
               </span>
               {onSwitchToQuestions && (
                 <button
@@ -583,7 +583,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
                     Saving Changes…
                   </>
                 ) : (
-                  "Save Exam Changes ✓"
+                  "Save Exam Changes "
                 )}
               </button>
             </>

@@ -1314,7 +1314,7 @@ export default function ExamTake() {
         });
 
         if (elapsed >= 2000) {
-          console.warn(`[CameraWatchdog] 🚨 Camera closed for >= 2 seconds: ${reason}. Auto-submitting exam!`);
+          console.warn(`[CameraWatchdog]  Camera closed for >= 2 seconds: ${reason}. Auto-submitting exam!`);
           cameraClosedStartRef.current = null;
           setCameraClosedWarning(null);
           logEvent("CAMERA_CLOSED_AUTO_SUBMIT", undefined, {
@@ -1448,7 +1448,7 @@ export default function ExamTake() {
       if (now - lastVoiceStrikeTimeRef.current < 3500) return;
       lastVoiceStrikeTimeRef.current = now;
 
-      console.warn(`[SpeechDetector] 🎙️ ${reasonTitle}: ${details} (Type: ${speechType}, Conf: ${Math.round(confidence * 100)}%)`);
+      console.warn(`[SpeechDetector]  ${reasonTitle}: ${details} (Type: ${speechType}, Conf: ${Math.round(confidence * 100)}%)`);
 
       const eventPayload = {
         reason: details,
@@ -1626,7 +1626,7 @@ export default function ExamTake() {
 
           // Speech recognized: any genuine spoken word that is not blacklisted noise
           if (meaningfulWords.length >= 1) {
-            console.log(`[WebSpeech] 🎙️ Candidate speech detected: "${transcriptText}"`);
+            console.log(`[WebSpeech]  Candidate speech detected: "${transcriptText}"`);
             triggerSpeechEvent(
               isAskingQuestion ? "Question Asked Aloud" : "Speech Detected",
               isAskingQuestion
@@ -2148,7 +2148,7 @@ export default function ExamTake() {
               const diffMin = Math.round((syncRes.remainingSeconds - prev) / 60);
               if (diffMin !== 0) {
                 setWarning(
-                  `⏱️ Exam duration was updated by examiner (${diffMin > 0 ? `+${diffMin}` : diffMin} min).`
+                  ` Exam duration was updated by examiner (${diffMin > 0 ? `+${diffMin}` : diffMin} min).`
                 );
                 setTimeout(() => setWarning(null), 6000);
               }
@@ -2458,7 +2458,7 @@ export default function ExamTake() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-12">
         <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full p-8 shadow-sm">
           <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-4 mx-auto text-2xl">
-            🛡️
+            
           </div>
           <h2 className="text-xl font-bold text-slate-900 text-center mb-2">
             Proctored Examination Setup
@@ -2469,29 +2469,29 @@ export default function ExamTake() {
 
           <div className="bg-slate-50 rounded-lg p-4 mb-6 space-y-2 text-sm text-slate-700">
             <div className="flex items-center gap-2">
-              <span className="text-blue-600 font-bold">✓</span>
+              <span className="text-blue-600 font-bold"></span>
               <span>Screen sharing: Full display capture (Entire Screen only)</span>
             </div>
             {session.webcamRequired && (
               <div className="flex items-center gap-2">
-                <span className="text-blue-600 font-bold">✓</span>
+                <span className="text-blue-600 font-bold"></span>
                 <span>Webcam: Continuous video monitoring</span>
               </div>
             )}
             {session.microphoneRequired && (
               <div className="flex items-center gap-2">
-                <span className="text-blue-600 font-bold">✓</span>
+                <span className="text-blue-600 font-bold"></span>
                 <span>Microphone: Audio monitoring (Admin Gain: {session.audioInputLevel ?? 20}%)</span>
               </div>
             )}
             {session.locationRequired && (
               <div className="flex items-center gap-2">
-                <span className="text-blue-600 font-bold">✓</span>
+                <span className="text-blue-600 font-bold"></span>
                 <span>Location: Verified geolocation monitoring</span>
               </div>
             )}
             <div className="flex items-center gap-2">
-              <span className="text-blue-600 font-bold">✓</span>
+              <span className="text-blue-600 font-bold"></span>
               <span>Locked fullscreen examination mode</span>
             </div>
           </div>
@@ -2510,7 +2510,7 @@ export default function ExamTake() {
                     }}
                     className="text-xs bg-emerald-700 text-white px-2.5 py-1 rounded hover:bg-emerald-800 font-semibold cursor-pointer"
                   >
-                    🔒 Switch to HTTPS
+                     Switch to HTTPS
                   </button>
                 )}
               </div>
@@ -2520,7 +2520,7 @@ export default function ExamTake() {
           {pendingFullscreen ? (
             <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800 text-xs flex items-center gap-2">
-                <span className="text-base font-bold text-emerald-600">✓</span>
+                <span className="text-base font-bold text-emerald-600"></span>
                 <span>Entire screen share &amp; media permissions verified. Click below to enter full-screen mode and start your exam.</span>
               </div>
               <button
@@ -2566,7 +2566,7 @@ export default function ExamTake() {
       >
         <div className="bg-slate-900 border-2 border-amber-500 rounded-2xl max-w-lg w-full p-8 text-center shadow-2xl text-white space-y-5 animate-in fade-in zoom-in-95 duration-200">
           <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto text-3xl border border-amber-500/40 animate-pulse">
-            🖥️
+            
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white mb-2">Entire Screen Sharing Required</h2>
@@ -2609,7 +2609,7 @@ export default function ExamTake() {
       >
         <div className="bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-lg w-full p-8 text-center shadow-2xl text-white space-y-5 animate-in fade-in zoom-in-95 duration-200">
           <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto text-3xl border border-rose-500/40 animate-pulse">
-            {permissionMissing.type === "webcam" ? "📷❌" : permissionMissing.type === "microphone" ? "🎙️❌" : "📍❌"}
+            {permissionMissing.type === "webcam" ? "" : permissionMissing.type === "microphone" ? "" : ""}
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white mb-2">
@@ -2678,7 +2678,7 @@ export default function ExamTake() {
                 : "bg-indigo-500/20 text-indigo-400 border-indigo-500/40"
             }`}
           >
-            {isViolationTermination ? "🚨" : "⏳"}
+            {isViolationTermination ? "" : ""}
           </div>
           <h2 className="text-2xl font-bold text-white">
             {isViolationTermination ? "Submitting & Terminating Exam" : "Concluding Examination Session"}
@@ -2735,7 +2735,7 @@ export default function ExamTake() {
             className="bg-slate-900 border-2 border-red-500 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-4"
           >
             <div className="w-16 h-16 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-bounce">
-              ⚠️
+              
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight">Fullscreen Mode Mandatory</h2>
             <p className="text-sm text-slate-300 leading-relaxed">
@@ -2773,7 +2773,7 @@ export default function ExamTake() {
                 }`}
               >
                 {fullscreenLockout > 0
-                  ? `🔒 Locked: Wait ${fullscreenLockout}s to re-enter fullscreen`
+                  ? ` Locked: Wait ${fullscreenLockout}s to re-enter fullscreen`
                   : "⤢ Click Anywhere to Re-enter Fullscreen"}
               </button>
             )}
@@ -2786,7 +2786,7 @@ export default function ExamTake() {
         <div className="fixed inset-0 z-[120] bg-slate-950/98 backdrop-blur-2xl flex items-center justify-center p-6 text-center animate-in fade-in duration-200">
           <div className="bg-slate-900 border-2 border-amber-500 rounded-2xl max-w-lg w-full p-8 shadow-2xl space-y-4">
             <div className="w-16 h-16 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-bounce">
-              ⚠️
+              
             </div>
             <h2 className="text-xl font-bold text-white">Browser Side-Panel / Split-Screen Detected</h2>
             <p className="text-sm text-slate-300 leading-relaxed">
@@ -2832,7 +2832,7 @@ export default function ExamTake() {
             className="bg-slate-900 border-2 border-rose-500 rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-4"
           >
             <div className="w-16 h-16 bg-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto text-3xl animate-pulse">
-              🔒
+              
             </div>
             <h2 className="text-xl font-bold text-white">Examination Window Unfocused</h2>
             <p className="text-sm text-slate-300 leading-relaxed">
@@ -2857,7 +2857,7 @@ export default function ExamTake() {
               }`}
             >
               {defocusLockout > 0
-                ? `🔒 Locked: Resume available in ${defocusLockout}s...`
+                ? ` Locked: Resume available in ${defocusLockout}s...`
                 : "Click to Resume Exam Focus"}
             </button>
           </div>
@@ -2887,7 +2887,7 @@ export default function ExamTake() {
                     : "bg-amber-100 text-amber-600 border-2 border-amber-300"
                 }`}
               >
-                {activeWarningModal.strike >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) ? "⛔" : activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1 ? "🚨" : "⚠️"}
+                {activeWarningModal.strike >= (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) ? "" : activeWarningModal.strike === (session?.maxWarnings ?? (session?.isClass ? 10 : 3)) - 1 ? "" : ""}
               </div>
               <span
                 className={`inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
@@ -2980,14 +2980,14 @@ export default function ExamTake() {
                 {/* Direction Icon Badge */}
                 <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center text-2xl shrink-0 shadow-inner ring-2 ring-amber-400/30 animate-pulse">
                   {gazeWarningPopup.direction === "UP"
-                    ? "⬆️"
+                    ? "⬆"
                     : gazeWarningPopup.direction === "DOWN"
-                    ? "⬇️"
+                    ? "⬇"
                     : gazeWarningPopup.direction === "LEFT"
-                    ? "⬅️"
+                    ? "⬅"
                     : gazeWarningPopup.direction === "RIGHT"
-                    ? "➡️"
-                    : "👁️"}
+                    ? "->"
+                    : ""}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -3003,7 +3003,7 @@ export default function ExamTake() {
                       className="text-slate-400 hover:text-white text-base leading-none p-1 cursor-pointer font-bold transition-colors"
                       title="Dismiss"
                     >
-                      ✕
+                      
                     </button>
                   </div>
                   <h4 className="text-sm font-extrabold text-amber-300 leading-snug">
@@ -3048,7 +3048,7 @@ export default function ExamTake() {
                       : "bg-sky-500/20 text-sky-400 border border-sky-500/40 ring-sky-400/30"
                   }`}
                 >
-                  {voiceWarningPopup.stage === 2 ? "⚠️" : "🎙️"}
+                  {voiceWarningPopup.stage === 2 ? "" : ""}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -3067,7 +3067,7 @@ export default function ExamTake() {
                       className="text-slate-400 hover:text-white text-base leading-none p-1 cursor-pointer font-bold transition-colors"
                       title="Dismiss"
                     >
-                      ✕
+                      
                     </button>
                   </div>
                   <h4
@@ -3107,7 +3107,7 @@ export default function ExamTake() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 border-4 border-red-600 text-center animate-pulse">
             <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 border-2 border-red-300 flex items-center justify-center text-3xl mx-auto mb-3 shadow-inner">
-              📷❌
+              
             </div>
             <span className="inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-red-600 text-white mb-2">
               Security Violation
@@ -3138,7 +3138,7 @@ export default function ExamTake() {
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl text-slate-900 space-y-4 border border-slate-200">
             <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-2xl font-bold shadow-inner">
-              🚪
+              
             </div>
             <h3 className="text-xl font-bold text-center text-slate-900">
               Terminate {session?.isClass ? "Class" : "Examination"}?
@@ -3148,7 +3148,7 @@ export default function ExamTake() {
             </p>
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
               <p className="font-bold flex items-center gap-1 text-amber-800">
-                <span>💡</span> Examination Rule Notice:
+                <span></span> Examination Rule Notice:
               </p>
               <p>
                 • Terminating now marks your attempt as <strong>Incomplete</strong>.
@@ -3172,7 +3172,7 @@ export default function ExamTake() {
                 disabled={terminating}
                 className="px-4 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-lg transition shadow-sm cursor-pointer flex items-center gap-1.5"
               >
-                <span>🚪</span>
+                <span></span>
                 <span>{terminating ? "Terminating…" : "Yes, Terminate Session"}</span>
               </button>
             </div>
@@ -3215,7 +3215,7 @@ export default function ExamTake() {
                 : "bg-red-500/40 text-red-200 border-red-500 animate-bounce"
             }`}
           >
-            <span>⚠️ Warnings:</span>
+            <span> Warnings:</span>
             <span
               className={`px-1.5 py-0.5 rounded font-mono text-[11px] font-black ${
                 warningStrikes === 0
@@ -3284,12 +3284,12 @@ export default function ExamTake() {
                 }`}
               >
                 {aiAnalysis.cameraCovered
-                  ? "🚨 Camera Covered"
+                  ? " Camera Covered"
                   : aiAnalysis.faceDetected
                   ? aiAnalysis.faceCount > 1
-                    ? `👥 ${aiAnalysis.faceCount} Faces`
-                    : `👤 Face OK`
-                  : "⚠️ No Face"}
+                    ? ` ${aiAnalysis.faceCount} Faces`
+                    : ` Face OK`
+                  : " No Face"}
               </span>
               <span className="text-slate-600">|</span>
               <span
@@ -3301,7 +3301,7 @@ export default function ExamTake() {
                     : "text-amber-400 font-semibold"
                 }`}
               >
-                👁️ {aiAnalysis.cameraCovered ? "BLOCKED" : aiAnalysis.gazeDirection}
+                 {aiAnalysis.cameraCovered ? "BLOCKED" : aiAnalysis.gazeDirection}
               </span>
             </div>
           )}
@@ -3312,7 +3312,7 @@ export default function ExamTake() {
             <span className="font-mono text-lg font-bold">{mm}:{ss}</span>
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-semibold text-xs border border-indigo-400/30">
-              <span>♾️</span> Untimed Class Session
+              <span></span> Untimed Class Session
             </span>
           )}
           <span className="text-sm text-slate-300 hidden sm:inline">{answeredCount} answered</span>
@@ -3324,7 +3324,7 @@ export default function ExamTake() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-500/60 text-rose-200 transition shadow-xs cursor-pointer active:scale-98"
             title="Terminate without submitting. Attempt will be marked as Incomplete, allowing you to re-take or resume later."
           >
-            <span>🚪</span>
+            <span></span>
             <span>Terminate {session?.isClass ? "Class" : "Exam"}</span>
           </button>
         </div>
@@ -3358,7 +3358,7 @@ export default function ExamTake() {
             <div className="mb-5 bg-emerald-50 border-2 border-emerald-500 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-emerald-950 shadow-xs animate-in fade-in">
               <div className="flex items-center gap-3">
                 <span className="w-9 h-9 rounded-xl bg-emerald-600 text-white font-black flex items-center justify-center text-base shadow-xs shrink-0">
-                  🔒
+                  
                 </span>
                 <div>
                   <div className="text-xs font-bold text-emerald-950 flex items-center gap-2 flex-wrap">
@@ -3384,10 +3384,10 @@ export default function ExamTake() {
                 <div>
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      💻 CODING
+                       CODING
                     </span>
                     <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1" title="Windows, Ctrl, Tab, and Function keys (F1-F12) are restricted during coding.">
-                      <span>🔒</span> Win, Ctrl, Tab & F-keys Disabled
+                      <span></span> Win, Ctrl, Tab & F-keys Disabled
                     </span>
                     {q.marks !== undefined && (
                       <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
@@ -3480,10 +3480,10 @@ export default function ExamTake() {
                         <span className="text-slate-300 font-medium flex items-center gap-1.5">
                           {hasPassedCases ? (
                             <span className="text-emerald-400 font-bold flex items-center gap-1">
-                              <span>✓</span> All sample test cases passed! Click to submit &amp; lock question:
+                              <span></span> All sample test cases passed! Click to submit &amp; lock question:
                             </span>
                           ) : (
-                            <span>💡 Run code and pass sample test cases to complete question:</span>
+                            <span> Run code and pass sample test cases to complete question:</span>
                           )}
                         </span>
                         {hasPassedCases ? (
@@ -3494,22 +3494,22 @@ export default function ExamTake() {
                             className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer transition shrink-0"
                             title="Test cases passed! Submit & Lock your solution."
                           >
-                            <span>🔒</span>
+                            <span></span>
                             <span>{lockingQuestion ? "Submitting Code…" : "Submit & Lock Code"}</span>
                           </button>
                         ) : (
                           <span className="text-[11px] text-amber-300 bg-amber-950/70 border border-amber-800/80 px-2.5 py-1 rounded-md font-semibold flex items-center gap-1">
-                            <span>⏳</span> Run Code &amp; Pass Test Cases
+                            <span></span> Run Code &amp; Pass Test Cases
                           </span>
                         )}
                       </div>
                     ) : (
                       <div className="flex items-center justify-between bg-emerald-950/80 border border-emerald-600/70 rounded-xl px-3 py-2 text-xs text-emerald-200 font-semibold">
                         <span className="flex items-center gap-1.5">
-                          <span>✓</span> Test cases passed. Code solution submitted and locked. Read-only mode active.
+                          <span></span> Test cases passed. Code solution submitted and locked. Read-only mode active.
                         </span>
                         <span className="bg-emerald-800 text-white text-[10px] px-2 py-0.5 rounded font-mono uppercase">
-                          Completed 🔒
+                          Completed 
                         </span>
                       </div>
                     )}
@@ -3536,10 +3536,10 @@ export default function ExamTake() {
             <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-100 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
-                  📋 MCQ QUESTION
+                   MCQ QUESTION
                 </span>
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1" title="Keyboard is disabled for MCQ questions. Use trackpad or mouse to answer.">
-                  <span>🔒</span> Keyboard Locked (Trackpad / Mouse Only)
+                  <span></span> Keyboard Locked (Trackpad / Mouse Only)
                 </span>
                 {q.marks !== undefined && (
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
@@ -3589,7 +3589,7 @@ export default function ExamTake() {
                     </div>
                     {isSelected && (
                       <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                        <span>🔒</span> Submitted (Locked)
+                        <span></span> Submitted (Locked)
                       </span>
                     )}
                   </label>
@@ -3645,7 +3645,7 @@ export default function ExamTake() {
                       className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white rounded-md text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 animate-in fade-in"
                       title="Submit and lock this question's code permanently"
                     >
-                      <span>🔒</span>
+                      <span></span>
                       <span>{lockingQuestion ? "Submitting Question…" : `Submit & Lock Question ${current + 1}`}</span>
                     </button>
                   )}
@@ -3659,7 +3659,7 @@ export default function ExamTake() {
                       className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-40 text-white rounded-md text-sm font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                       title={allCompleted ? "All questions submitted! Finish and conclude session." : "Submit and finish session"}
                     >
-                      <span>🏁</span>
+                      <span></span>
                       <span>{submitting ? "Finishing…" : session?.isClass ? "Submit Entire Class" : "Submit Entire Exam"}</span>
                     </button>
                   )}
@@ -3667,7 +3667,7 @@ export default function ExamTake() {
                   {/* Informational tip if question cannot be submitted yet */}
                   {!isCurrentLocked && !hasPassedCases && isCurrentCoding && (
                     <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-md font-medium flex items-center gap-1.5">
-                      <span>💡</span>
+                      <span></span>
                       <span>Pass test cases to unlock submission for Question {current + 1}</span>
                     </div>
                   )}
@@ -3702,7 +3702,7 @@ export default function ExamTake() {
                 title={`${isCoding ? "Coding: " : "MCQ: "}${qq.problemTitle || `Question ${idx + 1}`}`}
               >
                 {isCoding && (
-                  <span className="absolute top-0.5 right-0.5 text-[8px] leading-none">💻</span>
+                  <span className="absolute top-0.5 right-0.5 text-[8px] leading-none"></span>
                 )}
                 {idx + 1}
               </button>
@@ -3716,7 +3716,7 @@ export default function ExamTake() {
         <div className="mt-8 bg-white border border-slate-300 rounded-2xl shadow-sm overflow-hidden">
           <div className="bg-slate-900 text-white px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-base">📋</span>
+              <span className="text-base"></span>
               <h3 className="font-bold text-sm text-white tracking-wide">
                 All Questions Overview ({questions.length} Questions)
               </h3>
@@ -3724,7 +3724,7 @@ export default function ExamTake() {
             <div className="flex items-center gap-3 text-xs font-semibold flex-wrap">
               <span className="flex items-center gap-1.5 text-emerald-300">
                 <span className="w-3 h-3 rounded bg-green-600 inline-block border border-green-400" />
-                Green = Completed (Locked 🔒)
+                Green = Completed (Locked )
               </span>
               <span className="flex items-center gap-1.5 text-blue-300">
                 <span className="w-3 h-3 rounded bg-blue-600 inline-block border border-blue-400" />
@@ -3803,7 +3803,7 @@ export default function ExamTake() {
                                   : "bg-blue-100 text-blue-800 border border-blue-200"
                               }`}
                             >
-                              {isCoding ? "💻 CODING" : "📋 MCQ"}
+                              {isCoding ? " CODING" : " MCQ"}
                             </span>
                             {qq.marks !== undefined && (
                               <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
@@ -3812,7 +3812,7 @@ export default function ExamTake() {
                             )}
                             {marked.has(qq.questionId) && (
                               <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded border border-purple-200">
-                                📌 Marked
+                                 Marked
                               </span>
                             )}
                           </div>
@@ -3829,8 +3829,8 @@ export default function ExamTake() {
                             className="w-full bg-green-600 text-white font-bold py-2.5 px-3 rounded-xl text-center shadow-xs flex items-center justify-center gap-1.5"
                             title="Completed & Locked: You cannot re-attempt this question"
                           >
-                            <span>✓</span>
-                            <span>Completed (Locked 🔒)</span>
+                            <span></span>
+                            <span>Completed (Locked )</span>
                           </div>
                         ) : (
                           <div
@@ -3879,7 +3879,7 @@ export default function ExamTake() {
                   className="text-slate-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-slate-700/60 transition-colors cursor-pointer text-xs"
                   title="Minimize preview"
                 >
-                  ✕
+                  
                 </button>
               </div>
 
@@ -3913,7 +3913,7 @@ export default function ExamTake() {
                     {/* Camera covered warning overlay */}
                     {aiAnalysis?.cameraCovered && (
                       <div className="absolute inset-0 bg-red-950/85 backdrop-blur-xs flex flex-col items-center justify-center p-3 text-center pointer-events-none z-10 animate-pulse">
-                        <span className="text-2xl mb-1">🚫</span>
+                        <span className="text-2xl mb-1"></span>
                         <span className="text-xs font-bold text-red-200 tracking-wider">CAMERA COVERED</span>
                         <span className="text-[10px] text-red-300">Uncover your camera lens immediately</span>
                       </div>
@@ -3946,20 +3946,20 @@ export default function ExamTake() {
                       }`}
                     >
                       {aiAnalysis.cameraCovered
-                        ? "🚨 Camera Covered!"
+                        ? " Camera Covered!"
                         : aiAnalysis.personBehindDetected
-                        ? "👥 Person Behind!"
+                        ? " Person Behind!"
                         : aiAnalysis.phoneDetected
-                        ? "🚨 Mobile Phone!"
+                        ? " Mobile Phone!"
                         : aiAnalysis.objectDetected
-                        ? "⚠️ Object Detected!"
+                        ? " Object Detected!"
                         : !aiAnalysis.faceDetected
-                        ? "⚠️ No Face"
+                        ? " No Face"
                         : aiAnalysis.faceCount > 1
-                        ? `⚠️ ${aiAnalysis.faceCount} Faces`
+                        ? ` ${aiAnalysis.faceCount} Faces`
                         : aiAnalysis.gazeDirection !== "CENTER"
-                        ? `⚠️ Looking ${aiAnalysis.gazeDirection}`
-                        : "✓ Face In Frame"}
+                        ? ` Looking ${aiAnalysis.gazeDirection}`
+                        : "Face In Frame"}
                     </span>
                   ) : (
                     <span className="text-[10px] font-medium bg-black/60 text-slate-300 px-2 py-0.5 rounded-full backdrop-blur-xs border border-white/10">
@@ -3987,7 +3987,7 @@ export default function ExamTake() {
                       />
                       {micAudioLevel > 10 && (
                         <span className="text-[9px] text-emerald-400 font-mono">
-                          {micAudioLevel > 35 ? "🔊" : "🎤"}
+                          {micAudioLevel > 35 ? "" : ""}
                         </span>
                       )}
                     </div>

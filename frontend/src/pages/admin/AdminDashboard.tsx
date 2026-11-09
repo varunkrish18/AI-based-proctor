@@ -310,7 +310,7 @@ export default function AdminDashboard() {
       {
         title: "Browser & Screen Escapes",
         count: browserEscape,
-        icon: "🖥️",
+        icon: "",
         color: "text-amber-600",
         bgColor: "bg-amber-50",
         borderColor: "border-amber-200",
@@ -319,7 +319,7 @@ export default function AdminDashboard() {
       {
         title: "Gaze & Attention Deviations",
         count: gazeAttention,
-        icon: "👁️",
+        icon: "",
         color: "text-blue-600",
         bgColor: "bg-blue-50",
         borderColor: "border-blue-200",
@@ -328,7 +328,7 @@ export default function AdminDashboard() {
       {
         title: "Biometric & Face Security",
         count: biometricFace,
-        icon: "👥",
+        icon: "",
         color: "text-purple-600",
         bgColor: "bg-purple-50",
         borderColor: "border-purple-200",
@@ -337,7 +337,7 @@ export default function AdminDashboard() {
       {
         title: "Unauthorized Devices & Audio",
         count: deviceAudio,
-        icon: "📱",
+        icon: "",
         color: "text-rose-600",
         bgColor: "bg-rose-50",
         borderColor: "border-rose-200",
@@ -371,7 +371,7 @@ export default function AdminDashboard() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-6 rounded-2xl text-white shadow-xl">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="text-xl">🛡️</span>
+            <span className="text-xl"></span>
             <h1 className="text-2xl font-bold tracking-tight text-white">AI Proctoring Intelligence Center</h1>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase tracking-wider">
               Live Monitor Active
@@ -398,7 +398,7 @@ export default function AdminDashboard() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition-all cursor-pointer disabled:opacity-50"
             title="Refresh analytics and telemetry"
           >
-            <span className={`inline-block text-sm ${isRefreshing ? "animate-spin" : ""}`}>🔄</span>
+            <span className={`inline-block text-sm ${isRefreshing ? "animate-spin" : ""}`}></span>
             {isRefreshing ? "Syncing…" : "Sync Telemetry"}
           </button>
 
@@ -412,7 +412,7 @@ export default function AdminDashboard() {
                   : "bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-200"
               }`}
             >
-              <span>👥</span> {currentTab === "users" ? "Back to Monitoring" : "User Credentials"}
+              <span></span> {currentTab === "users" ? "Back to Monitoring" : "User Credentials"}
             </button>
           )}
 
@@ -426,7 +426,7 @@ export default function AdminDashboard() {
                   : "bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-200"
               }`}
             >
-              <span>🎓</span> {currentTab === "students" ? "Back to Monitoring" : "Student Credentials"}
+              <span></span> {currentTab === "students" ? "Back to Monitoring" : "Student Credentials"}
             </button>
           )}
 
@@ -457,7 +457,7 @@ export default function AdminDashboard() {
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           }`}
         >
-          <span>📊</span> Examination &amp; AI Telemetry
+          <span></span> Examination &amp; AI Telemetry
         </button>
 
         {/* User Accounts tab strictly visible only to ADMIN */}
@@ -470,7 +470,7 @@ export default function AdminDashboard() {
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             }`}
           >
-            <span>👥</span> User Accounts &amp; Login Credentials
+            <span></span> User Accounts &amp; Login Credentials
           </button>
         )}
 
@@ -484,7 +484,7 @@ export default function AdminDashboard() {
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             }`}
           >
-            <span>👨‍🏫</span> Professor Login Credentials
+            <span></span> Professor Login Credentials
           </button>
         )}
 
@@ -498,7 +498,7 @@ export default function AdminDashboard() {
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
             }`}
           >
-            <span>🎓</span> Student Login Credentials
+            <span></span> Student Login Credentials
           </button>
         )}
       </div>
@@ -524,14 +524,14 @@ export default function AdminDashboard() {
           >
             <option value="ALL">
               {isAdmin
-                ? `🌐 All Configured Exams (${exams.length})`
+                ? ` All Configured Exams (${exams.length})`
                 : exams.length === 0
-                ? "⚠️ No Examinations Created Yet"
-                : `🌐 All My Created Exams (${exams.length})`}
+                ? " No Examinations Created Yet"
+                : ` All My Created Exams (${exams.length})`}
             </option>
             {exams.map((ex) => (
               <option key={ex.id} value={String(ex.id)}>
-                📝 {ex.name} ({ex.status})
+                 {ex.name} ({ex.status})
               </option>
             ))}
           </select>
@@ -557,7 +557,7 @@ export default function AdminDashboard() {
       {error && (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl text-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-2">
-            <span className="text-lg">⚠️</span>
+            <span className="text-lg"></span>
             <div>
               <p className="font-bold">{error}</p>
               <p className="text-xs text-rose-600 mt-0.5">
@@ -572,7 +572,7 @@ export default function AdminDashboard() {
               to="/admin/login"
               className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
-              <span>🔑</span> Sign In
+              <span></span> Sign In
             </Link>
             <button
               onClick={() => loadDashboardData(selectedExamId)}
@@ -590,7 +590,7 @@ export default function AdminDashboard() {
           {aiDegraded?.degraded && (
             <div className="flex items-start justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-5 py-4 text-sm shadow-xs">
               <div className="flex items-start gap-3">
-                <span className="text-amber-500 text-xl shrink-0">⚠️</span>
+                <span className="text-amber-500 text-xl shrink-0"></span>
                 <div>
                   <p className="font-bold text-amber-900">AI Vision Engine Notice</p>
                   <p className="text-amber-800 text-xs mt-0.5">{aiDegraded.reason}</p>
@@ -611,20 +611,20 @@ export default function AdminDashboard() {
           {/* SECTION 1: Executive KPI Metrics Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-4">
             <StatTile
-              icon="📚"
+              icon=""
               label="Total Exams"
               value={summary?.totalExams ?? exams.length}
               subtext="Configured in system"
             />
             <StatTile
-              icon="🟢"
+              icon=""
               label="Published"
               value={summary?.activeExams ?? exams.filter((e) => e.status === "PUBLISHED").length}
               subtext="Currently open to test"
               highlightColor="text-emerald-600"
             />
             <StatTile
-              icon="✍️"
+              icon=""
               label="Writing Now"
               value={summary?.studentsCurrentlyWriting ?? liveSessions.length}
               subtext="Active candidate streams"
@@ -632,35 +632,35 @@ export default function AdminDashboard() {
               livePulse
             />
             <StatTile
-              icon="✅"
+              icon=""
               label="Completed"
               value={summary?.completedAttempts ?? 0}
               subtext="Submissions evaluated"
               highlightColor="text-blue-600"
             />
             <StatTile
-              icon="⚠️"
+              icon=""
               label="Warnings Today"
               value={summary?.warningsToday ?? 0}
               subtext="Behavior strike alerts"
               highlightColor="text-amber-600"
             />
             <StatTile
-              icon="🚨"
+              icon=""
               label="High Flags Today"
               value={summary?.highSeverityEventsToday ?? 0}
               subtext="Severe / Critical incidents"
               highlightColor="text-rose-600"
             />
             <StatTile
-              icon="🚩"
+              icon=""
               label="Review Queue"
               value={flaggedSessions.length}
               subtext="Pending proctor audit"
               highlightColor="text-orange-600"
             />
             <StatTile
-              icon="🤖"
+              icon=""
               label="AI Core"
               value={aiDegraded?.degraded ? "DEGRADED" : "OPTIMAL"}
               subtext="MediaPipe Biometrics"
@@ -671,7 +671,7 @@ export default function AdminDashboard() {
           {/* SECTION 2: AI Proctor Intelligence Insights Banner */}
           <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/80 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-lg">💡</span>
+              <span className="text-lg"></span>
               <h2 className="font-bold text-slate-900 text-sm">Automated Proctor Intelligence Insights</h2>
               <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                 AI Telemetry Analysis
@@ -681,7 +681,7 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-white/90 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 text-xs">
                 <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="text-amber-500">⚡</span> Dominant Infraction Pattern
+                  <span className="text-amber-500"></span> Dominant Infraction Pattern
                 </span>
                 <p className="text-slate-600 mt-1 leading-relaxed">
                   {!isAdmin && exams.length === 0 ? (
@@ -699,7 +699,7 @@ export default function AdminDashboard() {
 
               <div className="bg-white/90 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 text-xs">
                 <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="text-emerald-500">🎯</span> Environment Integrity
+                  <span className="text-emerald-500"></span> Environment Integrity
                 </span>
                 <p className="text-slate-600 mt-1 leading-relaxed">
                   {!isAdmin && exams.length === 0
@@ -710,7 +710,7 @@ export default function AdminDashboard() {
 
               <div className="bg-white/90 backdrop-blur-xs p-3.5 rounded-xl border border-blue-100 text-xs">
                 <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="text-purple-500">📋</span> Proctor Action Priority
+                  <span className="text-purple-500"></span> Proctor Action Priority
                 </span>
                 <p className="text-slate-600 mt-1 leading-relaxed">
                   {!isAdmin && exams.length === 0 ? (
@@ -773,7 +773,7 @@ export default function AdminDashboard() {
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                    <span>📈</span> Proctoring Anomaly Frequency Trend
+                    <span></span> Proctoring Anomaly Frequency Trend
                   </h3>
                   <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
                     Last 7 Days (Hourly)
@@ -829,7 +829,7 @@ export default function AdminDashboard() {
                     </ResponsiveContainer>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs">
-                      <span className="text-3xl mb-1">🕊️</span>
+                      <span className="text-3xl mb-1"></span>
                       No proctoring anomalies recorded in the selected period.
                     </div>
                   )}
@@ -840,7 +840,7 @@ export default function AdminDashboard() {
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                    <span>🍩</span> Proctoring Signal Composition
+                    <span></span> Proctoring Signal Composition
                   </h3>
                   <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
                     Signal Distribution
@@ -926,7 +926,7 @@ export default function AdminDashboard() {
                     </>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs">
-                      <span className="text-3xl mb-1">🛡️</span>
+                      <span className="text-3xl mb-1"></span>
                       No proctoring signals recorded yet.
                     </div>
                   )}
@@ -937,7 +937,7 @@ export default function AdminDashboard() {
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                    <span>📊</span> Exam Risk Ranking (Most Flagged)
+                    <span></span> Exam Risk Ranking (Most Flagged)
                   </h3>
                   <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
                     High / Critical Flags
@@ -968,7 +968,7 @@ export default function AdminDashboard() {
                     </ResponsiveContainer>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs">
-                      <span className="text-3xl mb-1">🎉</span>
+                      <span className="text-3xl mb-1"></span>
                       No flagged exams recorded. All sessions are compliant.
                     </div>
                   )}
@@ -979,7 +979,7 @@ export default function AdminDashboard() {
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                    <span>🎯</span> Score Distribution &amp; Grade Spread
+                    <span></span> Score Distribution &amp; Grade Spread
                   </h3>
                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                     Candidate Marks
@@ -1010,7 +1010,7 @@ export default function AdminDashboard() {
                     </ResponsiveContainer>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs">
-                      <span className="text-3xl mb-1">📝</span>
+                      <span className="text-3xl mb-1"></span>
                       No completed exam submissions scored yet.
                     </div>
                   )}
@@ -1024,7 +1024,7 @@ export default function AdminDashboard() {
             <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-gradient-to-r from-slate-50 to-rose-50/30">
               <div>
                 <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <span>🚨</span> Sessions Requiring Proctor Review ({flaggedSessions.length})
+                  <span></span> Sessions Requiring Proctor Review ({flaggedSessions.length})
                 </h2>
                 <p className="text-xs text-slate-500">
                   Candidates with elevated risk scores, strike limits, or multi-face/device infractions.
@@ -1113,7 +1113,7 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="py-10 text-center text-slate-500 text-xs">
-                <span className="text-3xl block mb-2">🛡️</span>
+                <span className="text-3xl block mb-2"></span>
                 <p className="font-bold text-slate-700 text-sm">All candidate sessions adhere to integrity benchmarks</p>
                 <p className="text-slate-400 mt-0.5">No attempts currently meet the high-risk audit threshold.</p>
               </div>
@@ -1122,12 +1122,12 @@ export default function AdminDashboard() {
 
           {actionSuccess && (
             <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-sm flex items-center justify-between">
-              <span>✓ {actionSuccess}</span>
+              <span>{actionSuccess}</span>
               <button
                 onClick={() => setActionSuccess(null)}
                 className="text-emerald-600 hover:text-emerald-900 font-bold ml-4 cursor-pointer"
               >
-                ✕
+                
               </button>
             </div>
           )}
@@ -1137,7 +1137,7 @@ export default function AdminDashboard() {
             <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
               <div>
                 <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <span>📑</span> {userRole === "EXAMINER" ? "My Created Examinations" : "Configured Examinations"} ({filteredExams.length})
+                  <span></span> {userRole === "EXAMINER" ? "My Created Examinations" : "Configured Examinations"} ({filteredExams.length})
                   {userRole === "EXAMINER" && (
                     <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded-full border border-purple-200">
                       Examiner Scope (Your Created Exams Only)
@@ -1182,13 +1182,13 @@ export default function AdminDashboard() {
                           <span>{e.name}</span>
                           {e.isClass && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
-                              🏫 Class
+                               Class
                             </span>
                           )}
                         </div>
                         {e.assignedProfessorName && (
                           <span className="block text-[11px] text-purple-700 font-medium">
-                            👨‍🏫 Faculty: {e.assignedProfessorName}
+                             Faculty: {e.assignedProfessorName}
                           </span>
                         )}
                         {e.description && (
@@ -1200,7 +1200,7 @@ export default function AdminDashboard() {
                       <td className="px-5 py-3.5 text-slate-600 text-xs">{e.subject ?? "—"}</td>
                       <td className="px-5 py-3.5 text-slate-600 text-xs">{e.numQuestions} Qs</td>
                       <td className="px-5 py-3.5 text-slate-600 text-xs">
-                        {e.durationMinutes ? `${e.durationMinutes} mins` : "♾️ Untimed"}
+                        {e.durationMinutes ? `${e.durationMinutes} mins` : " Untimed"}
                       </td>
                       <td className="px-5 py-3.5">
                         <span
@@ -1219,7 +1219,7 @@ export default function AdminDashboard() {
                           className="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1"
                           title="Edit exam timing, questions limit, attempts, and proctoring parameters"
                         >
-                          <span>⚙️</span> Edit
+                          <span></span> Edit
                         </Link>
                         <Link
                           to={`/admin/exams/${e.id}`}
@@ -1241,7 +1241,7 @@ export default function AdminDashboard() {
                       <td colSpan={6} className="text-center py-12 text-slate-500 text-xs">
                         {exams.length === 0 ? (
                           <div className="flex flex-col items-center justify-center space-y-2">
-                            <span className="text-3xl block">📝</span>
+                            <span className="text-3xl block"></span>
                             <p className="font-bold text-slate-700 text-sm">
                               {userRole === "EXAMINER"
                                 ? "You haven't authored any examinations yet"
@@ -1275,7 +1275,7 @@ export default function AdminDashboard() {
             <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
                 <div className="flex items-center gap-3 text-rose-600">
-                  <span className="text-2xl">⚠️</span>
+                  <span className="text-2xl"></span>
                   <h3 className="text-lg font-bold text-slate-900">Delete Examination</h3>
                 </div>
                 <div>
@@ -1283,7 +1283,7 @@ export default function AdminDashboard() {
                     Are you sure you want to delete <strong className="text-slate-900 font-semibold">"{examToDelete.name}"</strong>?
                   </p>
                   <p className="text-xs text-rose-700 bg-rose-50 p-3 rounded-lg mt-3 border border-rose-200">
-                    ⚠️ This action cannot be undone. All questions, student assignments, test attempts, warnings, and proctoring telemetry for this exam will be permanently removed.
+                     This action cannot be undone. All questions, student assignments, test attempts, warnings, and proctoring telemetry for this exam will be permanently removed.
                   </p>
                 </div>
                 {deleteError && <div className="text-xs text-rose-700 bg-rose-100 p-2.5 rounded-lg">{deleteError}</div>}

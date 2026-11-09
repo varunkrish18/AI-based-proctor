@@ -581,7 +581,7 @@ export default function ProfessorManagementTab() {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-2xl">👨‍🏫</span>
+            <span className="text-2xl"></span>
             <h2 className="text-xl font-bold text-slate-900">Professor Login Credentials</h2>
             <span className="bg-violet-50 text-violet-700 font-bold text-xs px-2.5 py-0.5 rounded-full border border-violet-200">
               {professors.length} {professors.length === 1 ? "Professor" : "Professors"}
@@ -599,7 +599,7 @@ export default function ProfessorManagementTab() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
             title="Reload professor credentials"
           >
-            <span className={loading ? "animate-spin" : ""}>🔄</span> Refresh
+            <span className={loading ? "animate-spin" : ""}></span> Refresh
           </button>
           <button
             onClick={copyAllCredentials}
@@ -607,7 +607,7 @@ export default function ProfessorManagementTab() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
             title="Copy visible credentials table to clipboard"
           >
-            <span>📋</span> Copy All
+            <span></span> Copy All
           </button>
           <button
             onClick={exportCredentialsCsv}
@@ -615,7 +615,7 @@ export default function ProfessorManagementTab() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
             title="Download CSV report"
           >
-            <span>📥</span> Export CSV
+            <span></span> Export CSV
           </button>
           <button
             onClick={() => {
@@ -628,7 +628,7 @@ export default function ProfessorManagementTab() {
             className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
             title="Bulk import professors from Excel or CSV spreadsheet"
           >
-            <span>📤</span> Bulk Upload (Excel / CSV)
+            <span></span> Bulk Upload (Excel / CSV)
           </button>
           <button
             onClick={() => {
@@ -675,7 +675,7 @@ export default function ProfessorManagementTab() {
           {/* Search Input Box with Dynamic Placeholder */}
           <div className="relative flex-1 min-w-[220px] max-w-md">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-              🔍
+              
             </span>
             <input
               type="text"
@@ -702,7 +702,7 @@ export default function ProfessorManagementTab() {
                 className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold"
                 title="Clear search"
               >
-                ✕
+                
               </button>
             )}
           </div>
@@ -752,18 +752,18 @@ export default function ProfessorManagementTab() {
       {/* Notifications */}
       {successMsg && (
         <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center justify-between">
-          <span>✓ {successMsg}</span>
+          <span>{successMsg}</span>
           <button onClick={() => setSuccessMsg(null)} className="text-emerald-600 hover:text-emerald-900 ml-2">
-            ✕
+            
           </button>
         </div>
       )}
 
       {error && (
         <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center justify-between">
-          <span>⚠️ {error}</span>
+          <span> {error}</span>
           <button onClick={() => setError(null)} className="text-rose-600 hover:text-rose-900 ml-2">
-            ✕
+            
           </button>
         </div>
       )}
@@ -790,7 +790,7 @@ export default function ProfessorManagementTab() {
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 font-medium">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <span className="animate-spin text-2xl">🔄</span>
+                      <span className="animate-spin text-2xl"></span>
                       <span>Loading professor credentials…</span>
                     </div>
                   </td>
@@ -799,7 +799,7 @@ export default function ProfessorManagementTab() {
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 font-medium">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <span className="text-2xl">👨‍🏫</span>
+                      <span className="text-2xl"></span>
                       <span className="text-slate-600 font-bold">No professor credentials found</span>
                       <span className="text-xs text-slate-400 max-w-sm">
                         {searchQuery || selectedDeptFilter !== "ALL" || selectedYearFilter !== "ALL"
@@ -874,9 +874,9 @@ export default function ProfessorManagementTab() {
                             title="Copy email"
                           >
                             {copiedField === `email-${p.id}` ? (
-                              <span className="text-[10px] text-emerald-600 font-bold">✓</span>
+                              <span className="text-[10px] text-emerald-600 font-bold"></span>
                             ) : (
-                              <span className="text-[10px]">📋</span>
+                              <span className="text-[10px]"></span>
                             )}
                           </button>
                         </div>
@@ -896,7 +896,7 @@ export default function ProfessorManagementTab() {
                                 className="text-slate-500 hover:text-slate-800 text-[11px] px-1 py-0.5 rounded cursor-pointer transition"
                                 title={isPwdVisible ? "Hide password" : "Show password"}
                               >
-                                {isPwdVisible ? "🙈" : "👁️"}
+                                {isPwdVisible ? "" : ""}
                               </button>
                               <button
                                 type="button"
@@ -905,9 +905,9 @@ export default function ProfessorManagementTab() {
                                 title="Copy password"
                               >
                                 {copiedField === `pwd-${p.id}` ? (
-                                  <span className="text-emerald-600 font-bold">✓</span>
+                                  <span className="text-emerald-600 font-bold"></span>
                                 ) : (
-                                  "📋"
+                                  ""
                                 )}
                               </button>
                             </div>
@@ -925,7 +925,7 @@ export default function ProfessorManagementTab() {
                             className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
                             title="Edit professor details & credentials"
                           >
-                            ✏️
+                            
                           </button>
                           <button
                             onClick={() => {
@@ -935,7 +935,7 @@ export default function ProfessorManagementTab() {
                             className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                             title="Delete professor"
                           >
-                            🗑️
+                            
                           </button>
                         </div>
                       </td>
@@ -954,20 +954,20 @@ export default function ProfessorManagementTab() {
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full p-6 animate-scaleUp my-8">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="text-xl">👨‍🏫</span>
+                <span className="text-xl"></span>
                 <h3 className="text-base font-bold text-slate-900">Add Professor &amp; Issue Credentials</h3>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="text-slate-400 hover:text-slate-600 font-bold text-lg"
               >
-                ✕
+                
               </button>
             </div>
 
             {createError && (
               <div className="mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold">
-                ⚠️ {createError}
+                 {createError}
               </div>
             )}
 
@@ -1026,7 +1026,7 @@ export default function ProfessorManagementTab() {
                       }
                       className="text-[10px] text-violet-600 hover:text-violet-700 font-semibold cursor-pointer"
                     >
-                      🎲 Generate
+                       Generate
                     </button>
                   </div>
                   <input
@@ -1085,7 +1085,7 @@ export default function ProfessorManagementTab() {
                     }}
                     className="text-[10px] text-violet-600 hover:text-violet-700 font-semibold cursor-pointer"
                   >
-                    🎲 Generate Password
+                     Generate Password
                   </button>
                 </div>
                 <div className="relative">
@@ -1101,7 +1101,7 @@ export default function ProfessorManagementTab() {
                     onClick={() => setShowCreatePassword(!showCreatePassword)}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 text-xs"
                   >
-                    {showCreatePassword ? "🙈" : "👁️"}
+                    {showCreatePassword ? "" : ""}
                   </button>
                 </div>
               </div>
@@ -1121,7 +1121,7 @@ export default function ProfessorManagementTab() {
                 >
                   {createSubmitting ? (
                     <>
-                      <span className="animate-spin">🔄</span> Registering…
+                      <span className="animate-spin"></span> Registering…
                     </>
                   ) : (
                     "Register Professor"
@@ -1139,20 +1139,20 @@ export default function ProfessorManagementTab() {
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full p-6 animate-scaleUp my-8">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="text-xl">✏️</span>
+                <span className="text-xl"></span>
                 <h3 className="text-base font-bold text-slate-900">Edit Professor Credentials</h3>
               </div>
               <button
                 onClick={() => setEditingProfessor(null)}
                 className="text-slate-400 hover:text-slate-600 font-bold text-lg"
               >
-                ✕
+                
               </button>
             </div>
 
             {editError && (
               <div className="mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold">
-                ⚠️ {editError}
+                 {editError}
               </div>
             )}
 
@@ -1248,7 +1248,7 @@ export default function ProfessorManagementTab() {
                     }}
                     className="text-[10px] text-violet-600 hover:text-violet-700 font-semibold cursor-pointer"
                   >
-                    🎲 Generate Password
+                     Generate Password
                   </button>
                 </div>
                 <div className="relative">
@@ -1264,7 +1264,7 @@ export default function ProfessorManagementTab() {
                     onClick={() => setShowEditPassword(!showEditPassword)}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 text-xs"
                   >
-                    {showEditPassword ? "🙈" : "👁️"}
+                    {showEditPassword ? "" : ""}
                   </button>
                 </div>
               </div>
@@ -1284,7 +1284,7 @@ export default function ProfessorManagementTab() {
                 >
                   {editSubmitting ? (
                     <>
-                      <span className="animate-spin">🔄</span> Saving…
+                      <span className="animate-spin"></span> Saving…
                     </>
                   ) : (
                     "Save Changes"
@@ -1301,7 +1301,7 @@ export default function ProfessorManagementTab() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 animate-scaleUp">
             <div className="flex items-center gap-3 text-rose-600 mb-3">
-              <span className="text-2xl">⚠️</span>
+              <span className="text-2xl"></span>
               <h3 className="text-base font-bold text-slate-900">Delete Professor Account?</h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
@@ -1313,7 +1313,7 @@ export default function ProfessorManagementTab() {
 
             {deleteError && (
               <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold">
-                ⚠️ {deleteError}
+                 {deleteError}
               </div>
             )}
 
@@ -1333,7 +1333,7 @@ export default function ProfessorManagementTab() {
               >
                 {deleteSubmitting ? (
                   <>
-                    <span className="animate-spin">🔄</span> Deleting…
+                    <span className="animate-spin"></span> Deleting…
                   </>
                 ) : (
                   "Delete Professor"
@@ -1351,7 +1351,7 @@ export default function ProfessorManagementTab() {
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5">
-                <span className="text-2xl">📤</span>
+                <span className="text-2xl"></span>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
                     Bulk Upload Professor Credentials
@@ -1365,7 +1365,7 @@ export default function ProfessorManagementTab() {
                 onClick={() => setShowBulkModal(false)}
                 className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1"
               >
-                ✕
+                
               </button>
             </div>
 
@@ -1387,7 +1387,7 @@ export default function ProfessorManagementTab() {
                     disabled={downloadingSample === "csv"}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 font-semibold text-xs cursor-pointer shadow-2xs"
                   >
-                    <span>📄</span>
+                    <span></span>
                     {downloadingSample === "csv" ? "Downloading…" : "Sample CSV"}
                   </button>
                   <button
@@ -1396,7 +1396,7 @@ export default function ProfessorManagementTab() {
                     disabled={downloadingSample === "excel"}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 font-semibold text-xs cursor-pointer shadow-2xs"
                   >
-                    <span>📊</span>
+                    <span></span>
                     {downloadingSample === "excel" ? "Downloading…" : "Sample Excel (.xlsx)"}
                   </button>
                 </div>
@@ -1435,7 +1435,7 @@ export default function ProfessorManagementTab() {
                   }}
                 />
                 <div className="w-12 h-12 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-2xl font-bold">
-                  📤
+                  
                 </div>
                 <div>
                   <span className="font-bold text-slate-800 text-sm block">
@@ -1455,9 +1455,9 @@ export default function ProfessorManagementTab() {
               {/* Bulk Error Alert */}
               {bulkError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center justify-between">
-                  <span>⚠️ {bulkError}</span>
+                  <span> {bulkError}</span>
                   <button onClick={() => setBulkError(null)} className="text-rose-600 hover:text-rose-900 ml-2">
-                    ✕
+                    
                   </button>
                 </div>
               )}
@@ -1466,7 +1466,7 @@ export default function ProfessorManagementTab() {
               {bulkResult && (
                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 space-y-2">
                   <div className="font-bold flex items-center gap-1.5 text-emerald-800 text-sm">
-                    <span>✓</span> Bulk Import Completed Successfully!
+                    <span></span> Bulk Import Completed Successfully!
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center pt-1 font-semibold">
                     <div className="bg-white/80 p-2 rounded-lg border border-emerald-200">
@@ -1537,12 +1537,12 @@ export default function ProfessorManagementTab() {
                             <td className="py-1.5 px-3 whitespace-nowrap">
                               {r.isValid ? (
                                 <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] border border-emerald-200">
-                                  ✓ Valid
+                                  Valid
                                   {r.note && <span className="text-[9px] text-emerald-600 font-normal">({r.note})</span>}
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center text-rose-700 font-semibold bg-rose-50 px-2 py-0.5 rounded-full text-[10px] border border-rose-200">
-                                  ✕ {r.validationError}
+                                   {r.validationError}
                                 </span>
                               )}
                             </td>
@@ -1576,7 +1576,7 @@ export default function ProfessorManagementTab() {
                 >
                   {bulkSubmitting ? (
                     <>
-                      <span className="animate-spin">🔄</span> Importing…
+                      <span className="animate-spin"></span> Importing…
                     </>
                   ) : (
                     `Import ${parsedRows.filter((r) => r.isValid).length || ""} Professors`

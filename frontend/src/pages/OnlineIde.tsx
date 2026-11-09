@@ -206,13 +206,13 @@ export default function OnlineIde() {
       <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-lg shadow-md">
-            💻
+            
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold text-white tracking-wide">Cloud Online IDE &amp; Sandbox</h1>
               <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold px-2 py-0.5 rounded-full">
-                ⚡ No Local JDK or Compiler Required
+                 No Local JDK or Compiler Required
               </span>
             </div>
             <p className="text-xs text-slate-400">
@@ -265,7 +265,7 @@ export default function OnlineIde() {
                 className="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded bg-slate-800/80 hover:bg-slate-800 transition cursor-pointer"
                 title="Copy code to clipboard"
               >
-                {copied ? "✓ Copied" : "📋 Copy"}
+                {copied ? "Copied" : "Copy"}
               </button>
 
               {/* Safe In-DOM Reset Confirmation */}
@@ -322,7 +322,7 @@ export default function OnlineIde() {
           {/* Smart Indentation Helper Bar */}
           <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-1 text-[11px] text-slate-400 flex items-center justify-between select-none">
             <span className="text-emerald-400 font-semibold flex items-center gap-1">
-              <span>⚡</span> Smart Indent: Enter auto-indents • Tab &amp; Shift+Tab indents 4 spaces • Auto-pairs brackets
+              <span></span> Smart Indent: Enter auto-indents • Tab &amp; Shift+Tab indents 4 spaces • Auto-pairs brackets
             </span>
             <span className="font-mono text-slate-400">
               {lineCount} lines • {code.length} chars
@@ -374,7 +374,7 @@ export default function OnlineIde() {
           <div className="p-4 flex flex-col h-1/2 min-h-[220px]">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                <span>📥</span> Standard Input (stdin)
+                <span></span> Standard Input (stdin)
               </span>
               <button
                 type="button"
@@ -400,7 +400,7 @@ export default function OnlineIde() {
           <div className="p-4 flex-1 flex flex-col min-h-[300px]">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                <span>📤</span> Output &amp; Console
+                <span></span> Output &amp; Console
               </span>
 
               {result && (
@@ -417,7 +417,7 @@ export default function OnlineIde() {
                     {result.status}
                   </span>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    ⏱️ {result.executionTimeMs} ms
+                     {result.executionTimeMs} ms
                   </span>
                 </div>
               )}
@@ -445,7 +445,7 @@ export default function OnlineIde() {
                     return (
                       <div className="text-rose-400 whitespace-pre-wrap">
                         <div className="text-xs font-bold text-rose-300 mb-1">
-                          {firstCase.status === "COMPILATION_ERROR" ? "⛔ Compilation Error:" : "🚨 Runtime Error:"}
+                          {firstCase.status === "COMPILATION_ERROR" ? " Compilation Error:" : " Runtime Error:"}
                         </div>
                         {firstCase.errorMessage}
                       </div>

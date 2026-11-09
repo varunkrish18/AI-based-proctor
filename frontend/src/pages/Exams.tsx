@@ -79,24 +79,24 @@ export default function Exams() {
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                     {exam.studentAttemptStatus === "COMPLETED" ? (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                        <span>✓</span> Completed
+                        <span></span> Completed
                       </span>
                     ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                        <span>⚠️</span> Incomplete
+                        <span></span> Incomplete
                       </span>
                     ) : null}
                     {exam.openToAll ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                        🌐 Open to All
+                         Open to All
                       </span>
                     ) : exam.isClass ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        🏫 Class
+                         Class
                       </span>
                     ) : isStudent ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                        🎯 Assigned
+                         Assigned
                       </span>
                     ) : null}
                   </div>
@@ -109,11 +109,11 @@ export default function Exams() {
               <div className="text-sm text-slate-600 space-y-1 mb-4">
                 <p>
                   {exam.numQuestions} questions &middot;{" "}
-                  {exam.isClass ? "♾️ Untimed Class" : exam.durationMinutes ? `${exam.durationMinutes} min` : "♾️ Untimed"}
+                  {exam.isClass ? " Untimed Class" : exam.durationMinutes ? `${exam.durationMinutes} min` : " Untimed"}
                 </p>
                 {exam.assignedProfessorName && !exam.assignedProfessorName.toLowerCase().startsWith("all department faculty") && (
                   <p className="text-xs text-indigo-700 font-semibold flex items-center gap-1">
-                    <span>👨‍🏫</span> Faculty: {exam.assignedProfessorName}
+                    <span></span> Faculty: {exam.assignedProfessorName}
                   </p>
                 )}
                 <p className="text-xs text-slate-500">
@@ -123,7 +123,7 @@ export default function Exams() {
               <div className="mt-auto">
                 {exam.studentAttemptStatus === "COMPLETED" ? (
                   <button disabled className="w-full bg-slate-100 text-slate-400 py-2 rounded-md font-semibold text-sm cursor-not-allowed flex items-center justify-center gap-1" title="You have already submitted and completed this session. Re-taking is not allowed.">
-                    <span>✓</span> Completed
+                    <span></span> Completed
                   </button>
                 ) : effectiveStatus === "OPEN" ? (
                   <Link

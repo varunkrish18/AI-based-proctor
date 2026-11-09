@@ -65,7 +65,7 @@ export default function ExamDetail() {
         "admin"
       );
       setExam(updated);
-      setLiveTimingToast(`⏱️ Exam duration extended (+${mins} mins)! Active student screens will reflect this immediately without refresh.`);
+      setLiveTimingToast(` Exam duration extended (+${mins} mins)! Active student screens will reflect this immediately without refresh.`);
       setTimeout(() => setLiveTimingToast(null), 6000);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to adjust exam timing.");
@@ -85,7 +85,7 @@ export default function ExamDetail() {
       );
       setExam(updated);
       setShowTerminateModal(false);
-      setLiveTimingToast("🛑 Exam concluded immediately! All active student sessions are now terminating automatically without refresh.");
+      setLiveTimingToast(" Exam concluded immediately! All active student sessions are now terminating automatically without refresh.");
       setTimeout(() => setLiveTimingToast(null), 6000);
       reload();
     } catch (e) {
@@ -198,12 +198,12 @@ export default function ExamDetail() {
             <h1 className="text-2xl font-bold text-slate-900">{exam.name}</h1>
             {exam.isClass && (
               <span className="bg-indigo-100 text-indigo-800 text-xs px-2.5 py-0.5 rounded-full font-bold">
-                🏫 Class
+                 Class
               </span>
             )}
             {exam.assignedProfessorName && (
               <span className="bg-purple-100 text-purple-800 text-xs px-2.5 py-0.5 rounded-full font-medium">
-                👨‍🏫 Assigned Professor: {exam.assignedProfessorName}
+                 Assigned Professor: {exam.assignedProfessorName}
               </span>
             )}
           </div>
@@ -258,7 +258,7 @@ export default function ExamDetail() {
                     : "border border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100"
                 }`}
               >
-                <span>⚙️</span> Edit Exam Settings
+                <span></span> Edit Exam Settings
               </button>
               <button
                 type="button"
@@ -269,13 +269,13 @@ export default function ExamDetail() {
                     : "border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
                 }`}
               >
-                <span>📊</span> Class Student Report
+                <span></span> Class Student Report
               </button>
             </>
           ) : (
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
-                🔒 Settings &amp; Timing locked by Coordinator
+                 Settings &amp; Timing locked by Coordinator
               </span>
               <button
                 type="button"
@@ -286,7 +286,7 @@ export default function ExamDetail() {
                     : "border border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
                 }`}
               >
-                <span>📊</span> Student Report
+                <span></span> Student Report
               </button>
             </div>
           )}
@@ -311,11 +311,11 @@ export default function ExamDetail() {
       {liveTimingToast && (
         <div className="mb-4 bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-between shadow-xs animate-in fade-in">
           <div className="flex items-center gap-2">
-            <span>✨</span>
+            <span></span>
             <span>{liveTimingToast}</span>
           </div>
           <button onClick={() => setLiveTimingToast(null)} className="text-emerald-700 hover:text-emerald-950 font-bold cursor-pointer">
-            ✕
+            
           </button>
         </div>
       )}
@@ -353,7 +353,7 @@ export default function ExamDetail() {
                 </>
               ) : (
                 <>
-                  <span className="text-indigo-300 font-semibold">♾️ Untimed Class (Infinite Attempts)</span> &middot;{" "}
+                  <span className="text-indigo-300 font-semibold"> Untimed Class (Infinite Attempts)</span> &middot;{" "}
                 </>
               )}
               Scheduled End:{" "}
@@ -373,7 +373,7 @@ export default function ExamDetail() {
           {isProfessorUser ? (
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 bg-slate-800/90 px-3.5 py-2 rounded-xl border border-slate-700/80 text-amber-300 text-xs font-semibold">
-                <span>🔒 Exam Schedule &amp; Timing locked by Course Coordinator</span>
+                <span> Exam Schedule &amp; Timing locked by Course Coordinator</span>
               </div>
               <button
                 onClick={() => handleTabChange("professor-report")}
@@ -384,18 +384,18 @@ export default function ExamDetail() {
                 }`}
                 title="View Student Report"
               >
-                <span>📊</span> Student Report
+                <span></span> Student Report
               </button>
             </div>
           ) : isClassSettingsLocked ? (
             <div className="flex items-center gap-1.5 bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-700/60 text-indigo-300 text-xs font-medium">
-              <span>🏫 Class Managed by Course Coordinator (Active)</span>
+              <span> Class Managed by Course Coordinator (Active)</span>
             </div>
           ) : exam.status !== "CLOSED" ? (
             <>
               {exam.durationMinutes ? (
                 <div className="flex items-center gap-1.5 bg-slate-800/90 p-1.5 rounded-xl border border-slate-700/80">
-                  <span className="text-xs text-slate-300 font-semibold px-1.5">⏱️ Extend Time:</span>
+                  <span className="text-xs text-slate-300 font-semibold px-1.5"> Extend Time:</span>
                   {[5, 10, 15, 30].map((mins) => (
                     <button
                       key={mins}
@@ -410,7 +410,7 @@ export default function ExamDetail() {
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-700/60 text-indigo-300 text-xs font-medium">
-                  <span>♾️ Untimed Class Active</span>
+                  <span> Untimed Class Active</span>
                 </div>
               )}
 
@@ -419,7 +419,7 @@ export default function ExamDetail() {
                 disabled={timingAdjusting}
                 className="bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
               >
-                <span>⏹️</span> End Exam Now
+                <span></span> End Exam Now
               </button>
             </>
           ) : (
@@ -434,11 +434,11 @@ export default function ExamDetail() {
         {[
           { id: "questions", label: "Questions" },
           { id: "settings", label: "Exam Settings & Timing" },
-          { id: "professor-report", label: "📊 Student Report" },
-          { id: "coordinator-report", label: "📊 Class Student Report" },
+          { id: "professor-report", label: " Student Report" },
+          { id: "coordinator-report", label: " Class Student Report" },
           { id: "assign", label: "Assign Students" },
           { id: "results", label: "Results & Integrity" },
-          { id: "qassign", label: "📋 Question Assignment" },
+          { id: "qassign", label: " Question Assignment" },
         ]
           .filter((t) => {
             if (isCoordinator) {
@@ -457,7 +457,7 @@ export default function ExamDetail() {
               tab === t.id ? "border-blue-600 text-blue-600 font-bold" : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
-            {t.id === "settings" && <span>⚙️</span>}
+            {t.id === "settings" && <span></span>}
             {t.label}
           </button>
         ))}
@@ -505,7 +505,7 @@ export default function ExamDetail() {
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-slate-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-lg font-bold">
-                🗑️
+                
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">Delete Exam</h3>
@@ -517,7 +517,7 @@ export default function ExamDetail() {
                 Are you sure you want to delete <strong className="text-slate-900 font-semibold">"{exam.name}"</strong>?
               </p>
               <p className="text-xs text-rose-700 bg-rose-50 p-3 rounded-lg mt-3 border border-rose-200">
-                ⚠️ All questions, assignments, student attempts, and proctoring records for this exam will be permanently removed.
+                 All questions, assignments, student attempts, and proctoring records for this exam will be permanently removed.
               </p>
             </div>
             <div className="flex justify-end gap-3 pt-2">
@@ -557,7 +557,7 @@ export default function ExamDetail() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-rose-200">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-2xl font-bold">
-                🛑
+                
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">End Exam Immediately?</h3>
@@ -565,7 +565,7 @@ export default function ExamDetail() {
               </div>
             </div>
             <p className="text-xs text-slate-700 bg-rose-50 border border-rose-200 p-3.5 rounded-xl leading-relaxed">
-              ⚠️ All currently active student exam sessions will be <strong>immediately submitted and terminated without needing a page refresh</strong>.
+               All currently active student exam sessions will be <strong>immediately submitted and terminated without needing a page refresh</strong>.
               New students will not be allowed to start.
             </p>
             <div className="flex justify-end gap-2.5 pt-2">
@@ -761,7 +761,7 @@ if __name__ == '__main__':
         "admin"
       );
       setShowAiModal(false);
-      setAiSuccessMsg(`✨ Successfully generated and added ${generated.length} question(s) with test cases!`);
+      setAiSuccessMsg(` Successfully generated and added ${generated.length} question(s) with test cases!`);
       setTimeout(() => setAiSuccessMsg(null), 6000);
       onAdded();
     } catch (err) {
@@ -1247,7 +1247,7 @@ public class Solution {
         ...f,
         testCases: parsed,
       }));
-      setTestCaseUploadMsg(`✅ Successfully imported all ${parsed.length} test cases from ${file.name}!`);
+      setTestCaseUploadMsg(` Successfully imported all ${parsed.length} test cases from ${file.name}!`);
       setTimeout(() => setTestCaseUploadMsg(null), 6000);
     } catch (err: any) {
       alert(err instanceof Error ? err.message : "Failed to parse test cases file.");
@@ -1265,7 +1265,7 @@ public class Solution {
         ...f,
         testCases: parsed,
       }));
-      alert(`✅ Successfully imported all ${parsed.length} test cases from ${file.name}!`);
+      alert(` Successfully imported all ${parsed.length} test cases from ${file.name}!`);
     } catch (err: any) {
       alert(err instanceof Error ? err.message : "Failed to parse test cases file.");
     } finally {
@@ -1433,7 +1433,7 @@ public class Solution {
             testCases,
           }];
           setParsedBulkQuestions(parsed);
-          setBulkSuccessMsg(`✨ Successfully detected all ${testCases.length} test cases! Packaged into Coding Question '${problemTitle}' ready to import.`);
+          setBulkSuccessMsg(` Successfully detected all ${testCases.length} test cases! Packaged into Coding Question '${problemTitle}' ready to import.`);
           return;
         }
       }
@@ -1730,7 +1730,7 @@ public class Solution {
       <div className="lg:col-span-2 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-900/50 rounded-2xl p-5 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
         <div>
           <div className="flex items-center gap-2.5">
-            <span className="text-xl">✨</span>
+            <span className="text-xl"></span>
             <h3 className="font-bold text-sm sm:text-base text-white">AI Question &amp; Test Case Generator</h3>
             <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full">
               Google Gemini Powered
@@ -1748,7 +1748,7 @@ public class Solution {
           }}
           className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm hover:shadow-indigo-500/25 flex items-center gap-2 cursor-pointer shrink-0"
         >
-          <span>✨</span> AI Generate Questions
+          <span></span> AI Generate Questions
         </button>
       </div>
 
@@ -1756,11 +1756,11 @@ public class Solution {
       {aiSuccessMsg && (
         <div className="lg:col-span-2 bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between animate-fadeIn">
           <div className="flex items-center gap-2">
-            <span>✅</span>
+            <span></span>
             <span>{aiSuccessMsg}</span>
           </div>
           <button onClick={() => setAiSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900 font-bold">
-            ✕
+            
           </button>
         </div>
       )}
@@ -1771,7 +1771,7 @@ public class Solution {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="text-xl">✨</span>
+                <span className="text-xl"></span>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Generate Exam Questions</h3>
                   <p className="text-[11px] text-slate-500">Google Gemini LLM Exam Engine</p>
@@ -1783,7 +1783,7 @@ public class Solution {
                 disabled={aiGenerating}
                 className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer disabled:opacity-50"
               >
-                ✕
+                
               </button>
             </div>
 
@@ -1840,9 +1840,9 @@ public class Solution {
                     onChange={(e) => setAiQuestionType(e.target.value as any)}
                     className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
                   >
-                    <option value="MIXED">⚡ Mixed (MCQ + Coding)</option>
-                    <option value="MCQ">📋 Multiple Choice Only</option>
-                    <option value="CODING">💻 Coding &amp; Test Cases Only</option>
+                    <option value="MIXED"> Mixed (MCQ + Coding)</option>
+                    <option value="MCQ"> Multiple Choice Only</option>
+                    <option value="CODING"> Coding &amp; Test Cases Only</option>
                   </select>
                 </div>
 
@@ -1865,7 +1865,7 @@ public class Solution {
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 space-y-1">
                 <div className="font-semibold text-slate-700 flex items-center gap-1.5">
-                  <span>ℹ️</span> Automated Exam Updates:
+                  <span>ℹ</span> Automated Exam Updates:
                 </div>
                 <p>
                   Generated questions and test cases will be validated and appended directly to the database. If this exceeds the current question limit ({exam.numQuestions}), the limit will be updated automatically.
@@ -1893,7 +1893,7 @@ public class Solution {
                     </>
                   ) : (
                     <>
-                      <span>✨</span>
+                      <span></span>
                       <span>Generate &amp; Save Questions</span>
                     </>
                   )}
@@ -1908,7 +1908,7 @@ public class Solution {
         <div className="bg-white border border-amber-200 rounded-xl p-6 shadow-xs space-y-4 h-fit">
           <div className="flex items-center gap-3">
             <span className="w-9 h-9 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-base">
-              {isOverLimit ? "⚠️" : "✓"}
+              {isOverLimit ? "" : "Passed"}
             </span>
             <div>
               <h3 className="font-bold text-slate-900 text-sm">
@@ -1960,7 +1960,7 @@ public class Solution {
                 onClick={onSwitchToSettings}
                 className="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-lg transition-colors cursor-pointer"
               >
-                ⚙️ Exam Settings (Timing, Attempts, etc.)
+                 Exam Settings (Timing, Attempts, etc.)
               </button>
             )}
           </div>
@@ -1985,15 +1985,15 @@ public class Solution {
                 className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
                 title="Bulk import questions from Excel (.xlsx, .xls) or CSV (.csv)"
               >
-                <span>📊</span>
+                <span></span>
                 <span>Bulk Upload (Excel / CSV)</span>
               </button>
               <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-md">
                 {isClassMode ? (
                   <>
-                    <span>📚 {questions.length} Question{questions.length !== 1 ? "s" : ""} in Bank</span>
+                    <span> {questions.length} Question{questions.length !== 1 ? "s" : ""} in Bank</span>
                     {questions.length >= exam.numQuestions && (
-                      <span className="text-emerald-700 font-bold ml-1.5">(Target {exam.numQuestions} Met ✓)</span>
+                      <span className="text-emerald-700 font-bold ml-1.5">(Target {exam.numQuestions} Met )</span>
                     )}
                   </>
                 ) : (
@@ -2012,7 +2012,7 @@ public class Solution {
                 questionType === "MCQ" ? "bg-white text-blue-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              🔘 Multiple Choice (MCQ)
+               Multiple Choice (MCQ)
             </button>
             <button
               type="button"
@@ -2021,7 +2021,7 @@ public class Solution {
                 questionType === "CODING" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              💻 Coding Question (LeetCode-style)
+               Coding Question (LeetCode-style)
             </button>
           </div>
 
@@ -2089,7 +2089,7 @@ public class Solution {
                   onClick={loadTwoSumPreset}
                   className="text-xs font-semibold text-indigo-700 bg-white hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded transition-colors cursor-pointer"
                 >
-                  ⚡ Load Two Sum Preset
+                   Load Two Sum Preset
                 </button>
               </div>
 
@@ -2248,7 +2248,7 @@ public class Solution {
                       className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                       title="Upload CSV / Excel containing test cases (Input, Expected Output, Hidden, Explanation)"
                     >
-                      <span>📥</span> Import CSV ({codingForm.testCases.length} loaded)
+                      <span></span> Import CSV ({codingForm.testCases.length} loaded)
                     </button>
                     <button
                       type="button"
@@ -2256,7 +2256,7 @@ public class Solution {
                       className="text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 rounded transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                       title="Download sample 15 test cases CSV template"
                     >
-                      <span>📄</span> 15 Cases Template
+                      <span></span> 15 Cases Template
                     </button>
                     <button
                       type="button"
@@ -2290,7 +2290,7 @@ public class Solution {
                               tc.isHidden ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
                             }`}
                           >
-                            {tc.isHidden ? "🔒 Hidden (Grading only)" : "👁️ Sample (Visible to Student)"}
+                            {tc.isHidden ? " Hidden (Grading only)" : " Sample (Visible to Student)"}
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
@@ -2309,7 +2309,7 @@ public class Solution {
                             className="text-rose-500 hover:text-rose-700 font-bold text-sm cursor-pointer"
                             title="Delete test case"
                           >
-                            ✕
+                            
                           </button>
                         </div>
                       </div>
@@ -2383,7 +2383,7 @@ public class Solution {
                       disabled={testingCode || codingForm.testCases.length === 0}
                       className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                     >
-                      {testingCode ? "⏳ Running..." : "▶ Test Run"}
+                      {testingCode ? " Running..." : "▶ Test Run"}
                     </button>
                   </div>
                 </div>
@@ -2466,7 +2466,7 @@ public class Solution {
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <span>📚 All</span>
+              <span> All</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200/70 text-slate-700">
                 {questions.length}
               </span>
@@ -2481,7 +2481,7 @@ public class Solution {
               }`}
               title="Questions set by the Course Coordinator (Locked for professors)"
             >
-              <span>🔒 Coordinator</span>
+              <span> Coordinator</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
                 {coordinatorQuestions.length}
               </span>
@@ -2496,7 +2496,7 @@ public class Solution {
               }`}
               title="Questions added by Faculty / Professors"
             >
-              <span>✍️ Faculty / Prof</span>
+              <span> Faculty / Prof</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                 {professorQuestions.length}
               </span>
@@ -2532,26 +2532,26 @@ public class Solution {
                         : "bg-blue-50 text-blue-700 border border-blue-200"
                     }`}
                   >
-                    {isCoding ? "💻 CODING" : "🔘 MCQ"}
+                    {isCoding ? " CODING" : " MCQ"}
                   </span>
                   <span className="text-xs text-slate-400 font-medium">
                     {q.marks} mark{q.marks !== 1 ? "s" : ""}
                   </span>
                   {isCoordinatorQuestion && (
                     <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded flex items-center gap-1 shadow-2xs">
-                      <span>🔒</span> Provided by Course Coordinator
+                      <span></span> Provided by Course Coordinator
                     </span>
                   )}
                   {!isCoordinatorQuestion && isClassMode && (
                     <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded flex items-center gap-1 shadow-2xs">
-                      <span>✍️</span> Added by Faculty
+                      <span></span> Added by Faculty
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5">
                   {isProtectedFromProf ? (
                     <span className="text-[11px] font-semibold text-slate-400 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded select-none flex items-center gap-1" title="Coordinator questions cannot be modified by assigned professors">
-                      <span>🔒</span> Locked
+                      <span></span> Locked
                     </span>
                   ) : (
                     <>
@@ -2613,7 +2613,7 @@ public class Solution {
                           {opt}
                         </span>
                         {i === q.correctAnswer && (
-                          <span className="text-emerald-600 font-bold text-[11px] shrink-0">✓ Correct</span>
+                          <span className="text-emerald-600 font-bold text-[11px] shrink-0">Correct</span>
                         )}
                       </li>
                     ))}
@@ -2647,7 +2647,7 @@ public class Solution {
                 onClick={() => setEditingQuestion(null)}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer font-bold text-sm"
               >
-                ✕
+                
               </button>
             </div>
 
@@ -2770,7 +2770,7 @@ public class Solution {
                           className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-1 rounded cursor-pointer flex items-center gap-1 shadow-2xs"
                           title="Upload CSV / Excel containing test cases"
                         >
-                          <span>📥</span> Import CSV ({editForm.testCases.length} loaded)
+                          <span></span> Import CSV ({editForm.testCases.length} loaded)
                         </button>
                         <button
                           type="button"
@@ -2778,7 +2778,7 @@ public class Solution {
                           className="text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 rounded cursor-pointer"
                           title="Download sample 15 test cases CSV template"
                         >
-                          <span>📄</span> 15 Cases Template
+                          <span></span> 15 Cases Template
                         </button>
                         <button
                           type="button"
@@ -2809,7 +2809,7 @@ public class Solution {
                                 onClick={() => removeEditTestCase(idx)}
                                 className="text-rose-500 font-bold ml-2 cursor-pointer"
                               >
-                                ✕
+                                
                               </button>
                             </div>
                           </div>
@@ -2922,7 +2922,7 @@ public class Solution {
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                  <span>📊</span> Bulk Upload Questions (Excel &amp; CSV)
+                  <span></span> Bulk Upload Questions (Excel &amp; CSV)
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Upload multiple Multiple Choice (MCQ) and Coding questions at once from an Excel workbook (.xlsx, .xls) or CSV spreadsheet.
@@ -2938,7 +2938,7 @@ public class Solution {
                 }}
                 className="text-slate-400 hover:text-slate-600 cursor-pointer font-bold text-lg"
               >
-                ✕
+                
               </button>
             </div>
 
@@ -2946,7 +2946,7 @@ public class Solution {
             <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div>
                 <div className="font-semibold text-blue-900 flex items-center gap-1.5">
-                  <span>📥</span> Download sample format templates
+                  <span></span> Download sample format templates
                 </div>
                 <p className="text-blue-700 text-[11px] mt-0.5">
                   Pre-configured headers with sample MCQ &amp; LeetCode Coding questions ready to fill in.
@@ -2958,14 +2958,14 @@ public class Solution {
                   onClick={downloadSampleQuestionsExcel}
                   className="bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  <span>📗</span> Download Excel (.xlsx)
+                  <span></span> Download Excel (.xlsx)
                 </button>
                 <button
                   type="button"
                   onClick={downloadSampleQuestionsCsv}
                   className="bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  <span>📄</span> Download CSV (.csv)
+                  <span></span> Download CSV (.csv)
                 </button>
                 <button
                   type="button"
@@ -2973,7 +2973,7 @@ public class Solution {
                   className="bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
                   title="Download sample CSV with 15 test cases"
                 >
-                  <span>🧪</span> 15 Cases CSV (.csv)
+                  <span></span> 15 Cases CSV (.csv)
                 </button>
               </div>
             </div>
@@ -2991,7 +2991,7 @@ public class Solution {
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
                 <div className="space-y-1.5 pointer-events-none">
-                  <div className="text-3xl">📂</div>
+                  <div className="text-3xl"></div>
                   <div className="text-xs font-semibold text-slate-700">
                     {bulkFile ? bulkFile.name : "Click to browse or drag & drop questions file here"}
                   </div>
@@ -3005,19 +3005,19 @@ public class Solution {
             {/* Parsing State & Errors */}
             {bulkParsing && (
               <div className="p-3 text-xs bg-slate-100 text-slate-600 rounded-lg animate-pulse flex items-center gap-2">
-                <span>⏳</span> Reading and validating questions spreadsheet…
+                <span></span> Reading and validating questions spreadsheet…
               </div>
             )}
 
             {bulkError && (
               <div className="p-3 text-xs bg-rose-50 border border-rose-200 text-rose-700 rounded-lg">
-                ⚠️ {bulkError}
+                 {bulkError}
               </div>
             )}
 
             {bulkSuccessMsg && (
               <div className="p-3 text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg font-medium">
-                ✓ {bulkSuccessMsg}
+                {bulkSuccessMsg}
               </div>
             )}
 
@@ -3111,7 +3111,7 @@ public class Solution {
                   </>
                 ) : (
                   <>
-                    <span>✓</span>
+                    <span></span>
                     <span>Confirm &amp; Import ({parsedBulkQuestions.length}) Questions</span>
                   </>
                 )}
@@ -3247,7 +3247,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
       }>(`/api/admin/exams/${examId}/assign`, { emails: emailsToAssign }, "admin");
 
       setStatus(
-        `✓ Assigned ${res.assigned} student(s) from Section "${activeSection.className}". Random passwords generated.`
+        `Assigned ${res.assigned} student(s) from Section "${activeSection.className}". Random passwords generated.`
       );
       if (res.credentials && res.credentials.length > 0) {
         setRecentCredentials(res.credentials);
@@ -3317,8 +3317,8 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
       if (onExamUpdated) onExamUpdated(updated);
       setStatus(
         target
-          ? "✓ Exam is now OPEN TO ALL. Any candidate can write this exam!"
-          : "✓ Exam is now RESTRICTED. Only assigned candidates can write."
+          ? "Exam is now OPEN TO ALL. Any candidate can write this exam!"
+          : "Exam is now RESTRICTED. Only assigned candidates can write."
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to toggle open access mode.";
@@ -3378,7 +3378,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         return merged.join("\n");
       });
 
-      setFileSuccessMsg(`✓ Extracted ${unique.length} email ID(s) from "${file.name}". Click "Assign Students" to generate their access passwords.`);
+      setFileSuccessMsg(`Extracted ${unique.length} email ID(s) from "${file.name}". Click "Assign Students" to generate their access passwords.`);
     } catch (err: any) {
       alert(err instanceof Error ? err.message : "Failed to parse file.");
     } finally {
@@ -3423,7 +3423,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         skipped: number;
         credentials?: Array<{ email: string; password: string }>;
       }>(`/api/admin/exams/${examId}/assign`, { emails: list }, "admin");
-      setStatus(`✓ Assigned ${res.assigned} student(s) (${res.skipped} already assigned). Random passwords generated.`);
+      setStatus(`Assigned ${res.assigned} student(s) (${res.skipped} already assigned). Random passwords generated.`);
       if (res.credentials && res.credentials.length > 0) {
         setRecentCredentials(res.credentials);
       }
@@ -3444,7 +3444,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     try {
       await api.delete(`/api/admin/exams/${examId}/assignments/${id}`, "admin");
       setAssignments((prev) => prev.filter((a) => a.id !== id));
-      setStatus(`✓ Revoked and deleted assignment for ${email}.`);
+      setStatus(`Revoked and deleted assignment for ${email}.`);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to unassign student.");
     } finally {
@@ -3464,7 +3464,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
     try {
       await api.delete(`/api/admin/exams/${examId}/assignments`, "admin");
       setAssignments([]);
-      setStatus("✓ Successfully revoked and deleted assigned students.");
+      setStatus("Successfully revoked and deleted assigned students.");
       loadAssignments();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to revoke assigned students.");
@@ -3603,7 +3603,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xl">🔑</span>
+              <span className="text-xl"></span>
               <div>
                 <h4 className="font-bold text-emerald-950 text-sm">
                   Generated Exam Access Passwords ({recentCredentials.length})
@@ -3623,14 +3623,14 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                 }}
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold text-xs hover:bg-emerald-700 transition cursor-pointer shadow-xs"
               >
-                📋 Copy Credentials
+                 Copy Credentials
               </button>
               <button
                 type="button"
                 onClick={() => setRecentCredentials(null)}
                 className="text-xs text-slate-500 hover:text-slate-800 font-medium px-2 py-1 cursor-pointer"
               >
-                ✕ Dismiss
+                 Dismiss
               </button>
             </div>
           </div>
@@ -3676,7 +3676,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <span>🏫</span>
+            <span></span>
             <span>By Class & Section</span>
           </button>
           <button
@@ -3691,7 +3691,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <span>✉️</span>
+            <span></span>
             <span>Manual Emails</span>
           </button>
           <button
@@ -3706,7 +3706,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <span>📄</span>
+            <span></span>
             <span>Upload File</span>
           </button>
         </div>
@@ -3728,7 +3728,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                 className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded hover:bg-blue-100 transition shrink-0"
                 title="Open Group Student Page in new tab to add or configure sections"
               >
-                <span>⚙️ Group Registry</span>
+                <span> Group Registry</span>
                 <span className="text-[10px]">↗</span>
               </Link>
             </div>
@@ -3773,7 +3773,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
 
               {availableSections.length === 0 ? (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-                  <p className="font-semibold">⚠️ No sections registered for {selectedYear}.</p>
+                  <p className="font-semibold"> No sections registered for {selectedYear}.</p>
                   <p className="mt-0.5 text-[11px]">
                     Go to the <Link to="/admin?tab=students" target="_blank" className="underline font-bold">Group Student page</Link> to configure class sections.
                   </p>
@@ -3876,7 +3876,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   </div>
                 ) : (
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
-                    <p className="font-semibold">✓ All students in this section are already assigned!</p>
+                    <p className="font-semibold">All students in this section are already assigned!</p>
                     <p className="mt-0.5 text-[11px] text-slate-500">
                       No remaining unassigned students in <strong>{activeSection.className}</strong>.
                     </p>
@@ -3894,7 +3894,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                     "Assigning Section & Generating Passwords…"
                   ) : (
                     <>
-                      <span>🏫</span>
+                      <span></span>
                       <span>
                         Assign {sectionStudents.length} Students from {activeSection.className}
                       </span>
@@ -3943,7 +3943,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
             </div>
 
             <div className="border border-dashed border-slate-300 rounded-xl p-5 bg-slate-50/70 hover:bg-slate-50 transition-colors text-center">
-              <span className="text-2xl block mb-2">📄</span>
+              <span className="text-2xl block mb-2"></span>
               <p className="text-xs font-semibold text-slate-700 mb-1">
                 Select your spreadsheet (.xlsx, .xls, .csv)
               </p>
@@ -4003,7 +4003,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
         {status && (
           <p
             className={`text-xs font-medium p-2.5 rounded-lg ${
-              status.startsWith("✓")
+              status.startsWith("Passed")
                 ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
                 : "bg-red-50 text-red-700 border border-red-200"
             }`}
@@ -4031,7 +4031,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   className="text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded font-medium transition cursor-pointer"
                   title="Copy all emails and passwords"
                 >
-                  📋 Copy All
+                   Copy All
                 </button>
                 <button
                   type="button"
@@ -4039,7 +4039,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   className="text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded font-medium transition cursor-pointer"
                   title="Download student credentials as CSV"
                 >
-                  📥 Export CSV
+                   Export CSV
                 </button>
                 <button
                   type="button"
@@ -4048,7 +4048,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   className="text-xs text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded font-medium transition cursor-pointer flex items-center gap-1 disabled:opacity-50"
                   title="Revoke and delete all assigned students for this exam"
                 >
-                  <span>🗑️</span>
+                  <span></span>
                   <span>{revokingAll ? "Revoking…" : "Revoke All"}</span>
                 </button>
               </>
@@ -4106,7 +4106,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                         }}
                         className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
                       >
-                        {copiedPasswordId === a.id ? "✓ Copied" : "Copy"}
+                        {copiedPasswordId === a.id ? "Copied" : "Copy"}
                       </button>
                     )}
                   </div>
@@ -4118,7 +4118,7 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
                   className="text-rose-600 hover:text-rose-800 text-[11px] font-medium bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
                   title="Revoke and delete student assignment"
                 >
-                  <span>✕</span>
+                  <span></span>
                   <span>{unassigningId === a.id ? "…" : "Revoke"}</span>
                 </button>
               </div>
@@ -4542,11 +4542,11 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               }}
               className="text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             >
-              <option value="ALL">📅 All Dates</option>
-              <option value="TODAY">📅 Today</option>
-              <option value="YESTERDAY">📅 Yesterday</option>
-              <option value="LAST_7_DAYS">📅 Last 7 Days</option>
-              <option value="CUSTOM">📅 Custom Range…</option>
+              <option value="ALL"> All Dates</option>
+              <option value="TODAY"> Today</option>
+              <option value="YESTERDAY"> Yesterday</option>
+              <option value="LAST_7_DAYS"> Last 7 Days</option>
+              <option value="CUSTOM"> Custom Range…</option>
             </select>
           </div>
           <button
@@ -4570,7 +4570,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
           <div className="flex items-center gap-1.5">
             <span className="text-slate-500 font-medium mr-1 flex items-center gap-1">
-              <span>🕒</span>
+              <span></span>
               <span>Filter Date:</span>
             </span>
             <button
@@ -4593,7 +4593,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                   : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
               }`}
             >
-              🌟 Today
+               Today
             </button>
             <button
               type="button"
@@ -4604,7 +4604,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                   : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
               }`}
             >
-              ⏪ Yesterday
+               Yesterday
             </button>
             <button
               type="button"
@@ -4658,16 +4658,16 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                   ? "bg-amber-100 text-amber-800 border-amber-300" 
                   : "bg-blue-100 text-blue-800 border-blue-300"
               }`}>
-                ⚠️ Strike Policy: {maxStrikes} Strikes {exam?.isClass ? "(Class Session)" : "(Standard Exam)"}
+                 Strike Policy: {maxStrikes} Strikes {exam?.isClass ? "(Class Session)" : "(Standard Exam)"}
               </span>
               {dateFilter === "TODAY" && (
                 <span className="text-xs font-semibold text-blue-700 bg-blue-100 border border-blue-200 px-2.5 py-0.5 rounded-full">
-                  🌟 Today
+                   Today
                 </span>
               )}
               {dateFilter === "YESTERDAY" && (
                 <span className="text-xs font-semibold text-purple-700 bg-purple-100 border border-purple-200 px-2.5 py-0.5 rounded-full">
-                  ⏪ Yesterday
+                   Yesterday
                 </span>
               )}
               {dateFilter === "LAST_7_DAYS" && (
@@ -4690,7 +4690,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
               title="Download cumulative PDF containing all candidate results, verified marks & proctoring audit"
             >
-              <span>📄 {exportingCumulative ? "Generating PDF…" : "Cumulative Exam PDF"}</span>
+              <span> {exportingCumulative ? "Generating PDF…" : "Cumulative Exam PDF"}</span>
             </button>
             <button
               onClick={handleExportQuestionCompletionPdf}
@@ -4698,7 +4698,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
               title="Download PDF containing student name, register number, mail ID & question completion status (1 page per student)"
             >
-              <span>📋 {exportingQuestionPdf ? "Generating PDF…" : "Question Completion (1-Page / Student)"}</span>
+              <span> {exportingQuestionPdf ? "Generating PDF…" : "Question Completion (1-Page / Student)"}</span>
             </button>
             <button
               onClick={handleExportWarningStrikesPdf}
@@ -4706,7 +4706,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
               title="Download Warning Strikes PDF describing students involved in strikes with student name & register number"
             >
-              <span>⚠️ {exportingStrikesPdf ? "Generating PDF…" : `Warning Strikes Report (${maxStrikes} Strikes Max)`}</span>
+              <span> {exportingStrikesPdf ? "Generating PDF…" : `Warning Strikes Report (${maxStrikes} Strikes Max)`}</span>
             </button>
           </div>
         </div>
@@ -4868,7 +4868,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                           className="text-indigo-700 hover:text-indigo-900 font-bold text-xs bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
                           title="Export 1-Page Question Completion PDF (Student Name, Reg No, Mail ID & Status)"
                         >
-                          <span>📋</span>
+                          <span></span>
                           <span>{exportingAttemptQuestionPdfId === a.attemptId ? "..." : "1-Page PDF"}</span>
                         </button>
                         <button
@@ -4877,7 +4877,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                           className="text-amber-700 hover:text-amber-900 font-bold text-xs bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
                           title="Export Warning Strikes Audit PDF for this candidate"
                         >
-                          <span>⚠️</span>
+                          <span></span>
                           <span>{exportingAttemptStrikesPdfId === a.attemptId ? "..." : "Strikes PDF"}</span>
                         </button>
                         <button
@@ -4886,7 +4886,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                           className="text-rose-700 hover:text-rose-900 font-bold text-xs bg-rose-50 hover:bg-rose-100 border border-rose-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
                           title="Export candidate full proctoring report as PDF"
                         >
-                          <span>📄</span>
+                          <span></span>
                           <span>{exportingId === a.attemptId ? "..." : "PDF"}</span>
                         </button>
                         <button
@@ -4895,7 +4895,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                           className="text-emerald-700 hover:text-emerald-900 font-bold text-xs bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
                           title="Export candidate report as Excel"
                         >
-                          <span>📊</span>
+                          <span></span>
                           <span>{exportingId === a.attemptId ? "..." : "XLS"}</span>
                         </button>
                       </div>
@@ -4964,7 +4964,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                 className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-300 font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
                 title="Export 1-Page Question Completion PDF"
               >
-                <span>📋</span>
+                <span></span>
                 <span>{exportingAttemptQuestionPdfId === selectedAttempt.attemptId ? "Exporting…" : "1-Page PDF"}</span>
               </button>
               <button
@@ -4973,7 +4973,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                 className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
                 title="Export Warning Strikes PDF"
               >
-                <span>⚠️</span>
+                <span></span>
                 <span>{exportingAttemptStrikesPdfId === selectedAttempt.attemptId ? "Exporting…" : "Strikes PDF"}</span>
               </button>
               <button
@@ -4982,7 +4982,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                 className="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
                 title="Export Attempt PDF"
               >
-                <span>📄</span>
+                <span></span>
                 <span>{exportingId === selectedAttempt.attemptId ? "Exporting…" : "PDF"}</span>
               </button>
               <button
@@ -4991,14 +4991,14 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                 className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
                 title="Export Attempt Excel"
               >
-                <span>📊</span>
+                <span></span>
                 <span>{exportingId === selectedAttempt.attemptId ? "Exporting…" : "Excel"}</span>
               </button>
               <button
                 onClick={() => setSelectedAttempt(null)}
                 className="text-slate-400 hover:text-slate-600 text-sm font-semibold ml-2 cursor-pointer px-2 py-1"
               >
-                ✕ Close
+                 Close
               </button>
             </div>
           </div>
@@ -5011,7 +5011,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
           {/* Quick Marks & Verification Bar */}
           <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-blue-900">✍️ Verified Marks:</span>
+              <span className="font-bold text-blue-900"> Verified Marks:</span>
               <input
                 type="number"
                 step="0.5"
@@ -5027,7 +5027,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                 disabled={savingQuickScore}
                 className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded shadow-xs cursor-pointer disabled:opacity-50"
               >
-                {savingQuickScore ? "Saving…" : "✓ Save Marks & Verify"}
+                {savingQuickScore ? "Saving…" : "Save Marks & Verify"}
               </button>
             </div>
             <button
@@ -5035,7 +5035,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               disabled={exportingId === selectedAttempt.attemptId}
               className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded shadow-xs cursor-pointer flex items-center gap-1"
             >
-              <span>📁 Put Everything in a File (Export PDF)</span>
+              <span> Put Everything in a File (Export PDF)</span>
             </button>
           </div>
 
@@ -5097,7 +5097,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
               <div className="bg-slate-900 text-white rounded-xl p-5 border border-slate-800 shadow-md">
                 <div className="flex items-center justify-between mb-3.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">📸</span>
+                    <span className="text-base"></span>
                     <h4 className="text-sm font-bold uppercase tracking-wider text-slate-100">
                       Photo Evidence Gallery ({photoEvents.length} Snapshots)
                     </h4>
@@ -5263,7 +5263,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                           />
                           <div className="flex-1 text-xs">
                             <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                              <span>📸 Captured Photo Evidence</span>
+                              <span> Captured Photo Evidence</span>
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold cursor-pointer">
                                 Click image to enlarge
                               </span>
@@ -5326,7 +5326,7 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                 onClick={() => setPreviewPhoto(null)}
                 className="text-slate-400 hover:text-white text-base font-bold px-2 py-1 rounded cursor-pointer"
               >
-                ✕
+                
               </button>
             </div>
             <div className="p-4 bg-black flex items-center justify-center">
@@ -5644,7 +5644,7 @@ function QuestionAssignTab({
                   </td>
                   <td style="padding-top: 6px;">
                     <span style="color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase;">Paper Authenticity</span><br/>
-                    <span style="color: #16a34a; font-weight: 700; font-size: 12px;">✓ Unique Question Randomization Confirmed</span>
+                    <span style="color: #16a34a; font-weight: 700; font-size: 12px;">Unique Question Randomization Confirmed</span>
                   </td>
                 </tr>
               </table>
@@ -5795,7 +5795,7 @@ function QuestionAssignTab({
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              📋 Random Question Assignment &amp; 1-Page PDF Reports
+               Random Question Assignment &amp; 1-Page PDF Reports
             </h2>
             <p className="text-sm text-slate-500 mt-1 max-w-xl">
               Specify how many random questions from the question bank each student should receive.
@@ -5809,19 +5809,19 @@ function QuestionAssignTab({
                 onClick={exportPDF}
                 className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-1.5 rounded-lg shadow-xs transition cursor-pointer"
               >
-                📄 Print / Save PDF (1 Page Per Student)
+                 Print / Save PDF (1 Page Per Student)
               </button>
               <button
                 onClick={exportCSV}
                 className="flex items-center gap-1.5 text-xs border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer"
               >
-                ⬇️ Export CSV
+                ⬇ Export CSV
               </button>
               <button
                 onClick={exportJSON}
                 className="flex items-center gap-1.5 text-xs border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold px-3 py-1.5 rounded-lg transition cursor-pointer"
               >
-                ⬇️ Export JSON
+                ⬇ Export JSON
               </button>
             </div>
           )}
@@ -5873,20 +5873,20 @@ function QuestionAssignTab({
                 Saving…
               </>
             ) : (
-              openToAll ? "🎲 Allocate Questions for Open Exam" : "🎲 Assign Random Questions"
+              openToAll ? " Allocate Questions for Open Exam" : " Assign Random Questions"
             )}
           </button>
 
           {questionCount === 0 && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
-              ⚠️ Add questions to this exam before assigning.
+               Add questions to this exam before assigning.
             </p>
           )}
         </div>
 
         {openToAll && (
           <div className="mt-4 flex items-center gap-2 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-4 py-2.5 rounded-xl font-medium">
-            <span className="text-base">🌐</span>
+            <span className="text-base"></span>
             <span>
               <strong>Open to All (Public Exam) Active:</strong> Whoever enters this exam will automatically receive <strong>{qps} random questions</strong> from the question bank. As students verify and enter, their individual assignments will appear in the report below.
             </span>
@@ -6008,7 +6008,7 @@ function QuestionAssignTab({
 
       {!report && !loading && (
         <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-12 text-center">
-          <p className="text-4xl mb-3">🎲</p>
+          <p className="text-4xl mb-3"></p>
           <p className="text-slate-600 font-semibold">No assignments yet</p>
           <p className="text-slate-400 text-sm mt-1">
             Configure the number of questions per student above and click{" "}

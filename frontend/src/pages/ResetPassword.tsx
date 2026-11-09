@@ -53,7 +53,7 @@ export default function ResetPassword() {
       <div className="max-w-md w-full bg-white border border-slate-200 rounded-2xl shadow-xl p-8 relative">
         <div className="flex flex-col items-center text-center mb-6">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-2xl shadow-lg shadow-amber-500/20 mb-3">
-            🔐
+            
           </div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Set Your New Password</h1>
           <p className="text-xs text-slate-500 mt-1 max-w-sm">
@@ -79,7 +79,7 @@ export default function ResetPassword() {
 
         {error && (
           <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3.5 py-2.5 rounded-xl text-xs mb-5 flex items-start gap-2 shadow-sm animate-in fade-in">
-            <span className="text-base leading-none">⚠️</span>
+            <span className="text-base leading-none"></span>
             <div className="flex-1 font-medium">{error}</div>
           </div>
         )}

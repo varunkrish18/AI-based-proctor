@@ -236,7 +236,7 @@ export default function UserManagementTab() {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-2xl">👥</span>
+            <span className="text-2xl"></span>
             <h2 className="text-xl font-bold text-slate-900">User Definitions &amp; Login Credentials</h2>
             <span className="bg-indigo-50 text-indigo-700 font-bold text-xs px-2.5 py-0.5 rounded-full border border-indigo-200">
               {users.length} {users.length === 1 ? "User" : "Users"}
@@ -253,7 +253,7 @@ export default function UserManagementTab() {
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
           >
-            <span className={loading ? "animate-spin" : ""}>🔄</span> Refresh
+            <span className={loading ? "animate-spin" : ""}></span> Refresh
           </button>
           <button
             onClick={() => {
@@ -297,7 +297,7 @@ export default function UserManagementTab() {
           {/* Search Input Box */}
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-              🔍
+              
             </span>
             <input
               type="text"
@@ -322,7 +322,7 @@ export default function UserManagementTab() {
                 className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-sm font-bold"
                 title="Clear search"
               >
-                ✕
+                
               </button>
             )}
           </div>
@@ -370,11 +370,11 @@ export default function UserManagementTab() {
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between animate-fadeIn">
           <div className="flex items-center gap-2">
-            <span>✅</span>
+            <span></span>
             <span>{successMsg}</span>
           </div>
           <button onClick={() => setSuccessMsg(null)} className="text-emerald-700 hover:text-emerald-900 font-bold">
-            ✕
+            
           </button>
         </div>
       )}
@@ -383,7 +383,7 @@ export default function UserManagementTab() {
       {error && (
         <div className="bg-rose-50 border border-rose-300 text-rose-800 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span>⚠️</span>
+            <span></span>
             <span>{error}</span>
           </div>
           <button onClick={() => fetchUsers()} className="underline text-rose-700 hover:text-rose-900 font-bold">
@@ -403,7 +403,7 @@ export default function UserManagementTab() {
       {/* Users Card Grid */}
       {!loading && filteredUsers.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500">
-          <span className="text-3xl block mb-2">👤</span>
+          <span className="text-3xl block mb-2"></span>
           <p className="text-sm font-semibold text-slate-700">No matching user accounts found</p>
           <p className="text-xs text-slate-400 mt-1">Adjust filters or create a new user account.</p>
         </div>
@@ -450,12 +450,12 @@ export default function UserManagementTab() {
                       </span>
                       {user.department && (
                         <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 truncate max-w-[170px]" title={user.department}>
-                          🏛️ {user.department}
+                           {user.department}
                         </span>
                       )}
                       {user.locked ? (
                         <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1">
-                          🔒 Locked
+                           Locked
                         </span>
                       ) : (
                         <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1">
@@ -472,7 +472,7 @@ export default function UserManagementTab() {
                     className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
                     title="Edit user credentials and details"
                   >
-                    ✏️ Edit Credentials
+                     Edit Credentials
                   </button>
                   <button
                     onClick={() => setUserToDelete(user)}
@@ -484,7 +484,7 @@ export default function UserManagementTab() {
                     }`}
                     title={isCurrentUser ? "Cannot delete currently logged-in account" : "Delete user"}
                   >
-                    🗑️
+                    
                   </button>
                 </div>
               </div>
@@ -501,7 +501,7 @@ export default function UserManagementTab() {
                     onClick={() => copyToClipboard(user.email, `email-${user.id}`)}
                     className="shrink-0 px-2 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-semibold text-[11px] transition cursor-pointer"
                   >
-                    {copiedField === `email-${user.id}` ? "Copied! ✓" : "Copy Email"}
+                    {copiedField === `email-${user.id}` ? "Copied! " : "Copy Email"}
                   </button>
                 </div>
 
@@ -519,14 +519,14 @@ export default function UserManagementTab() {
                       className="px-2 py-1 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-semibold text-[11px] transition cursor-pointer"
                       title={isPasswordVisible ? "Hide Password" : "Show Password"}
                     >
-                      {isPasswordVisible ? "🙈 Hide" : "👁️ Reveal"}
+                      {isPasswordVisible ? " Hide" : " Reveal"}
                     </button>
                     {user.displayPassword && (
                       <button
                         onClick={() => copyToClipboard(user.displayPassword!, `pwd-${user.id}`)}
                         className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-semibold text-[11px] transition cursor-pointer"
                       >
-                        {copiedField === `pwd-${user.id}` ? "Copied! ✓" : "Copy Pwd"}
+                        {copiedField === `pwd-${user.id}` ? "Copied! " : "Copy Pwd"}
                       </button>
                     )}
                   </div>
@@ -552,14 +552,14 @@ export default function UserManagementTab() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xl">✨</span>
+                <span className="text-xl"></span>
                 <h3 className="text-base font-bold text-slate-900">Define New User / Faculty</h3>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
               >
-                ✕
+                
               </button>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
@@ -609,7 +609,7 @@ export default function UserManagementTab() {
                     }}
                     className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
                   >
-                    🎲 Generate Strong Pwd
+                     Generate Strong Pwd
                   </button>
                 </div>
                 <div className="relative">
@@ -693,14 +693,14 @@ export default function UserManagementTab() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xl">✏️</span>
+                <span className="text-xl"></span>
                 <h3 className="text-base font-bold text-slate-900">Edit User Details &amp; Credentials</h3>
               </div>
               <button
                 onClick={() => setEditingUser(null)}
                 className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
               >
-                ✕
+                
               </button>
             </div>
             <p className="text-xs text-slate-500">
@@ -750,7 +750,7 @@ export default function UserManagementTab() {
                     }}
                     className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer"
                   >
-                    🎲 Suggest New Pwd
+                     Suggest New Pwd
                   </button>
                 </div>
                 <div className="relative">
@@ -847,7 +847,7 @@ export default function UserManagementTab() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full p-6 space-y-4">
             <div className="text-center">
-              <span className="text-3xl block mb-2">🗑️</span>
+              <span className="text-3xl block mb-2"></span>
               <h3 className="text-base font-bold text-slate-900">Delete User Account</h3>
               <p className="text-xs text-slate-500 mt-1">
                 Are you sure you want to remove <strong className="text-slate-800">{userToDelete.email}</strong>? They will no longer be able to log into the portal.

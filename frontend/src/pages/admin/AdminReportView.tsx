@@ -145,21 +145,21 @@ export default function AdminReportView() {
             disabled={downloading !== null}
             className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-md shadow-xs transition-colors cursor-pointer disabled:opacity-50"
           >
-            {downloading === "pdf" ? "Exporting…" : "📄 PDF"}
+            {downloading === "pdf" ? "Exporting…" : " PDF"}
           </button>
           <button
             onClick={() => handleExport("excel")}
             disabled={downloading !== null}
             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md shadow-xs transition-colors cursor-pointer disabled:opacity-50"
           >
-            {downloading === "excel" ? "Exporting…" : "📊 Excel"}
+            {downloading === "excel" ? "Exporting…" : " Excel"}
           </button>
           <button
             onClick={() => handleExport("csv")}
             disabled={downloading !== null}
             className="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded-md shadow-xs transition-colors cursor-pointer disabled:opacity-50"
           >
-            {downloading === "csv" ? "Exporting…" : "📋 CSV"}
+            {downloading === "csv" ? "Exporting…" : " CSV"}
           </button>
         </div>
       </div>
@@ -225,7 +225,7 @@ export default function AdminReportView() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4 pb-3 border-b border-slate-100">
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>✍️ Admin Evaluation & Marks Awarding</span>
+              <span> Admin Evaluation & Marks Awarding</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800">
                 Official Proctor Verification
               </span>
@@ -239,7 +239,7 @@ export default function AdminReportView() {
             disabled={downloading !== null}
             className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
           >
-            <span>📁 Put Everything in a File (Download Official PDF)</span>
+            <span> Put Everything in a File (Download Official PDF)</span>
           </button>
         </div>
 
@@ -259,7 +259,7 @@ export default function AdminReportView() {
                   className="text-[10px] text-blue-600 hover:text-blue-800 font-semibold hover:underline cursor-pointer"
                   title="Copy sum of correct answers"
                 >
-                  ⚡ Auto: {report.answers.reduce((s, a) => s + (Number(a.marksAwarded) || 0), 0)} pts
+                   Auto: {report.answers.reduce((s, a) => s + (Number(a.marksAwarded) || 0), 0)} pts
                 </button>
               )}
             </div>
@@ -312,14 +312,14 @@ export default function AdminReportView() {
               disabled={evalSaving}
               className="w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50"
             >
-              {evalSaving ? "Saving Marks…" : "✓ Save Marks & Verify"}
+              {evalSaving ? "Saving Marks…" : "Save Marks & Verify"}
             </button>
           </div>
         </form>
 
         {evalSuccess && (
           <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-lg flex items-center gap-2">
-            <span>✓</span> {evalSuccess}
+            <span></span> {evalSuccess}
           </div>
         )}
       </div>
@@ -330,7 +330,7 @@ export default function AdminReportView() {
           <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-100 pb-3">
             <div>
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>📝 Candidate Exam Submission & Answer Analysis</span>
+                <span> Candidate Exam Submission & Answer Analysis</span>
                 <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700">
                   {report.answers.length} Questions
                 </span>
@@ -341,10 +341,10 @@ export default function AdminReportView() {
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">
-                ✓ {report.answers.filter((a) => a.isCorrect === true).length} Correct
+                {report.answers.filter((a) => a.isCorrect === true).length} Correct
               </span>
               <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 font-bold border border-rose-200">
-                ✗ {report.answers.filter((a) => a.isCorrect === false).length} Incorrect
+                {report.answers.filter((a) => a.isCorrect === false).length} Incorrect
               </span>
               <span className="px-2.5 py-1 rounded-md bg-slate-50 text-slate-600 font-medium border border-slate-200">
                 — {report.answers.filter((a) => {
@@ -388,7 +388,7 @@ export default function AdminReportView() {
                             : "bg-slate-100 text-slate-600"
                         }`}
                       >
-                        {isCoding ? "💻 CODING" : "🔘 MCQ"}
+                        {isCoding ? " CODING" : " MCQ"}
                       </span>
                       <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
                         {ans.marksAwarded ?? 0} / {ans.maxMarks ?? 1} pts
@@ -397,11 +397,11 @@ export default function AdminReportView() {
                     <div>
                       {ans.isCorrect === true ? (
                         <span className="text-xs font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                          ✓ Correct (+{ans.marksAwarded} pts)
+                          Correct (+{ans.marksAwarded} pts)
                         </span>
                       ) : hasAnswered ? (
                         <span className="text-xs font-bold text-rose-700 bg-rose-100 border border-rose-200 px-2.5 py-0.5 rounded-full">
-                          {isCoding ? `${ans.marksAwarded} pts awarded` : "✗ Incorrect (0 pts)"}
+                          {isCoding ? `${ans.marksAwarded} pts awarded` : "Incorrect (0 pts)"}
                         </span>
                       ) : (
                         <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full">
@@ -425,7 +425,7 @@ export default function AdminReportView() {
                           Language: <span className="font-mono text-indigo-700 font-bold">{ans.codeLanguage || "python"}</span>
                         </span>
                         <span className="font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                          🧪 Test Cases: <strong>{ans.testCasesPassed ?? 0}</strong> / {ans.totalTestCases ?? 0} Passed
+                           Test Cases: <strong>{ans.testCasesPassed ?? 0}</strong> / {ans.totalTestCases ?? 0} Passed
                         </span>
                       </div>
 
@@ -481,11 +481,11 @@ export default function AdminReportView() {
                               <div className="shrink-0 flex items-center gap-1.5 font-bold text-[10px]">
                                 {isCandidateChoice && (
                                   <span className={isKey ? "text-emerald-700" : "text-rose-700"}>
-                                    👤 Candidate Choice
+                                     Candidate Choice
                                   </span>
                                 )}
                                 {isKey && (
-                                  <span className="text-emerald-700">✓ Correct Key</span>
+                                  <span className="text-emerald-700">Correct Key</span>
                                 )}
                               </div>
                             </div>
@@ -624,7 +624,7 @@ export default function AdminReportView() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                  <span>📸 Photo Evidence Snapshots ({photoEvents.length})</span>
+                  <span> Photo Evidence Snapshots ({photoEvents.length})</span>
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-100 text-rose-700">
                     Proctor Review
                   </span>
@@ -665,7 +665,7 @@ export default function AdminReportView() {
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                       />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold gap-1.5">
-                        <span>🔍 Click to Enlarge</span>
+                        <span> Click to Enlarge</span>
                       </div>
                       <span className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded font-bold bg-black/70 text-white backdrop-blur-xs">
                         {new Date(ev.occurredAt).toLocaleTimeString()}
@@ -827,7 +827,7 @@ export default function AdminReportView() {
                               }
                               className="font-semibold text-blue-600 hover:underline cursor-pointer block"
                             >
-                              📸 View Snapshot
+                               View Snapshot
                             </span>
                             {parsedMeta.direction && (
                               <span className="text-slate-600">Gaze: {parsedMeta.direction} </span>
@@ -877,7 +877,7 @@ export default function AdminReportView() {
                 onClick={() => setPreviewPhoto(null)}
                 className="text-slate-400 hover:text-white text-base font-bold px-2 py-1 rounded cursor-pointer"
               >
-                ✕
+                
               </button>
             </div>
             <div className="p-4 bg-black flex items-center justify-center">

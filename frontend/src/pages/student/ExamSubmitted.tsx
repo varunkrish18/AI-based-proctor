@@ -37,7 +37,7 @@ export default function ExamSubmitted() {
         <div className={`inline-flex items-center justify-center w-14 h-14 rounded-full text-3xl mb-3 shadow-inner ${
           result?.submitReason ? "bg-amber-100 text-amber-600" : "bg-emerald-100 text-emerald-600"
         }`}>
-          {result?.submitReason ? "⚠️" : "✓"}
+          {result?.submitReason ? "" : "Passed"}
         </div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
           {result?.submitReason ? "Exam Session Concluded" : "Exam Submitted Successfully"}
@@ -50,7 +50,7 @@ export default function ExamSubmitted() {
         {/* Automatic Submission Notice if triggered */}
         {result?.submitReason && (
           <div className="bg-red-50 border-2 border-red-300 text-red-950 rounded-2xl p-5 mb-6 shadow-sm flex items-start gap-3.5">
-            <span className="text-2xl mt-0.5">🚨</span>
+            <span className="text-2xl mt-0.5"></span>
             <div>
               <h4 className="font-extrabold text-base text-red-900">Automatic Session Submission Triggered</h4>
               <p className="text-sm text-red-800 mt-1 font-medium leading-relaxed">
@@ -104,7 +104,7 @@ export default function ExamSubmitted() {
           <div className="flex justify-between items-center py-3 last:pb-0">
             <span className="text-sm text-slate-500 font-medium">Proctoring Telemetry</span>
             <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
-              <span>🔒 Encrypted & Verified</span>
+              <span> Encrypted & Verified</span>
             </span>
           </div>
         </div>
