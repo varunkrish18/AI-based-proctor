@@ -988,9 +988,9 @@ export default function ExamTake() {
       },
       cameraCovered: isCameraCovered,
       personBehindDetected: faceCount > 1,
-      objectDetected: prev?.objectDetected ?? false,
-      phoneDetected: prev?.phoneDetected ?? false,
-      detectedObjects: prev?.detectedObjects ?? [],
+      objectDetected: edgeCv.objectDetected,
+      phoneDetected: edgeCv.phoneDetected,
+      detectedObjects: edgeCv.detectedObjects,
       confidence: 0.95,
       events: prev?.events ?? [],
     }));
@@ -1155,6 +1155,33 @@ export default function ExamTake() {
       lookAwayStartRef.current = null;
       lookAwaySnappedRef.current = false;
       gazeWarningLoggedRef.current = false;
+    }
+
+    // 6. Prohibited Object / Mobile Phone Detection (Edge COCO-SSD Object Detector)
+    if (edgeCv.objectDetected || edgeCv.phoneDetected) {
+      const objs =
+        edgeCv.detectedObjects.length > 0
+          ? edgeCv.detectedObjects.join(", ")
+          : edgeCv.phoneDetected
+          ? "cell phone"
+          : "prohibited object";
+      if (now - lastObjectPhotoTime.current >= 5000) {
+        lastObjectPhotoTime.current = now;
+        const photo = takeCleanSnapshot();
+        logEvent("OBJECT_DETECTED", undefined, {
+          photo,
+          objects: objs,
+          phoneDetected: edgeCv.phoneDetected,
+          reason: `Prohibited object detected in camera frame: ${objs} (Edge CV)`,
+        });
+        flushNow();
+        issueWarningStrike(
+          edgeCv.phoneDetected
+            ? "Mobile Phone Detected"
+            : `Prohibited Object Detected (${objs})`,
+          `Unauthorized object (${objs}) detected in your camera frame. Remove all prohibited materials immediately.`
+        );
+      }
     }
   }, [
     session,
@@ -2002,6 +2029,7 @@ export default function ExamTake() {
           isTerminated: boolean;
           remainingSeconds: number;
           durationMinutes: number;
+          maxWarnings?: number;
           endAt: string | null;
           message: string | null;
         }>(`/api/student/exams/${examId}/live-sync?attemptId=${session.attemptId}`, "student");
@@ -2018,8 +2046,19 @@ export default function ExamTake() {
           return;
         }
 
-        if (syncRes.durationMinutes && session.durationMinutes !== syncRes.durationMinutes) {
-          setSession((prev) => (prev ? { ...prev, durationMinutes: syncRes.durationMinutes } : prev));
+        if (
+          (syncRes.durationMinutes && session.durationMinutes !== syncRes.durationMinutes) ||
+          (syncRes.maxWarnings && session.maxWarnings !== syncRes.maxWarnings)
+        ) {
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  durationMinutes: syncRes.durationMinutes ?? prev.durationMinutes,
+                  maxWarnings: syncRes.maxWarnings ?? prev.maxWarnings,
+                }
+              : prev
+          );
         }
 
         if (!isUntimed) {
@@ -3843,7 +3882,7 @@ export default function ExamTake() {
                         : aiAnalysis.phoneDetected
                         ? "🚨 Mobile Phone!"
                         : aiAnalysis.objectDetected
-                        ? "⚠️ Object Detected!"
+                        ? `🚨 ${aiAnalysis.detectedObjects?.join(", ") || "Object"} Detected!`
                         : !aiAnalysis.faceDetected
                         ? "⚠️ No Face"
                         : aiAnalysis.faceCount > 1

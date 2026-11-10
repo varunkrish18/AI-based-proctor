@@ -404,7 +404,7 @@ public class StudentExamService {
         proctoringSessionService.openSession(attempt.getId());
 
         int warningStrikes = (int) proctoringEventRepository.countByAttemptIdAndEventType(attempt.getId(), "WARNING_STRIKE");
-        int maxWarnings = Boolean.TRUE.equals(exam.getIsClass()) ? 10 : 3;
+        int maxWarnings = exam.getMaxWarnings();
 
         return new StartExamResponse(
                 attempt.getId(),

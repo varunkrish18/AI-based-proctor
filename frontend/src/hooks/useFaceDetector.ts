@@ -3,9 +3,13 @@ import type { GazeDirection } from "../workers/faceDetectorWorker";
 
 export interface FaceDetectionState {
   ready: boolean;
+  objectModelReady: boolean;
   faceCount: number | null;
   faceDetected: boolean;
   personBehindDetected: boolean;
+  objectDetected: boolean;
+  phoneDetected: boolean;
+  detectedObjects: string[];
   isLookingAway: boolean;
   gazeDirection: GazeDirection;
   isBlurry: boolean;
@@ -18,8 +22,8 @@ export interface FaceDetectionState {
 const FRAMES_PER_SECOND = 3.5;
 
 /**
- * React hook running the client-side TensorFlow.js MediaPipe FaceDetector
- * and Laplacian Blur/Occlusion Detector in a Web Worker.
+ * React hook running the client-side TensorFlow.js MediaPipe FaceDetector,
+ * COCO-SSD Object Detector, and Laplacian Blur/Occlusion Detector in a Web Worker.
  * Adapted from ViBe (vicharanashala/vibe) use-face-count-detector.ts & useCameraProcessor.ts.
  */
 export function useFaceDetector(
@@ -28,9 +32,13 @@ export function useFaceDetector(
 ): FaceDetectionState {
   const [state, setState] = useState<FaceDetectionState>({
     ready: false,
+    objectModelReady: false,
     faceCount: null,
     faceDetected: false,
     personBehindDetected: false,
+    objectDetected: false,
+    phoneDetected: false,
+    detectedObjects: [],
     isLookingAway: false,
     gazeDirection: "CENTER",
     isBlurry: false,
@@ -48,9 +56,13 @@ export function useFaceDetector(
       readyRef.current = false;
       setState({
         ready: false,
+        objectModelReady: false,
         faceCount: null,
         faceDetected: false,
         personBehindDetected: false,
+        objectDetected: false,
+        phoneDetected: false,
+        detectedObjects: [],
         isLookingAway: false,
         gazeDirection: "CENTER",
         isBlurry: false,
@@ -82,6 +94,9 @@ export function useFaceDetector(
         faceCount?: number;
         faceDetected?: boolean;
         personBehindDetected?: boolean;
+        objectDetected?: boolean;
+        phoneDetected?: boolean;
+        detectedObjects?: string[];
         isLookingAway?: boolean;
         gazeDirection?: GazeDirection;
         isBlurry?: boolean;
@@ -94,6 +109,8 @@ export function useFaceDetector(
       if (e.data.type === "MODEL_READY") {
         readyRef.current = true;
         setState((prev) => ({ ...prev, ready: true, error: null }));
+      } else if (e.data.type === "OBJECT_MODEL_READY") {
+        setState((prev) => ({ ...prev, objectModelReady: true }));
       } else if (e.data.type === "DETECTION_RESULT") {
         const count = e.data.faceCount ?? 0;
         setState((prev) => ({
@@ -102,6 +119,9 @@ export function useFaceDetector(
           faceCount: count,
           faceDetected: e.data.faceDetected ?? count > 0,
           personBehindDetected: e.data.personBehindDetected ?? count > 1,
+          objectDetected: Boolean(e.data.objectDetected),
+          phoneDetected: Boolean(e.data.phoneDetected),
+          detectedObjects: e.data.detectedObjects || [],
           isLookingAway: Boolean(e.data.isLookingAway),
           gazeDirection: e.data.gazeDirection || "CENTER",
           isBlurry: Boolean(e.data.isBlurry),

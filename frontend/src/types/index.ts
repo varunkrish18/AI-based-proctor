@@ -13,6 +13,7 @@ export interface ExamSummary {
   assignedToAllProfessors?: boolean;
   isClass?: boolean;
   openToAll?: boolean;
+  maxWarnings?: number | null;
   studentAttemptStatus?: "COMPLETED" | "INCOMPLETE" | "IN_PROGRESS" | string | null;
 }
 
@@ -23,6 +24,7 @@ export interface Exam extends ExamSummary {
   randomizeQuestions: boolean;
   randomizeOptions: boolean;
   maxAttempts?: number | null;
+  maxWarnings?: number | null;
   webcamRequired?: boolean;
   microphoneRequired?: boolean;
   screenRequired?: boolean;

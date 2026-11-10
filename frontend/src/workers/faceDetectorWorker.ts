@@ -1,9 +1,10 @@
 /**
- * Face & Blur Detection Web Worker
+ * Face, Pose, Blur & Object Detection Web Worker
  * Adapted from ViBe (vicharanashala/vibe):
  * - FaceDetectorWorker.ts / face-count-worker.ts (TensorFlow.js MediaPipeFaceDetector)
  * - FaceDetectors.tsx (Geometric eye/nose/ear head-pose & looking-away heuristics)
  * - BlurDetectorWorker.ts (Laplacian variance blur & camera occlusion check)
+ * - TensorFlow.js COCO-SSD (Real-time prohibited object, mobile phone & multi-person detection)
  */
 
 import * as tf from "@tensorflow/tfjs-core";
@@ -11,9 +12,26 @@ import "@tensorflow/tfjs-backend-webgl";
 import "@tensorflow/tfjs-backend-cpu";
 import "@tensorflow/tfjs";
 import * as faceDetection from "@tensorflow-models/face-detection";
+import * as cocoSsd from "@tensorflow-models/coco-ssd";
 
 let detector: faceDetection.FaceDetector | null = null;
+let objectDetector: cocoSsd.ObjectDetection | null = null;
 let isProcessing = false;
+let frameCounter = 0;
+
+let cachedObjectState: {
+  objectDetected: boolean;
+  phoneDetected: boolean;
+  detectedObjects: string[];
+  personCount: number;
+  updatedAt: number;
+} = {
+  objectDetected: false,
+  phoneDetected: false,
+  detectedObjects: [],
+  personCount: 0,
+  updatedAt: 0,
+};
 
 export interface Keypoint {
   x: number;
@@ -27,6 +45,14 @@ interface PoseEvaluation {
   isLookingAway: boolean;
   gazeDirection: GazeDirection;
 }
+
+const PROHIBITED_OBJECT_CLASSES = new Set([
+  "cell phone",
+  "book",
+  "laptop",
+  "remote",
+  "tv",
+]);
 
 /**
  * Geometric heuristic from ViBe (FaceDetectors.tsx) to detect looking away / head turned,
@@ -79,9 +105,6 @@ function evaluatePoseAndGaze(face: any): PoseEvaluation {
     eyeDistance < 0.35 || noseRatio < 0.47 || earVisibilityRatio < 0.47;
 
   if (isYawAway) {
-    // Determine LEFT vs RIGHT in user's perspective
-    // Note: in raw unmirrored camera frame, subject turning their head to their RIGHT
-    // moves nose closer to rightEye (smaller x in camera coordinates).
     const direction: GazeDirection =
       noseToRightEye < noseToLeftEye ? "RIGHT" : "LEFT";
     return { isLookingAway: true, gazeDirection: direction };
@@ -96,11 +119,9 @@ function evaluatePoseAndGaze(face: any): PoseEvaluation {
     const noseToMouth = mouthCenter.y - noseTip.y;
     const verticalRatio = noseToMouth > 0 ? eyeToNose / noseToMouth : 1;
 
-    // Looking UP foreshortens eye-to-nose distance relative to nose-to-mouth
     if (noseOffsetRatio < 0.14 || verticalRatio < 0.42) {
       return { isLookingAway: true, gazeDirection: "UP" };
     }
-    // Looking DOWN elongates eye-to-nose distance or pushes nose low in bounding box
     if (noseOffsetRatio > 0.38 || verticalRatio > 1.85) {
       return { isLookingAway: true, gazeDirection: "DOWN" };
     }
@@ -177,9 +198,7 @@ function analyzeImageQuality(imageData: ImageData): {
   }
   if (count > 0) variance /= count;
 
-  // Camera covered: very dark (< 18 luma) OR completely uniform flat color (variance < 12)
   const cameraCovered = avgBrightness < 18 || (variance < 12 && avgBrightness < 45);
-  // ViBe BlurDetectorWorker threshold scaled for 160x120 inspection grid
   const isBlurry = !cameraCovered && variance < 85;
 
   return {
@@ -229,6 +248,17 @@ async function initializeModel() {
     }
 
     self.postMessage({ type: "MODEL_READY", backend: tf.getBackend() });
+
+    // Load COCO-SSD object detector in the background (non-blocking) for phone/book/device detection
+    cocoSsd
+      .load({ base: "lite_mobilenet_v2" })
+      .then((loadedObjDetector) => {
+        objectDetector = loadedObjDetector;
+        self.postMessage({ type: "OBJECT_MODEL_READY" });
+      })
+      .catch((err) => {
+        console.warn("[faceDetectorWorker] COCO-SSD load warning:", err);
+      });
   } catch (err: any) {
     self.postMessage({
       type: "ERROR",
@@ -245,6 +275,7 @@ async function detectFaces(imageBitmap: ImageBitmap) {
   }
 
   isProcessing = true;
+  frameCounter++;
   try {
     const canvas = new OffscreenCanvas(imageBitmap.width, imageBitmap.height);
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -277,11 +308,65 @@ async function detectFaces(imageBitmap: ImageBitmap) {
       canvas as unknown as HTMLCanvasElement
     );
 
-    const faceCount = faces.length;
+    // 3. Run COCO-SSD Object Detection every 2nd frame (or if an object was recently seen)
+    if (objectDetector && (frameCounter % 2 === 0 || cachedObjectState.objectDetected)) {
+      try {
+        const predictions = await objectDetector.detect(
+          canvas as unknown as HTMLCanvasElement,
+          10,
+          0.32
+        );
+        const detectedSet = new Set<string>();
+        let phoneFound = false;
+        let personCount = 0;
+
+        for (const pred of predictions) {
+          const cls = pred.class.toLowerCase();
+          const score = pred.score;
+          if (cls === "person" && score >= 0.48) {
+            personCount++;
+          } else if (cls === "cell phone" && score >= 0.32) {
+            phoneFound = true;
+            detectedSet.add("cell phone");
+          } else if (cls === "book" && score >= 0.4) {
+            detectedSet.add("book");
+          } else if (PROHIBITED_OBJECT_CLASSES.has(cls) && score >= 0.45) {
+            detectedSet.add(cls);
+          }
+        }
+
+        const detectedObjects = Array.from(detectedSet);
+        cachedObjectState = {
+          objectDetected: detectedObjects.length > 0,
+          phoneDetected: phoneFound,
+          detectedObjects,
+          personCount,
+          updatedAt: Date.now(),
+        };
+      } catch {
+        // Ignore single-frame object detection glitches
+      }
+    } else if (Date.now() - cachedObjectState.updatedAt > 2000) {
+      cachedObjectState = {
+        objectDetected: false,
+        phoneDetected: false,
+        detectedObjects: [],
+        personCount: 0,
+        updatedAt: Date.now(),
+      };
+    }
+
+    const rawFaceCount = faces.length;
+    const personBehindDetected =
+      rawFaceCount > 1 || cachedObjectState.personCount > 1;
+    const faceCount = personBehindDetected
+      ? Math.max(rawFaceCount, cachedObjectState.personCount)
+      : rawFaceCount;
+
     let isLookingAway = false;
     let gazeDirection: GazeDirection = "CENTER";
 
-    if (faceCount === 1) {
+    if (rawFaceCount === 1) {
       const pose = evaluatePoseAndGaze(faces[0]);
       isLookingAway = pose.isLookingAway;
       gazeDirection = pose.gazeDirection;
@@ -293,8 +378,11 @@ async function detectFaces(imageBitmap: ImageBitmap) {
     self.postMessage({
       type: "DETECTION_RESULT",
       faceCount,
-      faceDetected: faceCount > 0,
-      personBehindDetected: faceCount > 1,
+      faceDetected: rawFaceCount > 0,
+      personBehindDetected,
+      objectDetected: cachedObjectState.objectDetected,
+      phoneDetected: cachedObjectState.phoneDetected,
+      detectedObjects: cachedObjectState.detectedObjects,
       isLookingAway,
       gazeDirection,
       isBlurry: quality.isBlurry,
@@ -322,7 +410,6 @@ self.onmessage = async (
     await initializeModel();
   } else if (type === "DETECT_FACES" && image) {
     if (isProcessing) {
-      // Drop frame rather than queue it — keeps real-time detection lag-free (ViBe pattern)
       image.close();
       return;
     }

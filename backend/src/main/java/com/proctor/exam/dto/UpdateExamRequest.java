@@ -22,6 +22,7 @@ public record UpdateExamRequest(
         Boolean screenRequired,
         Boolean locationRequired,
         Integer audioInputLevel,
+        @Min(1) Integer maxWarnings,
         Boolean openToAll,
         String status,
         Long assignedProfessorId,

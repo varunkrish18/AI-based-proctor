@@ -65,6 +65,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
     screenRequired: boolean;
     locationRequired: boolean;
     audioInputLevel: number | string;
+    maxWarnings: number | string;
     status: string;
   }>({
     name: exam.name || "",
@@ -84,6 +85,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
     screenRequired: exam.screenRequired ?? true,
     locationRequired: exam.locationRequired ?? false,
     audioInputLevel: exam.audioInputLevel ?? 20,
+    maxWarnings: exam.maxWarnings ?? (exam.isClass ? 10 : 3),
     status: exam.status || "DRAFT",
   });
 
@@ -114,6 +116,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
       screenRequired: exam.screenRequired ?? true,
       locationRequired: exam.locationRequired ?? false,
       audioInputLevel: exam.audioInputLevel ?? 20,
+      maxWarnings: exam.maxWarnings ?? (exam.isClass ? 10 : 3),
       status: exam.status || "DRAFT",
     });
     setSaveSuccess(null);
@@ -148,6 +151,7 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
         passingMarks: isClassPolicy ? null : (form.passingMarks !== "" && form.passingMarks != null ? Math.max(0, Number(form.passingMarks)) : null),
         negativeMarking: isClassPolicy ? null : (form.negativeMarking !== "" && form.negativeMarking != null ? Math.max(0, Number(form.negativeMarking)) : null),
         audioInputLevel: Math.max(1, Math.min(100, Number(form.audioInputLevel) || 20)),
+        maxWarnings: Math.max(1, Math.min(100, Number(form.maxWarnings) || (isClassPolicy ? 10 : 3))),
         startAt: startDate.toISOString(),
         endAt: endDate.toISOString(),
       };
@@ -541,6 +545,47 @@ export default function ExamSettingsTab({ exam, onUpdated, onSwitchToQuestions }
               </p>
             </div>
           )}
+
+          <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-xs font-bold text-slate-800">
+                Maximum Proctoring Warnings (Strikes Before Auto-Submit)
+              </span>
+              <span className="text-xs font-mono font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded">
+                {form.maxWarnings} {Number(form.maxWarnings) === 1 ? "Strike" : "Strikes"}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={1}
+                max={30}
+                step={1}
+                value={Math.min(30, Math.max(1, Number(form.maxWarnings) || 3))}
+                onChange={(e) => set("maxWarnings", Number(e.target.value))}
+                className="w-full accent-amber-600 cursor-pointer"
+              />
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={form.maxWarnings}
+                onChange={(e) => set("maxWarnings", e.target.value)}
+                onBlur={() => {
+                  const val = Number(form.maxWarnings);
+                  if (form.maxWarnings === "" || isNaN(val) || val < 1) {
+                    set("maxWarnings", isClassPolicy ? 10 : 3);
+                  } else if (val > 100) {
+                    set("maxWarnings", 100);
+                  }
+                }}
+                className="w-16 px-2 py-1 text-xs border border-amber-300 rounded-md text-center font-bold bg-white"
+              />
+            </div>
+            <p className="text-[11px] text-slate-600 mt-1.5">
+              Customize the maximum number of proctoring warning strikes allowed before a student&apos;s attempt is automatically terminated and submitted.
+            </p>
+          </div>
         </div>
         </fieldset>
 

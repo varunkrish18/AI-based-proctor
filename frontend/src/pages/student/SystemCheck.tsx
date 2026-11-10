@@ -577,13 +577,15 @@ export default function SystemCheck() {
                   </div>
                 )}
 
-                {/* Live Edge AI Face & Pose Status Pill */}
+                {/* Live Edge AI Face, Pose & Object Status Pill */}
                 {hasLiveVideo && (
                   <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2 pointer-events-none">
                     <span
                       className={`text-[11px] font-bold px-2.5 py-1 rounded-full backdrop-blur-md border shadow-sm ${
                         !faceState.ready
                           ? "bg-slate-900/80 text-slate-200 border-slate-600"
+                          : faceState.objectDetected
+                          ? "bg-rose-600/90 text-white border-rose-400 animate-pulse"
                           : faceState.cameraCovered
                           ? "bg-rose-600/90 text-white border-rose-400 animate-pulse"
                           : faceState.isBlurry
@@ -598,7 +600,9 @@ export default function SystemCheck() {
                       }`}
                     >
                       {!faceState.ready
-                        ? "⏳ Loading MediaPipe Face AI…"
+                        ? "⏳ Loading MediaPipe Face & Object AI…"
+                        : faceState.objectDetected
+                        ? `🚨 Prohibited Object (${faceState.detectedObjects.join(", ")}) — Remove!`
                         : faceState.cameraCovered
                         ? "🚫 Camera Covered / Too Dark"
                         : faceState.isBlurry
@@ -606,7 +610,7 @@ export default function SystemCheck() {
                         : faceState.faceCount === 0
                         ? "⚠️ No Face Detected — Center Yourself"
                         : (faceState.faceCount ?? 0) > 1
-                        ? `🚨 ${faceState.faceCount} Faces Detected — Must Be Alone`
+                        ? `🚨 ${faceState.faceCount} People Detected — Must Be Alone`
                         : faceState.isLookingAway
                         ? `👁️ Looking ${faceState.gazeDirection} — Face Screen`
                         : "✓ 1 Face Detected & Centered"}
