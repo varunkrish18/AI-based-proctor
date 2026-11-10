@@ -31,7 +31,13 @@ public class ProctoringSessionService {
     public ProctoringSession openSession(Long attemptId) {
         Optional<ProctoringSession> existing = sessionRepository.findByAttemptId(attemptId);
         if (existing.isPresent()) {
-            return existing.get();
+            ProctoringSession s = existing.get();
+            if (s.getEndedAt() != null) {
+                s.setEndedAt(null);
+                s.setConnectionStatus("ONLINE");
+                return sessionRepository.save(s);
+            }
+            return s;
         }
 
         ExamAttempt attempt = attemptRepository.findById(attemptId)

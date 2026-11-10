@@ -208,16 +208,20 @@ export default function CodeEditor({
 
   // Handle key restrictions and professional online editor smart indentation
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Explicitly allow Backslash (\) and Pipe (|) for coding operators (e.g. ||, |, \n, \t)
+    if (e.key === "\\" || e.key === "|" || e.code === "Backslash") {
+      return;
+    }
+
     const isWindowsKey =
-      e.key === "Meta" ||
-      e.key === "OS" ||
-      e.metaKey ||
-      e.code === "MetaLeft" ||
-      e.code === "MetaRight" ||
-      e.code === "OSLeft" ||
-      e.code === "OSRight" ||
-      e.keyCode === 91 ||
-      e.keyCode === 92;
+      (e.key === "Meta" ||
+       e.key === "OS" ||
+       e.metaKey ||
+       e.code === "MetaLeft" ||
+       e.code === "MetaRight" ||
+       e.code === "OSLeft" ||
+       e.code === "OSRight") &&
+      e.key !== "\\" && e.key !== "|";
 
     const isCtrlKey =
       e.key === "Control" ||

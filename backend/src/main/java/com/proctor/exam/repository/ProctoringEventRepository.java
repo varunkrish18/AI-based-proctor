@@ -12,6 +12,8 @@ public interface ProctoringEventRepository extends JpaRepository<ProctoringEvent
 
     List<ProctoringEvent> findByAttemptIdOrderByOccurredAtAsc(Long attemptId);
 
+    List<ProctoringEvent> findByAttemptIdAndEventType(Long attemptId, String eventType);
+
     long countByAttemptIdAndEventType(Long attemptId, String eventType);
 
     @Query("SELECT e.severity, COUNT(e) FROM ProctoringEvent e WHERE e.attempt.id = :attemptId GROUP BY e.severity")

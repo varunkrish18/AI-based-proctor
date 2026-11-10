@@ -2232,6 +2232,11 @@ export default function ExamTake() {
       } catch {}
 
       const blockCodingRestrictedKeys = (e: KeyboardEvent) => {
+        // ALWAYS allow backslash (\) and pipe (|) for coding operators (e.g. ||, |, \n, \t)
+        if (e.key === "\\" || e.key === "|" || e.code === "Backslash") {
+          return;
+        }
+
         const isEscapeKey =
           e.key === "Escape" ||
           e.key === "Esc" ||
@@ -2240,15 +2245,14 @@ export default function ExamTake() {
           e.which === 27;
 
         const isWindowsKey =
-          e.key === "Meta" ||
-          e.key === "OS" ||
-          e.metaKey ||
-          e.code === "MetaLeft" ||
-          e.code === "MetaRight" ||
-          e.code === "OSLeft" ||
-          e.code === "OSRight" ||
-          e.keyCode === 91 ||
-          e.keyCode === 92;
+          (e.key === "Meta" ||
+           e.key === "OS" ||
+           e.metaKey ||
+           e.code === "MetaLeft" ||
+           e.code === "MetaRight" ||
+           e.code === "OSLeft" ||
+           e.code === "OSRight") &&
+          e.key !== "\\" && e.key !== "|";
 
         const isCtrlKey =
           e.key === "Control" ||

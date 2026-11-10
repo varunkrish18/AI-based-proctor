@@ -20,6 +20,7 @@ import type {
 } from "../../types";
 import {
   type ClassSectionItem,
+  fetchClassSections,
   loadSavedClassSections,
   getStudentsForClassSection,
   matchesYear,
@@ -3356,9 +3357,9 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
   useEffect(() => {
     api
       .get<StudentUser[]>("/api/admin/students", "admin")
-      .then((data) => {
+      .then(async (data) => {
         setAllStudents(data);
-        const sections = loadSavedClassSections(data);
+        const sections = await fetchClassSections(data);
         setClassSections(sections);
         if (sections.length > 0) {
           setSelectedSectionIds((prev) => {
@@ -3367,9 +3368,9 @@ function AssignTab({ exam, onExamUpdated }: { exam: Exam; onExamUpdated?: (exam:
           });
         }
       })
-      .catch((err) => {
+      .catch(async (err) => {
         console.warn("Could not load students for class sections", err);
-        const fallback = loadSavedClassSections();
+        const fallback = await fetchClassSections();
         setClassSections(fallback);
         if (fallback.length > 0) {
           setSelectedSectionIds((prev) => {
@@ -4574,9 +4575,9 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
     Promise.all([
       api.get<StudentUser[]>("/api/admin/students", "admin").catch(() => [] as StudentUser[]),
       api.get<ExamAssignmentItem[]>(`/api/admin/exams/${examId}/assignments`, "admin").catch(() => [] as ExamAssignmentItem[])
-    ]).then(([students, assignments]) => {
+    ]).then(async ([students, assignments]) => {
       setAllStudents(students);
-      const sections = loadSavedClassSections(students);
+      const sections = await fetchClassSections(students);
       const assignedEmailSet = new Set(
         assignments.map((a) => (a.studentEmail || "").toLowerCase().trim()).filter(Boolean)
       );
@@ -4705,6 +4706,33 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
       alert(err instanceof Error ? err.message : "Failed to save marks");
     } finally {
       setSavingQuickScore(false);
+    }
+  }
+
+  const [regrantingAttemptId, setRegrantingAttemptId] = useState<number | null>(null);
+
+  async function handleRegrantAccess(attemptId: number, studentEmail: string) {
+    if (
+      !window.confirm(
+        `Are you sure you want to re-grant exam access to ${studentEmail}?\n\nThis will pardon their strikes, reset active strikes to 0, and allow them to resume their session where they left off.`
+      )
+    ) {
+      return;
+    }
+    setRegrantingAttemptId(attemptId);
+    try {
+      await api.post(
+        `/api/admin/attempts/${attemptId}/regrant-access`,
+        { reason: "Authorized by Course Coordinator / Examiner" },
+        "admin"
+      );
+      alert(`Access successfully re-granted to ${studentEmail}! Previous strikes have been pardoned.`);
+      loadAttempts();
+      setSelectedAttempt((prev) => (prev && prev.attemptId === attemptId ? { ...prev, status: "INCOMPLETE" } : prev));
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to re-grant access");
+    } finally {
+      setRegrantingAttemptId(null);
     }
   }
 
@@ -5253,6 +5281,15 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                           <span>↗</span>
                         </Link>
                         <button
+                          onClick={() => handleRegrantAccess(a.attemptId, a.studentEmail)}
+                          disabled={regrantingAttemptId === a.attemptId}
+                          className="text-emerald-700 hover:text-emerald-900 font-bold text-xs bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
+                          title="Re-grant access to this candidate (pardon strikes & allow resuming session)"
+                        >
+                          <span>🔓</span>
+                          <span>{regrantingAttemptId === a.attemptId ? "..." : "Re-grant"}</span>
+                        </button>
+                        <button
                           onClick={() => handleExportAttemptQuestionPdf(a.attemptId)}
                           disabled={exportingAttemptQuestionPdfId === a.attemptId}
                           className="text-indigo-700 hover:text-indigo-900 font-bold text-xs bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1 shadow-2xs"
@@ -5348,6 +5385,15 @@ function ResultsTab({ examId, exam }: { examId: number; exam?: Exam }) {
                 <span>Full Page Report</span>
                 <span>↗</span>
               </Link>
+              <button
+                onClick={() => handleRegrantAccess(selectedAttempt.attemptId, selectedAttempt.studentEmail)}
+                disabled={regrantingAttemptId === selectedAttempt.attemptId}
+                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                title="Re-grant exam access to this student (pardon strikes & allow resume)"
+              >
+                <span>🔓</span>
+                <span>{regrantingAttemptId === selectedAttempt.attemptId ? "Unlocking…" : "Re-grant Access"}</span>
+              </button>
               <button
                 onClick={() => handleExportAttemptQuestionPdf(selectedAttempt.attemptId)}
                 disabled={exportingAttemptQuestionPdfId === selectedAttempt.attemptId}

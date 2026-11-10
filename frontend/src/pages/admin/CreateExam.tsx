@@ -4,7 +4,7 @@ import { api } from "../../api/client";
 import type { Exam, StudentUser } from "../../types";
 import {
   type ClassSectionItem,
-  loadSavedClassSections,
+  fetchClassSections,
   getStudentsForClassSection,
   matchesYear,
 } from "../../utils/sectionUtils";
@@ -73,14 +73,14 @@ export default function CreateExam() {
   useEffect(() => {
     api
       .get<StudentUser[]>("/api/admin/students", "admin")
-      .then((data) => {
+      .then(async (data) => {
         setAllStudents(data);
-        const sections = loadSavedClassSections(data);
+        const sections = await fetchClassSections(data);
         setClassSections(sections);
         if (sections.length > 0) setSelectedSectionId(sections[0].id);
       })
-      .catch(() => {
-        const fallback = loadSavedClassSections();
+      .catch(async () => {
+        const fallback = await fetchClassSections();
         setClassSections(fallback);
         if (fallback.length > 0) setSelectedSectionId(fallback[0].id);
       });

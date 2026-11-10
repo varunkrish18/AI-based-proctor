@@ -258,7 +258,7 @@ public class StudentExamService {
         // Resume an in-progress or incomplete attempt if one exists, instead of silently starting a new one.
         Optional<ExamAttempt> resumable = existingAttempts
                 .stream()
-                .filter(a -> "IN_PROGRESS".equalsIgnoreCase(a.getStatus()) || (isClass && "INCOMPLETE".equalsIgnoreCase(a.getStatus())))
+                .filter(a -> "IN_PROGRESS".equalsIgnoreCase(a.getStatus()) || "INCOMPLETE".equalsIgnoreCase(a.getStatus()))
                 .findFirst();
 
         ExamAttempt attempt;

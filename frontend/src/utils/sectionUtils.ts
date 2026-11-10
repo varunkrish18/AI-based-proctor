@@ -1,4 +1,5 @@
 import type { StudentUser } from "../types";
+import { api } from "../api/client";
 
 export const CLASS_SECTIONS_STORAGE_KEY = "proctor_class_sections_registry_v2";
 
@@ -22,17 +23,57 @@ export function getYearRoman(yearStr?: string | null): string {
   return y;
 }
 
-// Convert department name to standard short code (Computer Science -> CSE, Information Tech -> IT, etc.)
+// Convert department name to standard short code (AIML -> AIML, AIDS -> AIDS, Computer Science -> CSE, etc.)
+// Specialized sub-departments MUST be evaluated before generic CSE/IT!
 export function getDeptShortCode(dept?: string | null): string {
   if (!dept) return "CSE";
   const d = dept.trim().toUpperCase();
-  if (d.includes("COMPUTER") || d.includes("CSE")) return "CSE";
+
+  // 1. AI & Machine Learning
+  if (
+    d.includes("AIML") ||
+    d.includes("AI&ML") ||
+    d.includes("AI & ML") ||
+    d.includes("AI-ML") ||
+    (d.includes("ARTIFICIAL") && d.includes("MACHINE"))
+  ) {
+    return "AIML";
+  }
+
+  // 2. AI & Data Science
+  if (
+    d.includes("AIDS") ||
+    d.includes("AI&DS") ||
+    d.includes("AI & DS") ||
+    d.includes("AI-DS") ||
+    (d.includes("ARTIFICIAL") && d.includes("DATA"))
+  ) {
+    return "AIDS";
+  }
+
+  // 3. General Artificial Intelligence
+  if (d.includes("ARTIFICIAL") || d.includes("AI")) {
+    return "AIML";
+  }
+
+  // 4. Cyber Security & Business Systems
+  if (d.includes("CSBS") || d.includes("BUSINESS SYSTEMS")) {
+    return "CSBS";
+  }
+  if (d.includes("CYBER") || d.includes("CS)") || d.includes("CS ")) {
+    return "CS";
+  }
+
+  // 5. IT / ECE / EEE / MECH / CIVIL
   if (d.includes("INFORMATION") || d.includes("IT")) return "IT";
-  if (d.includes("ELECTRONICS & COMM") || d.includes("ECE")) return "ECE";
+  if (d.includes("ELECTRONICS") || d.includes("ECE")) return "ECE";
   if (d.includes("ELECTRICAL") || d.includes("EEE")) return "EEE";
   if (d.includes("MECHANICAL") || d.includes("MECH")) return "MECH";
   if (d.includes("CIVIL")) return "CIVIL";
-  if (d.includes("ARTIFICIAL") || d.includes("DATA") || d.includes("AI") || d.includes("AIDS")) return "AIDS";
+
+  // 6. Generic Computer Science (evaluated AFTER all specializations above)
+  if (d.includes("COMPUTER") || d.includes("CSE")) return "CSE";
+
   const words = dept.split(/\s+/).filter(Boolean);
   if (words.length > 1) {
     return words.map((w) => w[0].toUpperCase()).join("");
@@ -250,4 +291,47 @@ export function saveClassSections(updated: ClassSectionItem[]): void {
   } catch (e) {
     console.warn("Failed to persist class sections", e);
   }
+}
+
+/**
+ * Loads sections from the shared backend database so that all laptops (Admins, Coordinators, Professors)
+ * share the exact same section definitions and register number ranges.
+ */
+export async function fetchClassSections(studs?: StudentUser[]): Promise<ClassSectionItem[]> {
+  try {
+    const remote = await api.get<ClassSectionItem[]>("/api/admin/sections", "admin");
+    if (Array.isArray(remote) && remote.length > 0) {
+      saveClassSections(remote);
+      return remote;
+    }
+
+    // If server has no sections yet, check if local device has saved sections to migrate
+    const local = loadSavedClassSections(studs);
+    if (local && local.length > 0) {
+      // Sync local/auto-generated sections up to the shared database
+      syncClassSectionsToServer(local).catch(() => {});
+      return local;
+    }
+  } catch (e) {
+    console.warn("[SectionUtils] Failed to fetch sections from database, falling back to local cache", e);
+  }
+
+  return loadSavedClassSections(studs);
+}
+
+/**
+ * Saves sections to both localStorage and the backend database for synchronization across all users.
+ */
+export async function syncClassSectionsToServer(updated: ClassSectionItem[]): Promise<ClassSectionItem[]> {
+  saveClassSections(updated);
+  try {
+    const saved = await api.put<ClassSectionItem[]>("/api/admin/sections", updated, "admin");
+    if (Array.isArray(saved) && saved.length > 0) {
+      saveClassSections(saved);
+      return saved;
+    }
+  } catch (e) {
+    console.warn("[SectionUtils] Failed to persist sections to server", e);
+  }
+  return updated;
 }

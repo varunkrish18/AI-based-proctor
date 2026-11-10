@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import * as XLSX from "xlsx";
 import { api, downloadFile, downloadFilePost } from "../../api/client";
+import { fetchClassSections, syncClassSectionsToServer } from "../../utils/sectionUtils";
 import type { StudentUser, CreateStudentPayload, UpdateStudentPayload, BulkStudentUploadResult } from "../../types";
 
 const PRESET_DEPARTMENTS = [
@@ -797,17 +798,57 @@ export default function StudentManagementTab() {
     return y;
   }
 
-  // Convert department name to standard short code (Computer Science -> CSE, Information Tech -> IT, etc.)
+  // Convert department name to standard short code (AIML -> AIML, AIDS -> AIDS, Computer Science -> CSE, etc.)
+  // Specialized sub-departments MUST be evaluated before generic CSE/IT!
   function getDeptShortCode(dept?: string | null): string {
     if (!dept) return "CSE";
     const d = dept.trim().toUpperCase();
-    if (d.includes("COMPUTER") || d.includes("CSE")) return "CSE";
+
+    // 1. AI & Machine Learning
+    if (
+      d.includes("AIML") ||
+      d.includes("AI&ML") ||
+      d.includes("AI & ML") ||
+      d.includes("AI-ML") ||
+      (d.includes("ARTIFICIAL") && d.includes("MACHINE"))
+    ) {
+      return "AIML";
+    }
+
+    // 2. AI & Data Science
+    if (
+      d.includes("AIDS") ||
+      d.includes("AI&DS") ||
+      d.includes("AI & DS") ||
+      d.includes("AI-DS") ||
+      (d.includes("ARTIFICIAL") && d.includes("DATA"))
+    ) {
+      return "AIDS";
+    }
+
+    // 3. General Artificial Intelligence
+    if (d.includes("ARTIFICIAL") || d.includes("AI")) {
+      return "AIML";
+    }
+
+    // 4. Cyber Security & Business Systems
+    if (d.includes("CSBS") || d.includes("BUSINESS SYSTEMS")) {
+      return "CSBS";
+    }
+    if (d.includes("CYBER") || d.includes("CS)") || d.includes("CS ")) {
+      return "CS";
+    }
+
+    // 5. IT / ECE / EEE / MECH / CIVIL
     if (d.includes("INFORMATION") || d.includes("IT")) return "IT";
-    if (d.includes("ELECTRONICS & COMM") || d.includes("ECE")) return "ECE";
+    if (d.includes("ELECTRONICS") || d.includes("ECE")) return "ECE";
     if (d.includes("ELECTRICAL") || d.includes("EEE")) return "EEE";
     if (d.includes("MECHANICAL") || d.includes("MECH")) return "MECH";
     if (d.includes("CIVIL")) return "CIVIL";
-    if (d.includes("ARTIFICIAL") || d.includes("DATA") || d.includes("AI") || d.includes("AIDS")) return "AIDS";
+
+    // 6. Generic Computer Science (evaluated AFTER all specializations above)
+    if (d.includes("COMPUTER") || d.includes("CSE")) return "CSE";
+
     const words = dept.split(/\s+/).filter(Boolean);
     if (words.length > 1) {
       return words.map((w) => w[0].toUpperCase()).join("");
@@ -1002,31 +1043,16 @@ export default function StudentManagementTab() {
     return generated.length > 0 ? generated : defaultList;
   }
 
-  // Load class sections from localStorage or students
+  // Load class sections from shared backend database (falling back to cache/defaults)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("proctor_class_sections_registry_v2");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setClassSections(parsed);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to load saved class sections", e);
-    }
-
-    setClassSections(generateDefaultSections(students));
+    fetchClassSections(students).then((sections) => {
+      setClassSections(sections);
+    });
   }, [students.length]);
 
   function saveClassSections(updated: ClassSectionItem[]) {
     setClassSections(updated);
-    try {
-      localStorage.setItem("proctor_class_sections_registry_v2", JSON.stringify(updated));
-    } catch (e) {
-      console.warn("Failed to persist class sections", e);
-    }
+    syncClassSectionsToServer(updated);
   }
 
   function startEditSection(item: ClassSectionItem) {
