@@ -1,0 +1,461 @@
+export interface ExamSummary {
+  id: number;
+  name: string;
+  subject: string | null;
+  numQuestions: number;
+  durationMinutes?: number | null;
+  startAt: string;
+  endAt: string;
+  status: "UPCOMING" | "OPEN" | "CLOSED" | string;
+  assignedProfessorId?: number | null;
+  assignedProfessorEmail?: string | null;
+  assignedProfessorName?: string | null;
+  assignedToAllProfessors?: boolean;
+  isClass?: boolean;
+  openToAll?: boolean;
+  studentAttemptStatus?: "COMPLETED" | "INCOMPLETE" | "IN_PROGRESS" | string | null;
+}
+
+export interface Exam extends ExamSummary {
+  description: string | null;
+  passingMarks?: number | null;
+  negativeMarking?: number | null;
+  randomizeQuestions: boolean;
+  randomizeOptions: boolean;
+  maxAttempts?: number | null;
+  webcamRequired?: boolean;
+  microphoneRequired?: boolean;
+  screenRequired?: boolean;
+  locationRequired?: boolean;
+  proctoringConfig?: string;
+  audioInputLevel?: number;
+  openToAll?: boolean;
+}
+
+export interface TestCase {
+  id?: number;
+  input: string;
+  expectedOutput: string;
+  isHidden: boolean;
+  explanation?: string;
+  displayOrder?: number;
+}
+
+export interface ExamQuestion {
+  id: number;
+  questionType?: "MCQ" | "CODING";
+  problemTitle?: string;
+  questionText: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  correctAnswer?: number;
+  marks: number;
+  codeTemplate?: string;
+  allowedLanguages?: string;
+  constraints?: string;
+  testCases?: TestCase[];
+  createdBy?: number;
+  createdByRole?: string;
+  createdByCoordinator?: boolean;
+}
+
+export interface ExamAssignmentItem {
+  id: number;
+  studentEmail: string;
+  accessPassword?: string;
+  assignedByProfessorId?: number;
+  assignedByProfessorName?: string;
+  assignedByProfessorEmail?: string;
+  createdAt: string;
+}
+
+export interface StudentQuestion {
+  questionId: number;
+  questionType?: "MCQ" | "CODING";
+  problemTitle?: string;
+  questionText: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  marks?: number;
+  codeTemplate?: string;
+  allowedLanguages?: string;
+  constraints?: string;
+  sampleTestCases?: TestCase[];
+}
+
+export interface TestCaseExecutionResult {
+  testCaseIndex: number;
+  input: string;
+  expectedOutput: string;
+  actualOutput: string;
+  passed: boolean;
+  status: string;
+  executionTimeMs: number;
+  errorMessage?: string;
+}
+
+export interface RunCodeResponse {
+  status: string;
+  totalCases: number;
+  passedCases: number;
+  executionTimeMs: number;
+  results: TestCaseExecutionResult[];
+}
+
+export interface StartExamResponse {
+  attemptId: number;
+  durationMinutes: number | null;
+  serverStartTime: string;
+  questions: StudentQuestion[];
+  webcamRequired?: boolean;
+  microphoneRequired?: boolean;
+  screenRequired?: boolean;
+  locationRequired?: boolean;
+  audioInputLevel?: number;
+  savedAnswers?: Record<number, number>;
+  savedCodingAnswers?: Record<number, { code: string; language: string }>;
+  isClass?: boolean;
+  completedQuestionIds?: number[];
+  warningStrikes?: number;
+  maxWarnings?: number;
+}
+
+export interface AttemptResult {
+  attemptId: number;
+  status: string;
+  startTime: string;
+  endTime: string;
+  score: number;
+  totalQuestions: number;
+  answeredQuestions: number;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken?: string;
+  tokenType: string;
+  expiresInSeconds: number;
+}
+
+export interface ProctoringSession {
+  id: number;
+  attemptId: number;
+  webcamRequired: boolean;
+  microphoneRequired: boolean;
+  screenRequired: boolean;
+  locationRequired: boolean;
+  webcamStatus: string;
+  microphoneStatus: string;
+  screenStatus: string;
+  connectionStatus: string;
+  startedAt: string;
+  lastHeartbeatAt: string | null;
+  endedAt: string | null;
+}
+
+export interface ClientEventItem {
+  eventType: string;
+  occurredAt: string;
+  durationSeconds?: number;
+  metadata?: string;
+}
+
+export interface ProctoringEvent {
+  id: number;
+  attemptId: number;
+  eventType: string;
+  severity: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | string;
+  confidence: number;
+  occurredAt: string;
+  durationSeconds: number | null;
+  metadata: string | null;
+  createdAt: string;
+}
+
+export interface AdminAttemptSummary {
+  attemptId: number;
+  examId: number;
+  studentEmail: string;
+  attemptNumber: number;
+  status: string;
+  startTime: string;
+  endTime: string | null;
+  score: number | null;
+  totalEvents: number;
+  infoEvents: number;
+  lowEvents: number;
+  mediumEvents: number;
+  highEvents: number;
+  criticalEvents: number;
+  currentRiskScore?: number;
+  flaggedForReview?: boolean;
+  proctoringSession: ProctoringSession | null;
+}
+
+export interface WarningResponse {
+  id: number;
+  attemptId: number;
+  level: number;
+  message: string;
+  riskScoreAtTime: number;
+  createdAt: string;
+}
+
+export interface RiskPoint {
+  timestamp: string;
+  score?: number;
+  riskScore?: number;
+  eventType?: string | null;
+  warningLevel?: number | null;
+}
+
+export interface RiskTimelineResponse {
+  attemptId: number;
+  currentRiskScore: number;
+  flaggedForReview: boolean;
+  warnings: WarningResponse[];
+  scoreHistory: RiskPoint[];
+}
+
+export interface AiFrameAnalysisResponse {
+  faceDetected: boolean;
+  faceCount: number;
+  phoneDetected?: boolean;
+  objectDetected?: boolean;
+  detectedObjects?: string[];
+  personBehindDetected?: boolean;
+  cameraCovered?: boolean;
+  gazeDirection: "CENTER" | "LEFT" | "RIGHT" | "UP" | "DOWN" | string;
+  headPose: {
+    yaw: number;
+    pitch: number;
+    roll: number;
+  };
+  confidence: number;
+  events?: Array<{
+    type: string;
+    confidence: number;
+    metadata?: Record<string, unknown>;
+  }>;
+  modelVersion?: string;
+}
+
+export interface DashboardSummary {
+  totalExams: number;
+  activeExams: number;
+  completedAttempts: number;
+  studentsCurrentlyWriting: number;
+  warningsToday: number;
+  highSeverityEventsToday: number;
+}
+
+export interface LabelValue {
+  label: string;
+  value: number;
+}
+
+export interface TimeSeriesPoint {
+  hour?: string;
+  count?: number;
+  timestamp?: string;
+  value?: number;
+}
+
+export interface DashboardCharts {
+  warningsByExam: LabelValue[];
+  warningsByType: LabelValue[];
+  warningsTimeline: TimeSeriesPoint[];
+  scoreDistribution: LabelValue[];
+}
+
+export interface AdminAttemptReport {
+  attemptId: number;
+  examId: number;
+  studentEmail: string;
+  studentName: string | null;
+  attemptNumber: number;
+  examName: string;
+  examSubject: string | null;
+  examDurationMinutes: number;
+  durationMinutes?: number;
+  status: string;
+  startTime: string;
+  endTime: string | null;
+  score: number | null;
+  flaggedForReview: boolean;
+  currentRiskScore: number;
+  events: ProctoringEvent[];
+  warnings: WarningResponse[];
+  riskTimeline: RiskPoint[];
+  totalEvents: number;
+  infoEvents: number;
+  lowEvents: number;
+  mediumEvents: number;
+  highEvents: number;
+  criticalEvents: number;
+  answers?: AdminQuestionAnswer[];
+}
+
+export interface AdminQuestionAnswer {
+  questionId: number;
+  displayOrder: number;
+  questionType?: "MCQ" | "CODING";
+  problemTitle?: string;
+  questionText: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  selectedOption?: number | null;
+  correctAnswer?: number;
+  isCorrect: boolean | null;
+  marksAwarded: number;
+  maxMarks: number;
+  codeSubmission?: string;
+  codeLanguage?: string;
+  testCasesPassed?: number;
+  totalTestCases?: number;
+  executionOutput?: string;
+}
+
+export interface AdminAttemptEvaluationRequest {
+  score: number;
+  status?: string;
+  flaggedForReview?: boolean;
+  feedback?: string;
+}
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  fullName: string;
+  role: string;
+  department?: string | null;
+  displayPassword?: string;
+  failedAttempts: number;
+  locked: boolean;
+  lockedUntil?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAdminUserPayload {
+  email: string;
+  password: string;
+  fullName: string;
+  role?: string;
+  department?: string;
+}
+
+export interface UpdateAdminUserPayload {
+  email?: string;
+  fullName?: string;
+  role?: string;
+  department?: string;
+  password?: string;
+  resetLock?: boolean;
+}
+
+export interface StudentUser {
+  id: number;
+  fullName: string;
+  department?: string | null;
+  registerNumber: string;
+  year?: string | null;
+  email: string;
+  displayPassword?: string | null;
+  createdAt?: string;
+}
+
+export interface CreateStudentPayload {
+  fullName: string;
+  department?: string;
+  registerNumber: string;
+  year?: string;
+  email: string;
+  password?: string;
+}
+
+export interface UpdateStudentPayload {
+  fullName: string;
+  department?: string;
+  registerNumber: string;
+  year?: string;
+  email: string;
+  password?: string;
+}
+
+export interface BulkStudentUploadResult {
+  totalProcessed: number;
+  createdCount: number;
+  updatedCount: number;
+  errors: string[];
+  students: StudentUser[];
+}
+
+export interface ProfessorUser {
+  id: number;
+  fullName: string;
+  department?: string | null;
+  staffCode?: string | null;
+  year?: string | null;
+  email: string;
+  displayPassword?: string | null;
+  createdAt?: string;
+}
+
+export interface CreateProfessorPayload {
+  fullName: string;
+  department?: string;
+  staffCode?: string;
+  year?: string;
+  email: string;
+  password?: string;
+}
+
+export interface UpdateProfessorPayload {
+  fullName: string;
+  department?: string;
+  staffCode?: string;
+  year?: string;
+  email: string;
+  password?: string;
+}
+
+export interface BulkProfessorUploadResult {
+  totalProcessed: number;
+  createdCount: number;
+  updatedCount: number;
+  errors: string[];
+  professors: ProfessorUser[];
+}
+
+export type UserRole = "ADMIN" | "COURSE_COORDINATOR" | "PROFESSOR" | "STUDENT" | "EXAMINER" | "FACULTY";
+
+export interface UnifiedAuthUser {
+  role: UserRole | string;
+  email: string;
+  fullName: string;
+  department?: string | null;
+  identifier?: string | null;
+  mustResetPassword: boolean;
+}
+
+export interface UnifiedAuthResponse {
+  accessToken: string;
+  refreshToken?: string | null;
+  role: string;
+  email: string;
+  fullName: string;
+  department?: string | null;
+  identifier?: string | null;
+  mustResetPassword: boolean;
+  expiresInSeconds?: number;
+}
+
+
+

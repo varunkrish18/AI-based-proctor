@@ -1,0 +1,708 @@
+package com.proctor.exam.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.proctor.exam.dto.*;
+import com.proctor.exam.entity.*;
+import com.proctor.exam.exception.ApiException;
+import com.proctor.exam.repository.*;
+import com.proctor.exam.security.JwtService;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.*;
+
+@Service
+public class StudentExamService {
+
+    private final ExamRepository examRepository;
+    private final ExamQuestionRepository questionRepository;
+    private final ExamAssignmentRepository assignmentRepository;
+    private final ExamAttemptRepository attemptRepository;
+    private final ExamAnswerRepository answerRepository;
+    private final StudentRepository studentRepository;
+    private final JwtService jwtService;
+    private final ProctoringSessionService proctoringSessionService;
+    private final TrustedTimeService trustedTimeService;
+    private final ExamQuestionTestCaseRepository testCaseRepository;
+    private final CodeExecutionService codeExecutionService;
+    private final StudentQuestionAssignmentRepository sqaRepository;
+    private final AdminRepository adminRepository;
+    private final ProfessorRepository professorRepository;
+    private final ProctoringEventRepository proctoringEventRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public StudentExamService(ExamRepository examRepository,
+                               ExamQuestionRepository questionRepository,
+                               ExamAssignmentRepository assignmentRepository,
+                               ExamAttemptRepository attemptRepository,
+                               ExamAnswerRepository answerRepository,
+                               StudentRepository studentRepository,
+                               JwtService jwtService,
+                               ProctoringSessionService proctoringSessionService,
+                               TrustedTimeService trustedTimeService,
+                               ExamQuestionTestCaseRepository testCaseRepository,
+                               CodeExecutionService codeExecutionService,
+                               StudentQuestionAssignmentRepository sqaRepository,
+                               AdminRepository adminRepository,
+                               ProfessorRepository professorRepository,
+                               ProctoringEventRepository proctoringEventRepository) {
+        this.examRepository = examRepository;
+        this.questionRepository = questionRepository;
+        this.assignmentRepository = assignmentRepository;
+        this.attemptRepository = attemptRepository;
+        this.answerRepository = answerRepository;
+        this.studentRepository = studentRepository;
+        this.jwtService = jwtService;
+        this.proctoringSessionService = proctoringSessionService;
+        this.trustedTimeService = trustedTimeService;
+        this.testCaseRepository = testCaseRepository;
+        this.codeExecutionService = codeExecutionService;
+        this.sqaRepository = sqaRepository;
+        this.adminRepository = adminRepository;
+        this.professorRepository = professorRepository;
+        this.proctoringEventRepository = proctoringEventRepository;
+    }
+
+    /**
+     * Section 4: verify the student's email is authorized for this exam.
+     * Deliberately returns the same generic message whether the exam or the
+     * assignment is missing, so we don't leak which emails are registered.
+     */
+    private Set<String> resolveAllStudentIdentifiers(String primaryIdentifier, String alternateIdentifier) {
+        Set<String> set = new HashSet<>();
+        if (primaryIdentifier != null && !primaryIdentifier.trim().isBlank()) {
+            set.add(primaryIdentifier.trim().toLowerCase());
+            String clean = primaryIdentifier.trim().toLowerCase();
+            studentRepository.findByEmailIgnoreCase(clean).ifPresent(s -> {
+                if (s.getEmail() != null && !s.getEmail().isBlank()) set.add(s.getEmail().trim().toLowerCase());
+                if (s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank()) set.add(s.getRegisterNumber().trim().toLowerCase());
+            });
+            studentRepository.findByRegisterNumberIgnoreCase(clean).ifPresent(s -> {
+                if (s.getEmail() != null && !s.getEmail().isBlank()) set.add(s.getEmail().trim().toLowerCase());
+                if (s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank()) set.add(s.getRegisterNumber().trim().toLowerCase());
+            });
+        }
+        if (alternateIdentifier != null && !alternateIdentifier.trim().isBlank()) {
+            set.add(alternateIdentifier.trim().toLowerCase());
+            String clean = alternateIdentifier.trim().toLowerCase();
+            studentRepository.findByEmailIgnoreCase(clean).ifPresent(s -> {
+                if (s.getEmail() != null && !s.getEmail().isBlank()) set.add(s.getEmail().trim().toLowerCase());
+                if (s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank()) set.add(s.getRegisterNumber().trim().toLowerCase());
+            });
+            studentRepository.findByRegisterNumberIgnoreCase(clean).ifPresent(s -> {
+                if (s.getEmail() != null && !s.getEmail().isBlank()) set.add(s.getEmail().trim().toLowerCase());
+                if (s.getRegisterNumber() != null && !s.getRegisterNumber().isBlank()) set.add(s.getRegisterNumber().trim().toLowerCase());
+            });
+        }
+        return set;
+    }
+
+    @Transactional
+    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail, String rawPassword, String rawName, String rawRegisterNumber) {
+        String email = rawEmail.trim().toLowerCase();
+        Exam exam = examRepository.findById(examId).orElse(null);
+        if (exam == null || !"PUBLISHED".equals(exam.getStatus())) {
+            return new VerifyStudentResponse(false, null, "Exam not found or is not published.", false, false, false, false);
+        }
+
+        boolean isOpen = exam.isOpenToAll();
+        Optional<ExamAssignment> assignmentOpt = assignmentRepository.findByExamIdAndStudentEmailIgnoreCase(examId, email);
+
+        if (!isOpen && assignmentOpt.isEmpty()) {
+            return new VerifyStudentResponse(false, null, "This exam is not assigned to this email address.", false, false, false, false);
+        }
+
+        Student student = studentRepository.findByEmail(email).orElse(null);
+
+        boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
+
+        // Verify assignment access password if present, or student credentials password (bypassed for class)
+        if (!isClass) {
+            if (assignmentOpt.isPresent()) {
+                ExamAssignment assignment = assignmentOpt.get();
+                if (assignment.getAccessPassword() != null && !assignment.getAccessPassword().isBlank()) {
+                    if (rawPassword == null || rawPassword.trim().isBlank()) {
+                        return new VerifyStudentResponse(false, null, "Exam access password is required.", false, false, false, false);
+                    }
+                    boolean matchesAssignment = assignment.getAccessPassword().trim().equalsIgnoreCase(rawPassword.trim());
+                    boolean matchesStudentPwd = (student != null && student.getDisplayPassword() != null && !student.getDisplayPassword().isBlank() && student.getDisplayPassword().trim().equalsIgnoreCase(rawPassword.trim()));
+                    if (!matchesAssignment && !matchesStudentPwd) {
+                        return new VerifyStudentResponse(false, null, "Invalid access password. Please check your assigned exam or student password and try again.", false, false, false, false);
+                    }
+                } else if (student != null && student.getDisplayPassword() != null && !student.getDisplayPassword().isBlank()) {
+                    if (rawPassword == null || rawPassword.trim().isBlank() || !student.getDisplayPassword().trim().equalsIgnoreCase(rawPassword.trim())) {
+                        return new VerifyStudentResponse(false, null, "Invalid student password. Please check your student credentials.", false, false, false, false);
+                    }
+                }
+            }
+        } else if (isOpen) {
+            try {
+                assignmentRepository.save(com.proctor.exam.entity.ExamAssignment.builder()
+                        .exam(exam)
+                        .studentEmail(email)
+                        .accessPassword(rawPassword != null && !rawPassword.isBlank() ? rawPassword.trim() : "OPEN")
+                        .build());
+            } catch (Exception ignored) {}
+        }
+
+        Instant now = trustedTimeService.now();
+        if (exam.getStartAt() != null && now.isBefore(exam.getStartAt())) {
+            return new VerifyStudentResponse(false, null, "Exam has not started yet. Starts at: " + exam.getStartAt(), false, false, false, false);
+        }
+        if (exam.getEndAt() != null && now.isAfter(exam.getEndAt())) {
+            return new VerifyStudentResponse(false, null, "This exam has already ended.", false, false, false, false);
+        }
+
+        Set<String> studentIdentifiers = resolveAllStudentIdentifiers(email, rawRegisterNumber);
+        List<ExamAttempt> existingAttempts = studentIdentifiers.isEmpty()
+                ? List.of()
+                : attemptRepository.findByExamIdAndStudentIdentifiers(examId, studentIdentifiers);
+        boolean hasCompleted = existingAttempts.stream()
+                .anyMatch(a -> "SUBMITTED".equalsIgnoreCase(a.getStatus()) || "COMPLETED".equalsIgnoreCase(a.getStatus()));
+        if (hasCompleted) {
+            return new VerifyStudentResponse(false, null, "You have already completed and submitted this exam. Re-taking is not allowed.", false, false, false, false);
+        }
+
+        if (student == null) {
+            student = Student.builder()
+                    .email(email)
+                    .fullName(rawName != null && !rawName.trim().isBlank() ? rawName.trim() : null)
+                    .registerNumber(rawRegisterNumber != null && !rawRegisterNumber.trim().isBlank() ? rawRegisterNumber.trim() : null)
+                    .build();
+            student = studentRepository.save(student);
+        } else {
+            boolean updated = false;
+            if (rawName != null && !rawName.trim().isBlank() && (student.getFullName() == null || student.getFullName().isBlank())) {
+                student.setFullName(rawName.trim());
+                updated = true;
+            }
+            if (rawRegisterNumber != null && !rawRegisterNumber.trim().isBlank() && (student.getRegisterNumber() == null || student.getRegisterNumber().isBlank())) {
+                student.setRegisterNumber(rawRegisterNumber.trim());
+                updated = true;
+            }
+            if (updated) {
+                student = studentRepository.save(student);
+            }
+        }
+
+        String sessionToken = jwtService.generateStudentSessionToken(email, examId);
+        return new VerifyStudentResponse(
+                true,
+                sessionToken,
+                "Verified.",
+                exam.getWebcamRequired() != null ? exam.getWebcamRequired() : true,
+                exam.getMicrophoneRequired() != null ? exam.getMicrophoneRequired() : true,
+                exam.getScreenRequired() != null ? exam.getScreenRequired() : true,
+                exam.getLocationRequired() != null ? exam.getLocationRequired() : false,
+                student.getFullName(),
+                student.getRegisterNumber()
+        );
+    }
+
+    @Transactional
+    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail, String rawPassword) {
+        return verifyStudent(examId, rawEmail, rawPassword, null, null);
+    }
+
+    @Transactional
+    public VerifyStudentResponse verifyStudent(Long examId, String rawEmail) {
+        return verifyStudent(examId, rawEmail, null, null, null);
+    }
+
+    @Transactional
+    public synchronized StartExamResponse startExam(Long examId, String studentEmail) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found."));
+
+        Instant now = trustedTimeService.now();
+        if ((exam.getStartAt() != null && now.isBefore(exam.getStartAt())) ||
+            (exam.getEndAt() != null && now.isAfter(exam.getEndAt()))) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "This exam is not currently available. Starts at: " + exam.getStartAt() + ", Ends at: " + exam.getEndAt());
+        }
+
+        Set<String> studentIdentifiers = resolveAllStudentIdentifiers(studentEmail, null);
+        List<ExamAttempt> existingAttempts = studentIdentifiers.isEmpty()
+                ? List.of()
+                : attemptRepository.findByExamIdAndStudentIdentifiers(examId, studentIdentifiers);
+
+        boolean isOpen = exam.isOpenToAll();
+        Optional<ExamAssignment> assignmentOpt = assignmentRepository.findByExamIdAndStudentEmailIgnoreCase(examId, studentEmail);
+        if (assignmentOpt.isEmpty()) {
+            for (String idf : studentIdentifiers) {
+                assignmentOpt = assignmentRepository.findByExamIdAndStudentEmailIgnoreCase(examId, idf);
+                if (assignmentOpt.isPresent()) break;
+            }
+        }
+        if (!isOpen && assignmentOpt.isEmpty()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You have not been assigned to this exam/class. Please contact your coordinator or professor.");
+        }
+
+        boolean isClass = Boolean.TRUE.equals(exam.getIsClass());
+        boolean hasCompleted = existingAttempts.stream()
+                .anyMatch(a -> "SUBMITTED".equalsIgnoreCase(a.getStatus()) || "COMPLETED".equalsIgnoreCase(a.getStatus()));
+        if (hasCompleted) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You have already completed and submitted this exam. Re-taking is not allowed.");
+        }
+
+        // Resume an in-progress or incomplete attempt if one exists, instead of silently starting a new one.
+        Optional<ExamAttempt> resumable = existingAttempts
+                .stream()
+                .filter(a -> "IN_PROGRESS".equalsIgnoreCase(a.getStatus()) || "INCOMPLETE".equalsIgnoreCase(a.getStatus()))
+                .findFirst();
+
+        ExamAttempt attempt;
+        List<Long> orderedQuestionIds;
+
+        if (resumable.isPresent()) {
+            attempt = resumable.get();
+            if ("INCOMPLETE".equalsIgnoreCase(attempt.getStatus())) {
+                attempt.setStatus("IN_PROGRESS");
+                attempt = attemptRepository.save(attempt);
+            }
+            orderedQuestionIds = decodeOrder(attempt.getQuestionOrder());
+        } else {
+            int nextAttemptNumber = existingAttempts.stream()
+                    .mapToInt(a -> a.getAttemptNumber() != null ? a.getAttemptNumber() : 0)
+                    .max()
+                    .orElse(0) + 1;
+
+            if (!isClass && exam.getMaxAttempts() != null && nextAttemptNumber > exam.getMaxAttempts()) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "Maximum attempts reached for this exam.");
+            }
+
+            // --- Prefer pre-assigned questions if admin has explicitly set up random assignment ---
+            Optional<com.proctor.exam.entity.StudentQuestionAssignment> sqaOpt =
+                    sqaRepository.findByExamIdAndStudentEmailIgnoreCase(examId, studentEmail);
+
+            if (sqaOpt.isPresent()) {
+                // Use the admin-assigned subset
+                com.proctor.exam.entity.StudentQuestionAssignment sqa = sqaOpt.get();
+                try {
+                    orderedQuestionIds = objectMapper.readValue(
+                            sqa.getQuestionIds(),
+                            new com.fasterxml.jackson.core.type.TypeReference<List<Long>>() {});
+                } catch (Exception e) {
+                    orderedQuestionIds = List.of();
+                }
+            } else {
+                // Filter bank so student only receives Course Coordinator questions + questions from their assigned professor
+                List<ExamQuestion> allBank = questionRepository.findByExamIdOrderByDisplayOrderAsc(examId);
+
+                Long assignerId = assignmentOpt.map(ExamAssignment::getAssignedByProfessorId).orElse(null);
+                String assignerEmail = assignmentOpt.map(ExamAssignment::getAssignedByProfessorEmail).orElse(null);
+                if (assignerId == null && assignerEmail == null) {
+                    assignerId = exam.getAssignedProfessorId();
+                    assignerEmail = exam.getAssignedProfessorEmail();
+                }
+
+                Long targetProfId = null;
+                Long targetAdminId = null;
+
+                if (assignerEmail != null && !assignerEmail.isBlank() && !"ALL_PROFESSORS".equalsIgnoreCase(assignerEmail)) {
+                    Professor p = professorRepository.findByEmailIgnoreCase(assignerEmail.trim()).orElse(null);
+                    Admin a = adminRepository.findByEmail(assignerEmail.trim().toLowerCase()).orElse(null);
+                    if (p != null) targetProfId = p.getId();
+                    if (a != null) targetAdminId = a.getId();
+                }
+                if (targetProfId == null && assignerId != null) {
+                    Professor p = professorRepository.findById(assignerId).orElse(null);
+                    if (p != null) {
+                        targetProfId = p.getId();
+                        Admin a = adminRepository.findByEmail(p.getEmail().toLowerCase()).orElse(null);
+                        if (a != null) targetAdminId = a.getId();
+                    } else {
+                        Admin a = adminRepository.findById(assignerId).orElse(null);
+                        if (a != null) {
+                            targetAdminId = a.getId();
+                            Professor pFromA = professorRepository.findByEmailIgnoreCase(a.getEmail()).orElse(null);
+                            if (pFromA != null) targetProfId = pFromA.getId();
+                        }
+                    }
+                }
+
+                final Long finalProfId = targetProfId;
+                final Long finalAdminId = targetAdminId;
+
+                List<ExamQuestion> bank = allBank.stream()
+                        .filter(q -> isCoordinatorQuestion(q, exam) 
+                                || (finalProfId != null && finalProfId.equals(q.getCreatedBy()))
+                                || (finalAdminId != null && finalAdminId.equals(q.getCreatedBy())))
+                        .toList();
+
+                if (bank.isEmpty()) {
+                    bank = allBank;
+                }
+                List<ExamQuestion> selected = new ArrayList<>(bank);
+                if (Boolean.TRUE.equals(exam.getRandomizeQuestions())) {
+                    Collections.shuffle(selected);
+                }
+                int take = (exam.getNumQuestions() != null && exam.getNumQuestions() > 0 && !Boolean.TRUE.equals(exam.getIsClass()))
+                        ? Math.min(exam.getNumQuestions(), selected.size())
+                        : selected.size();
+                selected = selected.subList(0, take);
+                orderedQuestionIds = selected.stream().map(ExamQuestion::getId).toList();
+            }
+
+            attempt = ExamAttempt.builder()
+                    .exam(exam)
+                    .studentEmail(studentEmail)
+                    .attemptNumber(nextAttemptNumber)
+                    .questionOrder(encodeOrder(orderedQuestionIds))
+                    .status("IN_PROGRESS")
+                    .startTime(now)
+                    .build();
+            attempt = attemptRepository.save(attempt);
+        }
+
+        Map<Long, ExamQuestion> byId = new HashMap<>();
+        questionRepository.findAllById(orderedQuestionIds).forEach(q -> byId.put(q.getId(), q));
+
+        boolean randomizeOptions = Boolean.TRUE.equals(exam.getRandomizeOptions());
+        List<StudentQuestionResponse> questions = new ArrayList<>();
+        for (Long qid : orderedQuestionIds) {
+            ExamQuestion q = byId.get(qid);
+            if (q == null) continue;
+            questions.add(toStudentQuestion(q, randomizeOptions));
+        }
+
+        // Load previously saved answers for this specific attempt (unanswered questions remain incomplete)
+        Map<Long, Integer> savedAnswers = new HashMap<>();
+        Map<Long, StartExamResponse.SavedCodeAnswer> savedCodingAnswers = new HashMap<>();
+        List<Long> completedQuestionIds = new ArrayList<>();
+
+        List<ExamAnswer> existingAnswers = answerRepository.findByAttemptId(attempt.getId());
+        if (existingAnswers != null) {
+            for (ExamAnswer ea : existingAnswers) {
+                if (ea.getQuestion() != null) {
+                    Long qid = ea.getQuestion().getId();
+                    boolean completed = false;
+                    if (ea.getSelectedOption() != null) {
+                        savedAnswers.put(qid, ea.getSelectedOption().intValue());
+                        completed = true;
+                    }
+                    if (ea.getCodeSubmission() != null && !ea.getCodeSubmission().isBlank()) {
+                        savedCodingAnswers.put(qid, new StartExamResponse.SavedCodeAnswer(ea.getCodeSubmission(), ea.getCodeLanguage()));
+                        // A coding question is ONLY completed when test cases were passed or finalized, not from drafts
+                        boolean isCodingCompleted = Boolean.TRUE.equals(ea.getIsCorrect()) ||
+                                (ea.getTotalTestCases() != null && ea.getTotalTestCases() > 0 &&
+                                 ea.getTestCasesPassed() != null && ea.getTestCasesPassed().equals(ea.getTotalTestCases()));
+                        if (isCodingCompleted) {
+                            completed = true;
+                        }
+                    }
+                    if (completed && !completedQuestionIds.contains(qid)) {
+                        completedQuestionIds.add(qid);
+                    }
+                }
+            }
+        }
+
+        // Open or resume proctoring session
+        proctoringSessionService.openSession(attempt.getId());
+
+        int warningStrikes = (int) proctoringEventRepository.countByAttemptIdAndEventType(attempt.getId(), "WARNING_STRIKE");
+        int maxWarnings = Boolean.TRUE.equals(exam.getIsClass()) ? 10 : 3;
+
+        return new StartExamResponse(
+                attempt.getId(),
+                exam.getDurationMinutes(),
+                attempt.getStartTime(),
+                questions,
+                exam.getWebcamRequired() == null || exam.getWebcamRequired(),
+                exam.getMicrophoneRequired() == null || exam.getMicrophoneRequired(),
+                exam.getScreenRequired() == null || exam.getScreenRequired(),
+                Boolean.TRUE.equals(exam.getLocationRequired()),
+                exam.getAudioInputLevel(),
+                savedAnswers,
+                savedCodingAnswers,
+                Boolean.TRUE.equals(exam.getIsClass()),
+                completedQuestionIds,
+                warningStrikes,
+                maxWarnings
+        );
+    }
+
+    private StudentQuestionResponse toStudentQuestion(ExamQuestion q, boolean randomizeOptions) {
+        List<TestCaseResponse> sampleCases = Collections.emptyList();
+        if ("CODING".equals(q.getQuestionType())) {
+            List<ExamQuestionTestCase> cases = testCaseRepository.findByQuestionIdAndIsHiddenFalseOrderByDisplayOrderAsc(q.getId());
+            sampleCases = cases.stream()
+                    .map(tc -> new TestCaseResponse(
+                            tc.getId(),
+                            tc.getInput(),
+                            tc.getExpectedOutput(),
+                            tc.getIsHidden(),
+                            tc.getExplanation(),
+                            tc.getDisplayOrder()
+                    ))
+                    .toList();
+        }
+
+        return new StudentQuestionResponse(
+                q.getId(),
+                q.getQuestionType(),
+                q.getProblemTitle(),
+                q.getQuestionText(),
+                q.getOptionA(),
+                q.getOptionB(),
+                q.getOptionC(),
+                q.getOptionD(),
+                q.getMarks(),
+                q.getCodeTemplate(),
+                q.getAllowedLanguages(),
+                q.getConstraints(),
+                sampleCases
+        );
+    }
+
+    @Transactional
+    public void saveAnswer(Long attemptId, String studentEmail, SubmitAnswerRequest req) {
+        ExamAttempt attempt = attemptRepository.findByIdAndStudentEmailIgnoreCase(attemptId, studentEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+        if (!"IN_PROGRESS".equals(attempt.getStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This attempt is no longer in progress.");
+        }
+        ExamQuestion question = questionRepository.findById(req.questionId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Question not found."));
+
+        ExamAnswer answer = answerRepository.findByAttemptIdAndQuestionId(attemptId, req.questionId())
+                .orElse(null);
+
+        if (answer != null) {
+            // Once an MCQ question is completed by student, it cannot be attempted or modified again
+            if (answer.getSelectedOption() != null && req.selectedOption() != null && !answer.getSelectedOption().equals(req.selectedOption())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Question " + req.questionId() + " has already been completed and locked. It cannot be modified or attempted again.");
+            }
+            // For coding questions, only lock if test cases were all passed and finalized
+            boolean isCodingLocked = Boolean.TRUE.equals(answer.getIsCorrect()) ||
+                    (answer.getTotalTestCases() != null && answer.getTotalTestCases() > 0 &&
+                     answer.getTestCasesPassed() != null && answer.getTestCasesPassed().equals(answer.getTotalTestCases()));
+            if (isCodingLocked && req.codeSubmission() != null && !answer.getCodeSubmission().equals(req.codeSubmission())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Question " + req.questionId() + " has already been completed and locked. It cannot be modified or attempted again.");
+            }
+        } else {
+            answer = ExamAnswer.builder().attempt(attempt).question(question).build();
+        }
+
+        if (req.selectedOption() != null) {
+            answer.setSelectedOption(req.selectedOption());
+        }
+        if (req.codeSubmission() != null) {
+            answer.setCodeSubmission(req.codeSubmission());
+            answer.setCodeLanguage(req.codeLanguage());
+        }
+        answer.setAnsweredAt(trustedTimeService.now());
+        answerRepository.save(answer);
+    }
+
+    public RunCodeResponse runCode(Long attemptId, String studentEmail, RunCodeRequest req) {
+        ExamAttempt attempt = attemptRepository.findByIdAndStudentEmailIgnoreCase(attemptId, studentEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+        if (!"IN_PROGRESS".equals(attempt.getStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This attempt is no longer in progress.");
+        }
+        return codeExecutionService.runPublicTestCases(req.questionId(), req.code(), req.language(), req.customInput());
+    }
+
+    @Transactional
+    public void terminateAttempt(Long attemptId, String studentEmail) {
+        ExamAttempt attempt = attemptRepository.findByIdAndStudentEmailIgnoreCase(attemptId, studentEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+        if (!"IN_PROGRESS".equals(attempt.getStatus())) {
+            return;
+        }
+        attempt.setStatus("INCOMPLETE");
+        attempt.setEndTime(trustedTimeService.now());
+        attemptRepository.save(attempt);
+
+        // Close proctoring session
+        proctoringSessionService.closeSession(attemptId);
+    }
+
+    @Transactional
+    public AttemptResultResponse submit(Long attemptId, String studentEmail) {
+        ExamAttempt attempt = attemptRepository.findByIdAndStudentEmailIgnoreCase(attemptId, studentEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+        if (!"IN_PROGRESS".equals(attempt.getStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "This attempt has already been finalized.");
+        }
+
+        Exam exam = attempt.getExam();
+        List<Long> orderedQuestionIds = decodeOrder(attempt.getQuestionOrder());
+        Map<Long, ExamQuestion> byId = new HashMap<>();
+        questionRepository.findAllById(orderedQuestionIds).forEach(q -> byId.put(q.getId(), q));
+        List<ExamAnswer> answers = answerRepository.findByAttemptId(attemptId);
+        Map<Long, ExamAnswer> answerByQuestion = new HashMap<>();
+        answers.forEach(a -> answerByQuestion.put(a.getQuestion().getId(), a));
+
+        BigDecimal score = BigDecimal.ZERO;
+        int answeredCount = 0;
+        for (Long qid : orderedQuestionIds) {
+            ExamQuestion q = byId.get(qid);
+            if (q == null) continue;
+            ExamAnswer a = answerByQuestion.get(qid);
+
+            if ("CODING".equals(q.getQuestionType())) {
+                if (a != null && a.getCodeSubmission() != null && !a.getCodeSubmission().isBlank()) {
+                    answeredCount++;
+                    RunCodeResponse eval = codeExecutionService.evaluateAllTestCases(q.getId(), a.getCodeSubmission(), a.getCodeLanguage());
+                    a.setTestCasesPassed(eval.passedCases());
+                    a.setTotalTestCases(eval.totalCases());
+                    a.setExecutionOutput(eval.status() + " (" + eval.passedCases() + "/" + eval.totalCases() + " passed)");
+
+                    BigDecimal awarded = BigDecimal.ZERO;
+                    if (eval.totalCases() > 0) {
+                        awarded = q.getMarks()
+                                .multiply(BigDecimal.valueOf(eval.passedCases()))
+                                .divide(BigDecimal.valueOf(eval.totalCases()), 2, java.math.RoundingMode.HALF_UP);
+                        a.setIsCorrect(eval.passedCases() == eval.totalCases());
+                    } else {
+                        a.setIsCorrect(true);
+                        awarded = q.getMarks();
+                    }
+                    a.setMarksAwarded(awarded);
+                    score = score.add(awarded);
+                    answerRepository.save(a);
+                }
+            } else {
+                if (a == null || a.getSelectedOption() == null) continue;
+                answeredCount++;
+                boolean correct = a.getSelectedOption().equals(q.getCorrectAnswer());
+                a.setIsCorrect(correct);
+                BigDecimal neg = exam.getNegativeMarking();
+                BigDecimal awarded = correct ? q.getMarks() : (neg != null ? neg.negate() : BigDecimal.ZERO);
+                a.setMarksAwarded(awarded);
+                score = score.add(awarded);
+                answerRepository.save(a);
+            }
+        }
+
+        attempt.setStatus("SUBMITTED");
+        attempt.setEndTime(trustedTimeService.now());
+        attempt.setScore(score);
+        attemptRepository.save(attempt);
+
+        // Close proctoring session
+        proctoringSessionService.closeSession(attemptId);
+
+        // Build per-question correction data
+        List<AttemptResultResponse.QuestionResult> questionResults = new ArrayList<>();
+        for (Long qid : orderedQuestionIds) {
+            ExamQuestion q = byId.get(qid);
+            if (q == null) continue;
+            ExamAnswer a = answerByQuestion.get(qid);
+            questionResults.add(new AttemptResultResponse.QuestionResult(
+                    q.getId(),
+                    q.getQuestionText(),
+                    q.getOptionA(),
+                    q.getOptionB(),
+                    q.getOptionC(),
+                    q.getOptionD(),
+                    a != null ? a.getSelectedOption() : null,
+                    q.getCorrectAnswer(),
+                    a != null && (a.getSelectedOption() != null || a.getCodeSubmission() != null) ? a.getIsCorrect() : null,
+                    a != null ? a.getMarksAwarded() : BigDecimal.ZERO
+            ));
+        }
+
+        return new AttemptResultResponse(attempt.getId(), attempt.getStatus(), attempt.getStartTime(),
+                attempt.getEndTime(), score, orderedQuestionIds.size(), answeredCount, questionResults);
+    }
+
+    private String encodeOrder(List<Long> ids) {
+        try {
+            return objectMapper.writeValueAsString(ids);
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to encode question order.");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Long> decodeOrder(String json) {
+        try {
+            List<Integer> raw = objectMapper.readValue(json, List.class);
+            return raw.stream().map(Integer::longValue).toList();
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to decode question order.");
+        }
+    }
+
+    /**
+     * Real-time heartbeat/sync check during student examination.
+     * Accurately reflects examiner time additions and immediate termination without page refresh.
+     */
+    @Transactional(readOnly = true)
+    public ExamLiveSyncResponse getLiveSync(Long examId, Long attemptId, String studentEmail) {
+        Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Exam not found."));
+
+        ExamAttempt attempt = attemptRepository.findByIdAndStudentEmailIgnoreCase(attemptId, studentEmail)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+
+        Instant now = Instant.now();
+
+        boolean isExamClosed = "CLOSED".equalsIgnoreCase(exam.getStatus());
+        boolean isAttemptDone = !"IN_PROGRESS".equalsIgnoreCase(attempt.getStatus());
+        boolean isPastExamEnd = exam.getEndAt() != null && now.isAfter(exam.getEndAt());
+
+        if (isExamClosed || isAttemptDone || isPastExamEnd) {
+            String msg = isExamClosed
+                    ? "The examiner has concluded this examination."
+                    : (isPastExamEnd ? "Exam scheduled duration has concluded." : "Exam attempt status: " + attempt.getStatus());
+            return new ExamLiveSyncResponse(
+                    examId,
+                    attemptId,
+                    exam.getStatus(),
+                    true,
+                    0L,
+                    exam.getDurationMinutes(),
+                    exam.getEndAt(),
+                    msg
+            );
+        }
+
+        // Live remaining seconds
+        long attemptElapsedSeconds = Math.max(0, java.time.temporal.ChronoUnit.SECONDS.between(attempt.getStartTime(), now));
+        Integer durMins = exam.getDurationMinutes();
+        long attemptRemaining = durMins != null
+                ? Math.max(0, ((long) durMins * 60) - attemptElapsedSeconds)
+                : Long.MAX_VALUE;
+
+        long examRemaining = exam.getEndAt() != null
+                ? Math.max(0, java.time.temporal.ChronoUnit.SECONDS.between(now, exam.getEndAt()))
+                : attemptRemaining;
+
+        long effectiveRemaining = Math.min(attemptRemaining, examRemaining);
+
+        return new ExamLiveSyncResponse(
+                examId,
+                attemptId,
+                exam.getStatus(),
+                effectiveRemaining <= 0,
+                effectiveRemaining,
+                exam.getDurationMinutes(),
+                exam.getEndAt(),
+                null
+        );
+    }
+
+    private boolean isCoordinatorQuestion(ExamQuestion q, Exam exam) {
+        if (q == null) return false;
+        if (Boolean.TRUE.equals(q.getCreatedByCoordinator()) || "COURSE_COORDINATOR".equalsIgnoreCase(q.getCreatedByRole())) {
+            return true;
+        }
+        if (exam != null && exam.getCreatedBy() != null) {
+            Admin examCreator = adminRepository.findById(exam.getCreatedBy()).orElse(null);
+            if (examCreator != null && "COURSE_COORDINATOR".equalsIgnoreCase(examCreator.getRole())) {
+                if (!"PROFESSOR".equalsIgnoreCase(q.getCreatedByRole())
+                        && (q.getCreatedBy() == null || q.getCreatedBy().equals(examCreator.getId()))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+}

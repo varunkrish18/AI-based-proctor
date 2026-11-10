@@ -1,0 +1,552 @@
+import type { UnifiedAuthResponse, UnifiedAuthUser } from "../types";
+
+// The API is hosted and managed strictly on the server (via server reverse-proxy /api).
+// Never expose backend server IPs or allow unencrypted http in browser bundles.
+const configuredBase = (import.meta.env.VITE_API_BASE_URL || "").trim();
+export const BASE_URL = configuredBase.startsWith("http://")
+  ? configuredBase.replace("http://", "https://")
+  : configuredBase;
+
+type TokenKind = "admin" | "student" | "user";
+
+// High-security in-memory session cache: protects tokens from unauthorized browser script extraction
+let memoryAdminRefreshToken: string | null = null;
+let memoryAuthToken: string | null = null;
+let memoryAdminToken: string | null = null;
+let memoryStudentToken: string | null = null;
+
+export function setAdminRefreshToken(token: string | null) {
+  memoryAdminRefreshToken = token;
+  if (token) {
+    sessionStorage.setItem("aeps.adminRefreshToken", token);
+  } else {
+    sessionStorage.removeItem("aeps.adminRefreshToken");
+  }
+}
+
+export function getAdminRefreshToken(): string | null {
+  return memoryAdminRefreshToken || sessionStorage.getItem("aeps.adminRefreshToken");
+}
+
+function tokenKey(kind: TokenKind) {
+  if (kind === "admin") return "aeps.adminToken";
+  if (kind === "student") return "aeps.studentToken";
+  return "aeps.authToken";
+}
+
+export function getToken(kind?: TokenKind): string | null {
+  if (kind === "admin" && memoryAdminToken) return memoryAdminToken;
+  if (kind === "student" && memoryStudentToken) return memoryStudentToken;
+  if (memoryAuthToken) return memoryAuthToken;
+
+  if (!kind || kind === "user") {
+    return (
+      sessionStorage.getItem("aeps.authToken") ||
+      sessionStorage.getItem("aeps.adminToken") ||
+      sessionStorage.getItem("aeps.studentToken")
+    );
+  }
+  return sessionStorage.getItem(tokenKey(kind)) || sessionStorage.getItem("aeps.authToken");
+}
+
+export function setToken(kind: TokenKind, token: string) {
+  if (kind === "admin") memoryAdminToken = token;
+  else if (kind === "student") memoryStudentToken = token;
+  else memoryAuthToken = token;
+
+  sessionStorage.setItem(tokenKey(kind), token);
+}
+
+export function clearToken(kind: TokenKind) {
+  if (kind === "admin") memoryAdminToken = null;
+  else if (kind === "student") memoryStudentToken = null;
+  else memoryAuthToken = null;
+
+  sessionStorage.removeItem(tokenKey(kind));
+  if (kind === "admin") {
+    memoryAdminRefreshToken = null;
+    sessionStorage.removeItem("aeps.adminRefreshToken");
+  }
+}
+
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshAdminToken(): Promise<boolean> {
+  const rt = getAdminRefreshToken();
+  if (!rt) return false;
+  if (isRefreshing && refreshPromise) return refreshPromise;
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/auth/refresh`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: JSON.stringify({ refreshToken: rt }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setToken("admin", data.accessToken);
+        if (data.refreshToken) {
+          setAdminRefreshToken(data.refreshToken);
+        }
+        return true;
+      } else {
+        clearToken("admin");
+        return false;
+      }
+    } catch {
+      clearToken("admin");
+      return false;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit & { auth?: TokenKind } = {},
+  isRetry = false
+): Promise<T> {
+  const { auth, headers, ...rest } = options;
+  const finalHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "true",
+    ...(headers as Record<string, string>),
+  };
+
+  const token = getToken(auth || "user");
+  if (token) {
+    finalHeaders["Authorization"] = `Bearer ${token}`;
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...rest, headers: finalHeaders });
+  } catch (netErr: unknown) {
+    // If it's a transient network error (like "Failed to fetch") on a GET request, retry once after 800ms
+    const method = options.method || "GET";
+    if (!isRetry && method === "GET") {
+      await new Promise((r) => setTimeout(r, 800));
+      return request<T>(path, options, true);
+    }
+    throw netErr;
+  }
+
+  if ((res.status === 401 || res.status === 403) && auth === "admin" && !isRetry) {
+    if (getAdminRefreshToken()) {
+      const refreshed = await tryRefreshAdminToken();
+      if (refreshed) {
+        return request<T>(path, options, true);
+      }
+    }
+    clearToken("admin");
+    if (
+      typeof window !== "undefined" &&
+      window.location.pathname.startsWith("/admin") &&
+      window.location.pathname !== "/admin/login"
+    ) {
+      window.location.href = "/admin/login?expired=true";
+    }
+  }
+
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const body = await res.json();
+      message = body.message || message;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  if (res.status === 204) return undefined as T;
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/html")) {
+    const text = await res.text();
+    if (text.includes("ngrok") || text.includes("Visit Site")) {
+      throw new ApiError(res.status, "Tunnel warning intercepted response. Please retry.");
+    }
+  }
+
+  const text = await res.text();
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+export const api = {
+  get: <T>(path: string, auth?: TokenKind) => request<T>(path, { method: "GET", auth }),
+  post: <T>(path: string, body?: unknown, auth?: TokenKind) =>
+    request<T>(path, { method: "POST", auth, body: body ? JSON.stringify(body) : undefined }),
+  put: <T>(path: string, body?: unknown, auth?: TokenKind) =>
+    request<T>(path, { method: "PUT", auth, body: body ? JSON.stringify(body) : undefined }),
+  patch: <T>(path: string, body?: unknown, auth?: TokenKind) =>
+    request<T>(path, { method: "PATCH", auth, body: body ? JSON.stringify(body) : undefined }),
+  delete: <T = void>(path: string, auth?: TokenKind) =>
+    request<T>(path, { method: "DELETE", auth }),
+  uploadMultipart: <T>(path: string, formData: FormData, auth?: TokenKind) =>
+    uploadMultipart<T>(path, formData, auth),
+};
+
+export async function uploadMultipart<T>(
+  path: string,
+  formData: FormData,
+  auth?: TokenKind
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "ngrok-skip-browser-warning": "true",
+  };
+  if (auth) {
+    const token = getToken(auth);
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const body = await res.json();
+      message = body.message || message;
+    } catch {
+      /* non-JSON error */
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+export async function downloadFile(
+  path: string,
+  filename: string,
+  auth?: TokenKind
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "ngrok-skip-browser-warning": "true",
+  };
+  if (auth) {
+    const token = getToken(auth);
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Export failed with status ${res.status}`);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/html")) {
+    const text = await res.text();
+    if (text.includes("ngrok") || text.includes("Visit Site")) {
+      throw new Error("Tunnel warning intercepted download. Please retry.");
+    }
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function downloadFilePost(
+  path: string,
+  body: unknown,
+  filename: string,
+  auth?: TokenKind
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "true",
+  };
+  if (auth) {
+    const token = getToken(auth);
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    let msg = `Download failed with status ${res.status}`;
+    try {
+      const errJson = await res.json();
+      if (errJson.message) msg = errJson.message;
+    } catch {
+      /* non-JSON error */
+    }
+    throw new Error(msg);
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/html")) {
+    const text = await res.text();
+    if (text.includes("ngrok") || text.includes("Visit Site")) {
+      throw new Error("Tunnel warning intercepted download. Please retry.");
+    }
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export interface AdminTokenPayload {
+  sub: string;
+  role: "ADMIN" | "EXAMINER" | "PROCTOR" | "COURSE_COORDINATOR" | "FACULTY" | string;
+  department?: string;
+  type: string;
+  exp: number;
+}
+
+export function getAdminTokenPayload(): AdminTokenPayload | null {
+  const token = getToken("admin") || getToken();
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload) as AdminTokenPayload;
+  } catch {
+    return null;
+  }
+}
+
+export function saveUnifiedAuth(data: UnifiedAuthResponse) {
+  memoryAuthToken = data.accessToken;
+  sessionStorage.setItem("aeps.authToken", data.accessToken);
+  if (data.refreshToken) {
+    setAdminRefreshToken(data.refreshToken);
+  }
+  const roleUpper = data.role ? data.role.toUpperCase() : "";
+  const isStaff = ["ADMIN", "EXAMINER", "COURSE_COORDINATOR", "FACULTY", "PROFESSOR"].includes(roleUpper);
+  if (isStaff) {
+    memoryAdminToken = data.accessToken;
+    sessionStorage.setItem("aeps.adminToken", data.accessToken);
+  } else {
+    memoryStudentToken = data.accessToken;
+    sessionStorage.setItem("aeps.studentToken", data.accessToken);
+  }
+  const user: UnifiedAuthUser = {
+    role: data.role,
+    email: data.email,
+    fullName: data.fullName,
+    department: data.department,
+    identifier: data.identifier,
+    mustResetPassword: !!data.mustResetPassword,
+  };
+  sessionStorage.setItem("aeps.currentUser", JSON.stringify(user));
+}
+
+export function getCurrentUser(): UnifiedAuthUser | null {
+  const raw = sessionStorage.getItem("aeps.currentUser");
+  if (raw) {
+    try {
+      return JSON.parse(raw) as UnifiedAuthUser;
+    } catch {
+      // parse error, fallback
+    }
+  }
+  const adminPayload = getAdminTokenPayload();
+  if (adminPayload) {
+    return {
+      role: adminPayload.role || "ADMIN",
+      email: adminPayload.sub,
+      fullName: "System User",
+      department: adminPayload.department,
+      mustResetPassword: false,
+    };
+  }
+  return null;
+}
+
+export function updateCurrentUserMustResetPassword(mustReset: boolean) {
+  const current = getCurrentUser();
+  if (current) {
+    current.mustResetPassword = mustReset;
+    sessionStorage.setItem("aeps.currentUser", JSON.stringify(current));
+  }
+}
+
+export function isUserAuthenticated(): boolean {
+  return !!(
+    sessionStorage.getItem("aeps.authToken") ||
+    sessionStorage.getItem("aeps.adminToken") ||
+    sessionStorage.getItem("aeps.studentToken")
+  );
+}
+
+export function getMustResetPassword(): boolean {
+  const user = getCurrentUser();
+  if (!user) return false;
+  const role = user.role?.toUpperCase();
+  // Admin is permanently exempt from password reset
+  if (role === "ADMIN" || role === "SUPER_ADMIN") {
+    return false;
+  }
+  return !!user.mustResetPassword;
+}
+
+export function clearAllAuth() {
+  memoryAuthToken = null;
+  memoryAdminToken = null;
+  memoryStudentToken = null;
+  memoryAdminRefreshToken = null;
+  sessionStorage.removeItem("aeps.authToken");
+  sessionStorage.removeItem("aeps.currentUser");
+  clearToken("admin");
+  clearToken("student");
+}
+
+export async function unifiedLogin(identifier: string, password: string): Promise<UnifiedAuthResponse> {
+  const res = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "ngrok-skip-browser-warning": "true",
+    },
+    body: JSON.stringify({ identifier, password }),
+  });
+  if (!res.ok) {
+    let msg = "Invalid login credentials";
+    try {
+      const err = await res.json();
+      msg = err.message || msg;
+    } catch {
+      // non-json
+    }
+    throw new ApiError(res.status, msg);
+  }
+  const data = (await res.json()) as UnifiedAuthResponse;
+  saveUnifiedAuth(data);
+  return data;
+}
+
+export async function resetInitialPassword(newPassword: string): Promise<{ success: boolean; message: string }> {
+  const token = getToken();
+  const res = await fetch(`${BASE_URL}/api/auth/reset-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "ngrok-skip-browser-warning": "true",
+    },
+    body: JSON.stringify({ newPassword }),
+  });
+  if (!res.ok) {
+    let msg = "Failed to update password";
+    try {
+      const err = await res.json();
+      msg = err.message || msg;
+    } catch {
+      // non-json
+    }
+    throw new ApiError(res.status, msg);
+  }
+  const data = await res.json();
+  updateCurrentUserMustResetPassword(false);
+  return data;
+}
+
+export function getAdminUserRole(): string | null {
+  const user = getCurrentUser();
+  if (user?.role) return user.role.toUpperCase();
+  const payload = getAdminTokenPayload();
+  return payload?.role ? payload.role.toUpperCase() : null;
+}
+
+export function getAdminUserDepartment(): string | null {
+  const user = getCurrentUser();
+  if (user?.department) return user.department;
+  const payload = getAdminTokenPayload();
+  return payload?.department || null;
+}
+
+export function isStaffAuthenticated(): boolean {
+  const role = getAdminUserRole();
+  return (
+    role === "ADMIN" ||
+    role === "EXAMINER" ||
+    role === "COURSE_COORDINATOR" ||
+    role === "FACULTY" ||
+    role === "PROFESSOR"
+  );
+}
+
+export function isAdminRole(): boolean {
+  return getAdminUserRole() === "ADMIN";
+}
+
+export function isCoordinatorRole(): boolean {
+  return getAdminUserRole() === "COURSE_COORDINATOR";
+}
+
+export function isFacultyRole(): boolean {
+  return getAdminUserRole() === "FACULTY";
+}
+
+export function isExaminerRole(): boolean {
+  return getAdminUserRole() === "EXAMINER";
+}
+
+export function isProfessorRole(): boolean {
+  return getAdminUserRole() === "PROFESSOR";
+}
+
+export function isProfessorUserRole(): boolean {
+  const role = getAdminUserRole();
+  return role === "PROFESSOR" || role === "FACULTY" || role === "EXAMINER";
+}
+
+export function isStudentRole(): boolean {
+  return getAdminUserRole() === "STUDENT";
+}
+
+

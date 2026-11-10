@@ -1,0 +1,318 @@
+package com.proctor.exam.controller;
+
+import com.proctor.exam.dto.*;
+import com.proctor.exam.entity.ExamAttempt;
+import com.proctor.exam.exception.ApiException;
+import com.proctor.exam.repository.ExamAttemptRepository;
+import com.proctor.exam.service.*;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/admin")
+public class AdminProctoringController {
+
+    private final ProctoringSessionService sessionService;
+    private final ProctoringEventService eventService;
+    private final RiskEngine riskEngine;
+    private final AdminDashboardService dashboardService;
+    private final ReportExportService reportExportService;
+    private final AuditLogService auditLogService;
+    private final ExamAttemptRepository attemptRepository;
+    private final AiProxyService aiProxyService;
+    private final ExamAdminService examAdminService;
+
+    public AdminProctoringController(ProctoringSessionService sessionService,
+                                     ProctoringEventService eventService,
+                                     RiskEngine riskEngine,
+                                     AdminDashboardService dashboardService,
+                                     ReportExportService reportExportService,
+                                     AuditLogService auditLogService,
+                                     ExamAttemptRepository attemptRepository,
+                                     AiProxyService aiProxyService,
+                                     ExamAdminService examAdminService) {
+        this.sessionService = sessionService;
+        this.eventService = eventService;
+        this.riskEngine = riskEngine;
+        this.dashboardService = dashboardService;
+        this.reportExportService = reportExportService;
+        this.auditLogService = auditLogService;
+        this.attemptRepository = attemptRepository;
+        this.aiProxyService = aiProxyService;
+        this.examAdminService = examAdminService;
+    }
+
+    private void verifyAttemptAccess(Long attemptId, Authentication auth) {
+        if (auth == null) return;
+        ExamAttempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found."));
+        examAdminService.verifyExamAccess(attempt.getExam(), auth.getName());
+    }
+
+    @GetMapping("/system/ai-health")
+    public ResponseEntity<?> getAiHealth() {
+        return ResponseEntity.ok(aiProxyService.getHealth());
+    }
+
+    @GetMapping("/dashboard/summary")
+    public DashboardSummaryResponse getDashboardSummary(Authentication auth) {
+        return dashboardService.getSummary(auth != null ? auth.getName() : null);
+    }
+
+    @GetMapping("/dashboard/stats")
+    public DashboardStatsResponse getDashboardStats(Authentication auth) {
+        return dashboardService.getStats(auth != null ? auth.getName() : null);
+    }
+
+    @GetMapping("/dashboard/charts")
+    public DashboardChartsResponse getDashboardCharts(@RequestParam(required = false) Long examId,
+                                                      Authentication auth) {
+        return dashboardService.getCharts(examId, auth != null ? auth.getName() : null);
+    }
+
+    /**
+     * Lists attempts for an exam with scores, risk score, flagged status, and severity-aggregated event counts.
+     * Feeds the admin Results table in ExamDetail. Supports filtering.
+     */
+    @GetMapping("/exams/{examId}/attempts")
+    public List<AdminAttemptSummaryResponse> getExamAttempts(
+            @PathVariable Long examId,
+            @RequestParam(required = false) String eventType,
+            @RequestParam(required = false) String severity,
+            @RequestParam(required = false) String studentEmail,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            Authentication auth) {
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), auth != null ? auth.getName() : null);
+        return eventService.getAttemptsWithEventSummary(examId, studentEmail, severity, eventType, from, to);
+    }
+
+    /**
+     * Real-time proctoring session status for a specific attempt.
+     */
+    @GetMapping("/exams/{examId}/attempts/{attemptId}/proctoring-session")
+    public ProctoringSessionResponse getProctoringSession(@PathVariable Long examId,
+                                                          @PathVariable Long attemptId,
+                                                          Authentication auth) {
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), auth != null ? auth.getName() : null);
+        return sessionService.getSessionForAdmin(examId, attemptId);
+    }
+
+    /**
+     * Full, filterable proctoring event timeline for an attempt.
+     */
+    @GetMapping("/attempts/{attemptId}/events")
+    public List<ProctoringEventResponse> getAttemptEvents(@PathVariable Long attemptId,
+                                                          @RequestParam(required = false) String severity,
+                                                          @RequestParam(required = false) String type,
+                                                          Authentication auth) {
+        verifyAttemptAccess(attemptId, auth);
+        return eventService.getEventsForAttempt(attemptId, severity, type);
+    }
+
+    /**
+     * Time-decayed risk timeline, warning history, and flagged status for an attempt.
+     */
+    @GetMapping("/attempts/{attemptId}/risk-timeline")
+    public RiskTimelineResponse getRiskTimeline(@PathVariable Long attemptId, Authentication auth) {
+        verifyAttemptAccess(attemptId, auth);
+        return riskEngine.getRiskTimeline(attemptId);
+    }
+
+    /**
+     * Full single-attempt report view and event timeline.
+     */
+    @GetMapping({"/attempts/{attemptId}/report", "/reports/attempts/{attemptId}"})
+    public AdminAttemptReportResponse getAttemptReport(@PathVariable Long attemptId, Authentication auth) {
+        verifyAttemptAccess(attemptId, auth);
+        return reportExportService.buildReport(attemptId);
+    }
+
+    /**
+     * Export attempt proctoring report as CSV, Excel, or PDF.
+     */
+    @GetMapping("/attempts/{attemptId}/report/export")
+    public ResponseEntity<byte[]> exportAttemptReport(
+            @PathVariable Long attemptId,
+            @RequestParam(defaultValue = "pdf") String format,
+            Authentication authentication) throws IOException {
+        verifyAttemptAccess(attemptId, authentication);
+
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        auditLogService.logAdmin(adminEmail, "EXPORT_REPORT",
+                "Exported attempt " + attemptId + " report as " + format.toUpperCase());
+
+        byte[] bytes;
+        String contentType;
+        String filename;
+
+        switch (format.toLowerCase()) {
+            case "csv" -> {
+                bytes = reportExportService.exportCsv(attemptId);
+                contentType = "text/csv; charset=UTF-8";
+                filename = "attempt-" + attemptId + "-report.csv";
+            }
+            case "excel", "xlsx" -> {
+                bytes = reportExportService.exportExcel(attemptId);
+                contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                filename = "attempt-" + attemptId + "-report.xlsx";
+            }
+            case "pdf" -> {
+                bytes = reportExportService.exportPdf(attemptId);
+                contentType = MediaType.APPLICATION_PDF_VALUE;
+                filename = "attempt-" + attemptId + "-report.pdf";
+            }
+            default -> throw new IllegalArgumentException("Unsupported format: " + format);
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, contentType)
+                .body(bytes);
+    }
+
+    /**
+     * Export consolidated cumulative exam report as PDF.
+     */
+    @GetMapping({"/exams/{examId}/report/cumulative-pdf", "/exams/{examId}/report/export"})
+    public ResponseEntity<byte[]> exportCumulativeExamPdf(
+            @PathVariable Long examId,
+            Authentication authentication) {
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), adminEmail);
+        auditLogService.logAdmin(adminEmail, "EXPORT_CUMULATIVE_REPORT",
+                "Exported cumulative exam " + examId + " PDF report");
+
+        byte[] bytes = reportExportService.exportCumulativeExamPdf(examId);
+        String filename = "exam-" + examId + "-cumulative-results.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
+     * Export student question completion status (1 page per student) as PDF for all attempts in an exam.
+     */
+    @GetMapping("/exams/{examId}/report/question-completion-pdf")
+    public ResponseEntity<byte[]> exportExamQuestionCompletionPdf(
+            @PathVariable Long examId,
+            Authentication authentication) {
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), adminEmail);
+        auditLogService.logAdmin(adminEmail, "EXPORT_QUESTION_COMPLETION_REPORT",
+                "Exported exam " + examId + " question completion PDF report");
+
+        byte[] bytes = reportExportService.exportExamQuestionCompletionPdf(examId);
+        String filename = "exam-" + examId + "-question-completion.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
+     * Export 1-page question completion status PDF for a single student attempt.
+     */
+    @GetMapping("/attempts/{attemptId}/report/question-completion-pdf")
+    public ResponseEntity<byte[]> exportAttemptQuestionCompletionPdf(
+            @PathVariable Long attemptId,
+            Authentication authentication) {
+        verifyAttemptAccess(attemptId, authentication);
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        auditLogService.logAdmin(adminEmail, "EXPORT_ATTEMPT_QUESTION_COMPLETION_REPORT",
+                "Exported attempt " + attemptId + " question completion PDF report");
+
+        byte[] bytes = reportExportService.exportAttemptQuestionCompletionPdf(attemptId);
+        String filename = "attempt-" + attemptId + "-question-completion.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
+     * Export warning strikes & proctoring integrity audit report as PDF for all students in an exam.
+     */
+    @GetMapping("/exams/{examId}/report/warning-strikes-pdf")
+    public ResponseEntity<byte[]> exportExamWarningStrikesPdf(
+            @PathVariable Long examId,
+            Authentication authentication) {
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        examAdminService.verifyExamAccess(examAdminService.getById(examId), adminEmail);
+        auditLogService.logAdmin(adminEmail, "EXPORT_WARNING_STRIKES_REPORT",
+                "Exported exam " + examId + " warning strikes PDF report");
+
+        byte[] bytes = reportExportService.exportExamWarningStrikesPdf(examId);
+        String filename = "exam-" + examId + "-warning-strikes.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
+     * Export warning strikes PDF report for a single student attempt.
+     */
+    @GetMapping("/attempts/{attemptId}/report/warning-strikes-pdf")
+    public ResponseEntity<byte[]> exportAttemptWarningStrikesPdf(
+            @PathVariable Long attemptId,
+            Authentication authentication) {
+        verifyAttemptAccess(attemptId, authentication);
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        auditLogService.logAdmin(adminEmail, "EXPORT_ATTEMPT_WARNING_STRIKES_REPORT",
+                "Exported attempt " + attemptId + " warning strikes PDF report");
+
+        byte[] bytes = reportExportService.exportAttemptWarningStrikesPdf(attemptId);
+        String filename = "attempt-" + attemptId + "-warning-strikes.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
+                .body(bytes);
+    }
+
+    /**
+     * Admin evaluates attempt: verifies proctoring integrity, awards marks/score, and finalizes status.
+     */
+    @PutMapping("/attempts/{attemptId}/evaluate")
+    public AdminAttemptReportResponse evaluateAttempt(
+            @PathVariable Long attemptId,
+            @jakarta.validation.Valid @RequestBody AdminAttemptEvaluationRequest request,
+            Authentication authentication) {
+        verifyAttemptAccess(attemptId, authentication);
+        String adminEmail = authentication != null ? authentication.getName() : "admin";
+        ExamAttempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found"));
+
+        attempt.setScore(request.score());
+        if (request.status() != null && !request.status().isBlank()) {
+            attempt.setStatus(request.status());
+        } else {
+            attempt.setStatus("VERIFIED");
+        }
+        if (request.flaggedForReview() != null) {
+            attempt.setFlaggedForReview(request.flaggedForReview());
+        }
+        attemptRepository.save(attempt);
+
+        auditLogService.logAdmin(adminEmail, "EVALUATE_ATTEMPT",
+                "Evaluated attempt " + attemptId + ": Score=" + request.score() + ", Status=" + attempt.getStatus());
+
+        return reportExportService.buildReport(attemptId);
+    }
+}
+

@@ -1,0 +1,30 @@
+package com.proctor.exam.dto;
+
+import jakarta.validation.constraints.*;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+
+public record CreateExamRequest(
+        @NotBlank String name,
+        String description,
+        String subject,
+        @Min(1) Integer durationMinutes,
+        @NotNull Instant startAt,
+        @NotNull Instant endAt,
+        @NotNull @Min(1) Integer numQuestions,
+        BigDecimal passingMarks,
+        BigDecimal negativeMarking,
+        Boolean randomizeQuestions,
+        Boolean randomizeOptions,
+        @Min(1) Integer maxAttempts,
+        Boolean webcamRequired,
+        Boolean microphoneRequired,
+        Boolean screenRequired,
+        Boolean locationRequired,
+        Integer audioInputLevel,
+        Long assignedProfessorId,
+        String assignedProfessorEmail,
+        String assignedProfessorName,
+        Boolean isClass
+) {}

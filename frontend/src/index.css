@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+:root {
+  --color-navy: #0f172a;
+  --color-navy-light: #1e293b;
+  --color-accent: #2563eb;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900;
+}
+
+.input {
+  @apply w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500;
+}

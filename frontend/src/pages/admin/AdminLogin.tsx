@@ -1,0 +1,74 @@
+import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { api, setAdminRefreshToken, setToken } from "../../api/client";
+import type { AuthResponse } from "../../types";
+
+export default function AdminLogin() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isExpired = searchParams.get("expired") === "true";
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await api.post<AuthResponse>("/api/admin/auth/login", { email, password });
+      setToken("admin", res.accessToken);
+      if (res.refreshToken) {
+        setAdminRefreshToken(res.refreshToken);
+      }
+      navigate("/admin/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-16">
+      <div className="text-center mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Staff &amp; Admin Login</h1>
+        <p className="text-xs text-slate-500 mt-1">
+          Access portal for Administrators, Course Coordinators, and Faculty
+        </p>
+      </div>
+      <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        {isExpired && !error && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3 rounded-md mb-4">
+            Your admin session expired. Please sign in again.
+          </div>
+        )}
+        <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full border border-slate-300 rounded-md px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+        <input
+          type="password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full border border-slate-300 rounded-md px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="w-full bg-slate-900 text-white py-2 rounded-md font-medium hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+        >
+          {submitting ? "Signing in…" : "Sign In"}
+        </button>
+      </form>
+    </div>
+  );
+}

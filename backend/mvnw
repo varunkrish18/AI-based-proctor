@@ -1,0 +1,8 @@
+#!/bin/sh
+if [ -f "$HOME/.maven/apache-maven-3.9.9/bin/mvn" ]; then
+    exec "$HOME/.maven/apache-maven-3.9.9/bin/mvn" "$@"
+elif [ -f "$USERPROFILE/.maven/apache-maven-3.9.9/bin/mvn.cmd" ]; then
+    exec "$USERPROFILE/.maven/apache-maven-3.9.9/bin/mvn.cmd" "$@"
+else
+    exec mvn "$@"
+fi
