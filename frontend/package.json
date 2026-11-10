@@ -10,6 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mediapipe/tasks-audio": "^1.2.2",
+    "@tensorflow-models/face-detection": "^1.0.3",
+    "@tensorflow/tfjs": "^4.22.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-is": "^19.3.0",
