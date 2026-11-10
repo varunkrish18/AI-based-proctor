@@ -15,12 +15,12 @@ public record AdminAttemptReportResponse(
         Long examId,
         String studentEmail,
         String studentName,
-        int attemptNumber,
+        Integer attemptNumber,
 
         // --- Exam metadata ---
         String examName,
         String examSubject,
-        int durationMinutes,
+        Integer durationMinutes,
 
         // --- Scoring & timing ---
         String status,

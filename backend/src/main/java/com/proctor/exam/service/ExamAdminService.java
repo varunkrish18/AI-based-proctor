@@ -1539,7 +1539,8 @@ public class ExamAdminService {
         checkClassSettingModificationAllowed(exam, adminEmail);
 
         if (addMinutes != null && addMinutes != 0) {
-            int newDur = Math.max(1, exam.getDurationMinutes() + addMinutes);
+            int currentDur = exam.getDurationMinutes() != null ? exam.getDurationMinutes() : 60;
+            int newDur = Math.max(1, currentDur + addMinutes);
             exam.setDurationMinutes(newDur);
             if (exam.getEndAt() != null) {
                 exam.setEndAt(exam.getEndAt().plus(addMinutes, java.time.temporal.ChronoUnit.MINUTES));

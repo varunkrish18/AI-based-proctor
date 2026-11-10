@@ -215,7 +215,7 @@ export default function AdminReportView() {
             Ended: {report.endTime ? new Date(report.endTime).toLocaleString() : "—"}
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            Duration limit: {report.examDurationMinutes} minutes
+            Duration limit: {report.durationMinutes || report.examDurationMinutes ? `${report.durationMinutes || report.examDurationMinutes} minutes` : "♾️ Untimed"}
           </p>
         </div>
       </div>
