@@ -602,7 +602,7 @@ export default function SystemCheck() {
                       {!faceState.ready
                         ? "⏳ Loading MediaPipe Face & Object AI…"
                         : faceState.objectDetected
-                        ? `🚨 Prohibited Object (${faceState.detectedObjects.join(", ")}) — Remove!`
+                        ? "🚨 Anomaly Detected — Keep Area Clear"
                         : faceState.cameraCovered
                         ? "🚫 Camera Covered / Too Dark"
                         : faceState.isBlurry

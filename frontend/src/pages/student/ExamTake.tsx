@@ -1046,18 +1046,18 @@ export default function ExamTake() {
         faceMissingStartRef.current = now;
       } else {
         const elapsedMs = now - faceMissingStartRef.current;
-        if (elapsedMs >= 4500 && !faceMissingSnappedRef.current) {
+        if (elapsedMs >= 2500 && !faceMissingSnappedRef.current) {
           faceMissingSnappedRef.current = true;
           const photo = takeCleanSnapshot();
           logEvent("FACE_NOT_VISIBLE", Math.round(elapsedMs / 1000), {
             photo,
             durationSeconds: Math.round(elapsedMs / 1000),
-            reason: "Candidate face not detected in webcam view for >= 4.5s (Edge CV)",
+            reason: "Candidate face not detected or obstructed in webcam view for >= 2.5s (Edge CV)",
           });
           flushNow();
           issueWarningStrike(
-            "Face Not Detected",
-            "Your face has left the camera view. Please remain seated and keep your face clearly visible in the frame."
+            "Face Not Detected / Obstructed",
+            "Your face is obstructed or has left the camera view. Please keep your face clearly visible in the frame at all times."
           );
         }
       }
@@ -1157,29 +1157,19 @@ export default function ExamTake() {
       gazeWarningLoggedRef.current = false;
     }
 
-    // 6. Prohibited Object / Mobile Phone Detection (Edge COCO-SSD Object Detector)
+    // 6. Visual Anomaly Detection (Edge CV Camera Anomaly / Device / Occlusion Detector)
     if (edgeCv.objectDetected || edgeCv.phoneDetected) {
-      const objs =
-        edgeCv.detectedObjects.length > 0
-          ? edgeCv.detectedObjects.join(", ")
-          : edgeCv.phoneDetected
-          ? "cell phone"
-          : "prohibited object";
       if (now - lastObjectPhotoTime.current >= 5000) {
         lastObjectPhotoTime.current = now;
         const photo = takeCleanSnapshot();
-        logEvent("OBJECT_DETECTED", undefined, {
+        logEvent("ANOMALY_DETECTED", undefined, {
           photo,
-          objects: objs,
-          phoneDetected: edgeCv.phoneDetected,
-          reason: `Prohibited object detected in camera frame: ${objs} (Edge CV)`,
+          reason: "Visual anomaly detected in camera frame (Edge CV)",
         });
         flushNow();
         issueWarningStrike(
-          edgeCv.phoneDetected
-            ? "Mobile Phone Detected"
-            : `Prohibited Object Detected (${objs})`,
-          `Unauthorized object (${objs}) detected in your camera frame. Remove all prohibited materials immediately.`
+          "Anomaly Detected",
+          "An anomaly was detected in your camera frame. Please keep your examination area clear and your face fully visible."
         );
       }
     }
@@ -1282,49 +1272,44 @@ export default function ExamTake() {
               consecutiveFrameErrors.current = 0;
               nextCaptureDelayRef.current = 2500;
 
-              // If Edge CV worker is active, keep Edge CV's low-latency face/gaze state
-              // and only merge server-side object/phone detections.
-              if (edgeCvReadyRef.current) {
+              // Only merge server-side detections if the server actually flagged an object or phone;
+              // never overwrite live Edge CV state with empty fallback responses.
+              if (res.objectDetected || res.phoneDetected) {
                 setAiAnalysis((prev) =>
                   prev
                     ? {
                         ...prev,
-                        objectDetected: res.objectDetected,
-                        phoneDetected: res.phoneDetected,
-                        detectedObjects: res.detectedObjects,
+                        objectDetected: Boolean(prev.objectDetected || res.objectDetected),
+                        phoneDetected: Boolean(prev.phoneDetected || res.phoneDetected),
+                        detectedObjects:
+                          res.detectedObjects && res.detectedObjects.length > 0
+                            ? res.detectedObjects
+                            : prev.detectedObjects,
                         events: res.events,
                       }
                     : res
                 );
-              } else {
-                setAiAnalysis(res);
               }
 
-              // Object detected other than candidate (e.g. mobile phone, books, laptops, devices): take a photo snapshot
-              const hasObject =
+              // Visual anomaly detected: take a photo snapshot
+              const hasAnomaly =
                 res.objectDetected ||
                 res.phoneDetected ||
                 res.events?.some(
                   (e) =>
                     e.type === "CELL_PHONE_DETECTED" ||
                     e.type === "PROHIBITED_OBJECT_DETECTED" ||
-                    e.type === "OBJECT_DETECTED"
+                    e.type === "OBJECT_DETECTED" ||
+                    e.type === "ANOMALY_DETECTED"
                 );
-              if (hasObject) {
+              if (hasAnomaly) {
                 const now = Date.now();
                 if (now - lastObjectPhotoTime.current >= 6000) {
                   lastObjectPhotoTime.current = now;
                   const photo = takeCleanSnapshot();
-                  const objs =
-                    res.detectedObjects && res.detectedObjects.length > 0
-                      ? res.detectedObjects.join(", ")
-                      : res.phoneDetected
-                      ? "cell phone"
-                      : "unauthorized object";
-                  logEvent("OBJECT_DETECTED", undefined, {
+                  logEvent("ANOMALY_DETECTED", undefined, {
                     photo,
-                    objects: objs,
-                    reason: `Unauthorized object detected: ${objs}`,
+                    reason: "Visual anomaly detected in examination view",
                   });
                   flushNow();
                 }
@@ -3108,8 +3093,14 @@ export default function ExamTake() {
         </div>
       )}
 
-      {/* Hidden elements for computer-vision capture */}
-      <video ref={videoRef} autoPlay playsInline muted className="hidden" />
+      {/* Offscreen video element for computer-vision capture (avoid display:none so browser decodes frames continuously) */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="fixed -top-[9999px] -left-[9999px] w-64 h-48 opacity-0 pointer-events-none"
+      />
       <canvas ref={canvasRef} width={320} height={240} className="hidden" />
 
       {/* Top Navbar with live proctoring channel status badges */}
@@ -3879,10 +3870,8 @@ export default function ExamTake() {
                         ? "🚨 Camera Covered!"
                         : aiAnalysis.personBehindDetected
                         ? "👥 Person Behind!"
-                        : aiAnalysis.phoneDetected
-                        ? "🚨 Mobile Phone!"
-                        : aiAnalysis.objectDetected
-                        ? `🚨 ${aiAnalysis.detectedObjects?.join(", ") || "Object"} Detected!`
+                        : aiAnalysis.phoneDetected || aiAnalysis.objectDetected
+                        ? "🚨 Anomaly Detected!"
                         : !aiAnalysis.faceDetected
                         ? "⚠️ No Face"
                         : aiAnalysis.faceCount > 1

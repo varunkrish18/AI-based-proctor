@@ -4,20 +4,42 @@
  * - FaceDetectorWorker.ts / face-count-worker.ts (TensorFlow.js MediaPipeFaceDetector)
  * - FaceDetectors.tsx (Geometric eye/nose/ear head-pose & looking-away heuristics)
  * - BlurDetectorWorker.ts (Laplacian variance blur & camera occlusion check)
- * - TensorFlow.js COCO-SSD (Real-time prohibited object, mobile phone & multi-person detection)
+ * - Native ES-Module TensorFlow.js SSD MobileNet V2 GraphModel (Real-time mobile phone, book & multi-person detection)
  */
 
 import * as tf from "@tensorflow/tfjs-core";
 import "@tensorflow/tfjs-backend-webgl";
 import "@tensorflow/tfjs-backend-cpu";
 import "@tensorflow/tfjs";
+import { loadGraphModel, type GraphModel } from "@tensorflow/tfjs-converter";
 import * as faceDetection from "@tensorflow-models/face-detection";
-import * as cocoSsd from "@tensorflow-models/coco-ssd";
 
 let detector: faceDetection.FaceDetector | null = null;
-let objectDetector: cocoSsd.ObjectDetection | null = null;
+let objectModel: GraphModel | null = null;
 let isProcessing = false;
 let frameCounter = 0;
+
+const COCO_CLASSES: Record<number, string> = {
+  1: "person",
+  27: "backpack",
+  31: "handbag",
+  44: "bottle",
+  47: "cup",
+  62: "chair",
+  67: "dining table",
+  72: "tv",
+  73: "laptop",
+  74: "mouse",
+  75: "remote",
+  76: "keyboard",
+  77: "cell phone",
+  84: "book",
+  85: "clock",
+  87: "scissors",
+};
+
+const SSD_MODEL_URL =
+  "https://storage.googleapis.com/tfjs-models/savedmodel/ssdlite_mobilenet_v2/model.json";
 
 let cachedObjectState: {
   objectDetected: boolean;
@@ -46,13 +68,103 @@ interface PoseEvaluation {
   gazeDirection: GazeDirection;
 }
 
-const PROHIBITED_OBJECT_CLASSES = new Set([
-  "cell phone",
-  "book",
-  "laptop",
-  "remote",
-  "tv",
-]);
+/**
+ * Runs SSD Lite MobileNet V2 object detection directly via @tensorflow/tfjs-converter
+ * without relying on the broken UMD @tensorflow-models/coco-ssd wrapper in ES module workers.
+ */
+async function detectObjectsFromImageData(
+  imageData: ImageData,
+  maxNumBoxes = 15,
+  minScore = 0.22
+): Promise<Array<{ class: string; score: number; bbox: [number, number, number, number] }>> {
+  if (!objectModel) return [];
+
+  const batched = tf.tidy(() => {
+    const imgTensor = tf.browser.fromPixels(imageData);
+    return tf.expandDims(imgTensor);
+  });
+
+  const height = batched.shape[1] || imageData.height;
+  const width = batched.shape[2] || imageData.width;
+
+  let resultTensors: tf.Tensor[] | null = null;
+  try {
+    resultTensors = (await objectModel.executeAsync(batched)) as tf.Tensor[];
+    const scoresData = await resultTensors[0].data();
+    const boxesData = await resultTensors[1].data();
+
+    const numBoxes = resultTensors[0].shape[1] || 0;
+    const numClasses = resultTensors[0].shape[2] || 90;
+
+    const maxScores = new Float32Array(numBoxes);
+    const classes = new Int32Array(numBoxes);
+
+    for (let i = 0; i < numBoxes; i++) {
+      let max = Number.MIN_VALUE;
+      let clsIdx = -1;
+      const offset = i * numClasses;
+      for (let j = 0; j < numClasses; j++) {
+        const s = scoresData[offset + j];
+        if (s > max) {
+          max = s;
+          clsIdx = j;
+        }
+      }
+      maxScores[i] = max;
+      classes[i] = clsIdx;
+    }
+
+    const boxes2d = tf.tensor2d(
+      boxesData,
+      [ resultTensors[1].shape[1] || numBoxes, 4 ]
+    );
+    const scores1d = tf.tensor1d(maxScores);
+
+    const indexTensor = await tf.image.nonMaxSuppressionAsync(
+      boxes2d,
+      scores1d,
+      maxNumBoxes,
+      0.45,
+      minScore
+    );
+    const selectedIndices = await indexTensor.data();
+
+    boxes2d.dispose();
+    scores1d.dispose();
+    indexTensor.dispose();
+
+    const objects: Array<{
+      class: string;
+      score: number;
+      bbox: [number, number, number, number];
+    }> = [];
+
+    for (let i = 0; i < selectedIndices.length; i++) {
+      const idx = selectedIndices[i];
+      const classId = classes[idx] + 1;
+      const className = COCO_CLASSES[classId];
+      if (!className) continue;
+
+      const minY = boxesData[idx * 4] * height;
+      const minX = boxesData[idx * 4 + 1] * width;
+      const maxY = boxesData[idx * 4 + 2] * height;
+      const maxX = boxesData[idx * 4 + 3] * width;
+
+      objects.push({
+        class: className,
+        score: maxScores[idx],
+        bbox: [minX, minY, maxX - minX, maxY - minY],
+      });
+    }
+
+    return objects;
+  } finally {
+    batched.dispose();
+    if (resultTensors) {
+      resultTensors.forEach((t) => t.dispose());
+    }
+  }
+}
 
 /**
  * Geometric heuristic from ViBe (FaceDetectors.tsx) to detect looking away / head turned,
@@ -249,15 +361,20 @@ async function initializeModel() {
 
     self.postMessage({ type: "MODEL_READY", backend: tf.getBackend() });
 
-    // Load COCO-SSD object detector in the background (non-blocking) for phone/book/device detection
-    cocoSsd
-      .load({ base: "lite_mobilenet_v2" })
-      .then((loadedObjDetector) => {
-        objectDetector = loadedObjDetector;
+    // Load SSD Lite MobileNet V2 GraphModel directly via @tensorflow/tfjs-converter
+    loadGraphModel(SSD_MODEL_URL)
+      .then(async (loadedModel) => {
+        // Warm up model tensor execution
+        const zeroTensor = tf.zeros([1, 300, 300, 3], "int32");
+        const warmupRes = (await loadedModel.executeAsync(zeroTensor)) as tf.Tensor[];
+        warmupRes.forEach((t) => t.dispose());
+        zeroTensor.dispose();
+
+        objectModel = loadedModel;
         self.postMessage({ type: "OBJECT_MODEL_READY" });
       })
       .catch((err) => {
-        console.warn("[faceDetectorWorker] COCO-SSD load warning:", err);
+        console.warn("[faceDetectorWorker] SSD Object Model load error:", err);
       });
   } catch (err: any) {
     self.postMessage({
@@ -285,6 +402,7 @@ async function detectFaces(imageBitmap: ImageBitmap) {
     }
 
     ctx.drawImage(imageBitmap, 0, 0);
+    const fullImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     // 1. Run Laplacian Blur & Occlusion check on a fast 160x120 sample
     const sampleW = 160;
@@ -303,19 +421,15 @@ async function detectFaces(imageBitmap: ImageBitmap) {
       quality = analyzeImageQuality(imgData);
     }
 
-    // 2. Run MediaPipe Face Detection
+    // 2. Run MediaPipe Face Detection using ImageData (100% compatible with Web Workers)
     const faces = await detector.estimateFaces(
-      canvas as unknown as HTMLCanvasElement
+      fullImageData as unknown as HTMLCanvasElement
     );
 
-    // 3. Run COCO-SSD Object Detection every 2nd frame (or if an object was recently seen)
-    if (objectDetector && (frameCounter % 2 === 0 || cachedObjectState.objectDetected)) {
+    // 3. Run SSD MobileNet V2 Object Detection on ImageData
+    if (objectModel) {
       try {
-        const predictions = await objectDetector.detect(
-          canvas as unknown as HTMLCanvasElement,
-          10,
-          0.32
-        );
+        const predictions = await detectObjectsFromImageData(fullImageData, 15, 0.22);
         const detectedSet = new Set<string>();
         let phoneFound = false;
         let personCount = 0;
@@ -323,15 +437,33 @@ async function detectFaces(imageBitmap: ImageBitmap) {
         for (const pred of predictions) {
           const cls = pred.class.toLowerCase();
           const score = pred.score;
-          if (cls === "person" && score >= 0.48) {
+          if (cls === "person" && score >= 0.45) {
             personCount++;
-          } else if (cls === "cell phone" && score >= 0.32) {
+          } else if (cls === "cell phone" && score >= 0.22) {
             phoneFound = true;
-            detectedSet.add("cell phone");
-          } else if (cls === "book" && score >= 0.4) {
+            detectedSet.add("mobile phone");
+          } else if (cls === "remote" && score >= 0.24) {
+            // Back of smartphones / MagSafe cases held up to webcam are frequently classified as "remote" by COCO-SSD
+            phoneFound = true;
+            detectedSet.add("mobile phone");
+          } else if (cls === "book" && score >= 0.28) {
             detectedSet.add("book");
-          } else if (PROHIBITED_OBJECT_CLASSES.has(cls) && score >= 0.45) {
+          } else if ((cls === "laptop" || cls === "tv") && score >= 0.35) {
             detectedSet.add(cls);
+          }
+        }
+
+        // Also detect when a person is sitting in front of the camera (personCount >= 1)
+        // but their face is suddenly blocked by an object held directly in front of their eyes/face
+        if (personCount >= 1 && faces.length === 0 && !quality.cameraCovered) {
+          // If an object of any kind was also scored near the center, or person's face is occluded
+          for (const pred of predictions) {
+            if (pred.class !== "person" && pred.score >= 0.20) {
+              detectedSet.add(pred.class === "remote" ? "mobile phone" : pred.class);
+              if (pred.class === "cell phone" || pred.class === "remote") {
+                phoneFound = true;
+              }
+            }
           }
         }
 
@@ -343,17 +475,9 @@ async function detectFaces(imageBitmap: ImageBitmap) {
           personCount,
           updatedAt: Date.now(),
         };
-      } catch {
-        // Ignore single-frame object detection glitches
+      } catch (objErr) {
+        console.warn("[faceDetectorWorker] Object inference warning:", objErr);
       }
-    } else if (Date.now() - cachedObjectState.updatedAt > 2000) {
-      cachedObjectState = {
-        objectDetected: false,
-        phoneDetected: false,
-        detectedObjects: [],
-        personCount: 0,
-        updatedAt: Date.now(),
-      };
     }
 
     const rawFaceCount = faces.length;
