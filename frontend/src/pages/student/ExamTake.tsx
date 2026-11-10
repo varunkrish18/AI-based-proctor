@@ -3180,30 +3180,19 @@ export default function ExamTake() {
         </div>
       )}
 
-      {/* Terminate Session Confirmation Modal */}
+      {/* Pause Class Session Confirmation Modal */}
       {showTerminateConfirm && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl text-slate-900 space-y-4 border border-slate-200">
-            <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-2xl font-bold shadow-inner">
-              🚪
+            <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto text-2xl font-bold shadow-inner">
+              💾
             </div>
             <h3 className="text-xl font-bold text-center text-slate-900">
-              Terminate {session?.isClass ? "Class" : "Examination"}?
+              Pause Class Session?
             </h3>
             <p className="text-sm text-slate-600 text-center leading-relaxed">
-              Are you sure you want to terminate without submitting? Your session will be recorded as <strong className="text-amber-600">INCOMPLETE</strong>. You will be able to re-enter and take it later.
+              Your answers and written code will remain saved. You can return to your dashboard and resume this class anytime.
             </p>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
-              <p className="font-bold flex items-center gap-1 text-amber-800">
-                <span>💡</span> Examination Rule Notice:
-              </p>
-              <p>
-                • Terminating now marks your attempt as <strong>Incomplete</strong>.
-              </p>
-              <p>
-                • If you pass the test cases and submit, it will be marked as <strong>Completed</strong> and cannot be attempted again.
-              </p>
-            </div>
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
@@ -3217,10 +3206,10 @@ export default function ExamTake() {
                 type="button"
                 onClick={handleTerminate}
                 disabled={terminating}
-                className="px-4 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-lg transition shadow-sm cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-lg transition shadow-sm cursor-pointer flex items-center gap-1.5"
               >
-                <span>🚪</span>
-                <span>{terminating ? "Terminating…" : "Yes, Terminate Session"}</span>
+                <span>💾</span>
+                <span>{terminating ? "Saving…" : "Save & Exit Class"}</span>
               </button>
             </div>
           </div>
@@ -3364,16 +3353,18 @@ export default function ExamTake() {
           )}
           <span className="text-sm text-slate-300 hidden sm:inline">{answeredCount} answered</span>
 
-          {/* Student voluntary terminate button */}
-          <button
-            type="button"
-            onClick={() => setShowTerminateConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-500/60 text-rose-200 transition shadow-xs cursor-pointer active:scale-98"
-            title="Terminate without submitting. Attempt will be marked as Incomplete, allowing you to re-take or resume later."
-          >
-            <span>🚪</span>
-            <span>Terminate {session?.isClass ? "Class" : "Exam"}</span>
-          </button>
+          {/* Voluntary Pause & Exit button ONLY for Class sessions */}
+          {session?.isClass && (
+            <button
+              type="button"
+              onClick={() => setShowTerminateConfirm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 transition shadow-xs cursor-pointer active:scale-98"
+              title="Pause without submitting. Your progress is saved and you can resume anytime."
+            >
+              <span>💾</span>
+              <span>Pause & Exit Class</span>
+            </button>
+          )}
         </div>
       </div>
 

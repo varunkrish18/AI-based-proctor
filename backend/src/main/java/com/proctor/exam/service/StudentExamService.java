@@ -247,10 +247,18 @@ public class StudentExamService {
             throw new ApiException(HttpStatus.FORBIDDEN, "You have already completed and submitted this exam. Re-taking is not allowed.");
         }
 
+        if (!isClass) {
+            boolean hasTerminatedOrExpired = existingAttempts.stream()
+                    .anyMatch(a -> "TERMINATED".equalsIgnoreCase(a.getStatus()) || "EXPIRED".equalsIgnoreCase(a.getStatus()));
+            if (hasTerminatedOrExpired) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "This exam was terminated or timed out. Re-taking is not allowed.");
+            }
+        }
+
         // Resume an in-progress or incomplete attempt if one exists, instead of silently starting a new one.
         Optional<ExamAttempt> resumable = existingAttempts
                 .stream()
-                .filter(a -> "IN_PROGRESS".equalsIgnoreCase(a.getStatus()) || "INCOMPLETE".equalsIgnoreCase(a.getStatus()))
+                .filter(a -> "IN_PROGRESS".equalsIgnoreCase(a.getStatus()) || (isClass && "INCOMPLETE".equalsIgnoreCase(a.getStatus())))
                 .findFirst();
 
         ExamAttempt attempt;
@@ -258,6 +266,16 @@ public class StudentExamService {
 
         if (resumable.isPresent()) {
             attempt = resumable.get();
+            // If it's a formal exam and in progress, check if allocated duration has expired
+            if (!isClass && exam.getDurationMinutes() != null && exam.getDurationMinutes() > 0 && attempt.getStartTime() != null) {
+                long elapsedSeconds = Math.max(0, java.time.temporal.ChronoUnit.SECONDS.between(attempt.getStartTime(), trustedTimeService.now()));
+                if (elapsedSeconds >= (long) exam.getDurationMinutes() * 60) {
+                    attempt.setStatus("EXPIRED");
+                    attempt.setEndTime(trustedTimeService.now());
+                    attemptRepository.save(attempt);
+                    throw new ApiException(HttpStatus.FORBIDDEN, "The time allotted for this exam has expired.");
+                }
+            }
             if ("INCOMPLETE".equalsIgnoreCase(attempt.getStatus())) {
                 attempt.setStatus("IN_PROGRESS");
                 attempt = attemptRepository.save(attempt);
@@ -514,7 +532,15 @@ public class StudentExamService {
         if (!"IN_PROGRESS".equals(attempt.getStatus())) {
             return;
         }
-        attempt.setStatus("INCOMPLETE");
+        Exam exam = attempt.getExam();
+        boolean isClass = exam != null && Boolean.TRUE.equals(exam.getIsClass());
+        if (isClass) {
+            // For class sessions, saving as INCOMPLETE allows resuming later
+            attempt.setStatus("INCOMPLETE");
+        } else {
+            // For formal exams, termination is final and cannot be resumed or retaken
+            attempt.setStatus("TERMINATED");
+        }
         attempt.setEndTime(trustedTimeService.now());
         attemptRepository.save(attempt);
 

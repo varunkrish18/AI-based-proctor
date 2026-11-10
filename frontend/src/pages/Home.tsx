@@ -485,9 +485,13 @@ export default function Home() {
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                                 <span>✓</span> Completed
                               </span>
+                            ) : exam.studentAttemptStatus === "TERMINATED" ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
+                                <span>🛑</span> Terminated
+                              </span>
                             ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
-                                <span>⚠️</span> Incomplete
+                                <span>💾</span> Paused
                               </span>
                             ) : null}
                             {exam.openToAll ? (
@@ -539,9 +543,13 @@ export default function Home() {
                             <span className="text-emerald-700 font-semibold flex items-center gap-1">
                               <span>✓</span> Submitted &amp; Locked
                             </span>
+                          ) : exam.studentAttemptStatus === "TERMINATED" ? (
+                            <span className="text-rose-700 font-medium flex items-center gap-1">
+                              <span>🛑</span> Terminated (No retake permitted)
+                            </span>
                           ) : exam.studentAttemptStatus === "INCOMPLETE" ? (
                             <span className="text-amber-700 font-medium flex items-center gap-1">
-                              <span>⚠️</span> Terminated (Resume available)
+                              <span>💾</span> Paused (Resume available)
                             </span>
                           ) : isOpen ? (
                             <span className="text-emerald-600 font-medium">Ready to take</span>
@@ -560,6 +568,15 @@ export default function Home() {
                           >
                             <span>✓</span>
                             <span>Completed</span>
+                          </button>
+                        ) : exam.studentAttemptStatus === "TERMINATED" ? (
+                          <button
+                            disabled
+                            className="bg-rose-50 text-rose-400 font-semibold text-xs px-3.5 py-1.5 rounded-lg border border-rose-200 cursor-not-allowed flex items-center gap-1"
+                            title="This examination was terminated or timed out. Re-taking is not allowed."
+                          >
+                            <span>🛑</span>
+                            <span>Terminated</span>
                           </button>
                         ) : isOpen ? (
                           <Link
