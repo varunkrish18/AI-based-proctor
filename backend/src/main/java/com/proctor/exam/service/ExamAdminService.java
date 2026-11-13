@@ -32,6 +32,8 @@ public class ExamAdminService {
     private final ProfessorRepository professorRepository;
     private final StudentRepository studentRepository;
     private final ExamAnswerRepository answerRepository;
+    private final ProctoringEventRepository proctoringEventRepository;
+    private final ProctoringSessionRepository proctoringSessionRepository;
 
     public ExamAdminService(ExamRepository examRepository,
                             ExamQuestionRepository questionRepository,
@@ -44,7 +46,9 @@ public class ExamAdminService {
                             ExamAttemptRepository examAttemptRepository,
                             ProfessorRepository professorRepository,
                             StudentRepository studentRepository,
-                            ExamAnswerRepository answerRepository) {
+                            ExamAnswerRepository answerRepository,
+                            ProctoringEventRepository proctoringEventRepository,
+                            ProctoringSessionRepository proctoringSessionRepository) {
         this.examRepository = examRepository;
         this.questionRepository = questionRepository;
         this.assignmentRepository = assignmentRepository;
@@ -57,6 +61,8 @@ public class ExamAdminService {
         this.professorRepository = professorRepository;
         this.studentRepository = studentRepository;
         this.answerRepository = answerRepository;
+        this.proctoringEventRepository = proctoringEventRepository;
+        this.proctoringSessionRepository = proctoringSessionRepository;
     }
 
     @Transactional
@@ -1735,8 +1741,18 @@ public class ExamAdminService {
                         .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(ex.getId(), email);
 
                 int completed = 0;
+                Long attemptId = null;
+                String attemptStatus = null;
+                int warningStrikes = 0;
+                boolean isTerminated = false;
                 if (!studentAttempts.isEmpty()) {
                     ExamAttempt bestAttempt = studentAttempts.get(0);
+                    attemptId = bestAttempt.getId();
+                    attemptStatus = bestAttempt.getStatus();
+                    warningStrikes = (int) proctoringEventRepository.countByAttemptIdAndEventType(bestAttempt.getId(), "WARNING_STRIKE");
+                    int maxAllowed = Boolean.TRUE.equals(ex.getIsClass()) ? 10 : 3;
+                    isTerminated = "TERMINATED".equalsIgnoreCase(attemptStatus) || warningStrikes >= maxAllowed;
+
                     List<ExamAnswer> answers = answerRepository.findByAttemptId(bestAttempt.getId());
                     for (ExamAnswer ans : answers) {
                         if (ans.getQuestion() != null && coordQidsForThisExam.contains(ans.getQuestion().getId())) {
@@ -1752,31 +1768,29 @@ public class ExamAdminService {
                 completed = Math.min(completed, totalCoordinatorQuestions);
                 int incomplete = Math.max(0, totalCoordinatorQuestions - completed);
 
+                CoordinatorStudentReportItem newItem = new CoordinatorStudentReportItem(
+                        s != null ? s.getId() : null,
+                        regNo,
+                        sName,
+                        studentProfName,
+                        dept,
+                        totalCoordinatorQuestions,
+                        completed,
+                        incomplete,
+                        email,
+                        attemptId,
+                        attemptStatus,
+                        warningStrikes,
+                        isTerminated
+                );
+
                 if (reportMap.containsKey(email)) {
                     CoordinatorStudentReportItem existing = reportMap.get(email);
-                    if (completed > existing.completedQuestions()) {
-                        reportMap.put(email, new CoordinatorStudentReportItem(
-                                s != null ? s.getId() : existing.studentId(),
-                                regNo,
-                                sName,
-                                studentProfName,
-                                dept,
-                                totalCoordinatorQuestions,
-                                completed,
-                                incomplete
-                        ));
+                    if (completed >= existing.completedQuestions()) {
+                        reportMap.put(email, newItem);
                     }
                 } else {
-                    reportMap.put(email, new CoordinatorStudentReportItem(
-                            s != null ? s.getId() : null,
-                            regNo,
-                            sName,
-                            studentProfName,
-                            dept,
-                            totalCoordinatorQuestions,
-                            completed,
-                            incomplete
-                    ));
+                    reportMap.put(email, newItem);
                 }
             }
         }
@@ -1877,6 +1891,97 @@ public class ExamAdminService {
 
         List<ProfessorStudentReportItem> items = new ArrayList<>(reportMap.values());
         return new ProfessorStudentReportResponse(exam.getId(), exam.getName(), totalQuestions, coordCount, profCount, items);
+    }
+
+    /**
+     * Re-grant exam/class access to a single student (e.g. after session termination or reaching 10 strikes).
+     * Resets active warning strikes to 0 (archives them), clears completion flags, resets attempt status to allow resumption,
+     * and logs the action for audit integrity.
+     */
+    @Transactional
+    public Map<String, Object> regrantStudentAccess(Long examId, String studentEmail, String staffEmail, String reason) {
+        Exam exam = getById(examId);
+        verifyExamAccess(exam, staffEmail);
+
+        final String inputIdentifier = studentEmail != null ? studentEmail.trim().toLowerCase() : "";
+        List<ExamAttempt> attempts = examAttemptRepository
+                .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(examId, inputIdentifier);
+
+        String targetEmail = inputIdentifier;
+        if (attempts.isEmpty()) {
+            Student s = studentRepository.findByEmailIgnoreCase(inputIdentifier)
+                    .or(() -> studentRepository.findByRegisterNumberIgnoreCase(inputIdentifier))
+                    .orElse(null);
+            if (s != null && s.getEmail() != null) {
+                targetEmail = s.getEmail().trim().toLowerCase();
+                attempts = examAttemptRepository
+                        .findByExamIdAndStudentEmailIgnoreCaseOrderByAttemptNumberDesc(examId, targetEmail);
+            }
+        }
+
+        if (attempts.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "No exam attempts found for student: " + studentEmail);
+        }
+
+        ExamAttempt latestAttempt = attempts.get(0);
+
+        // Reinstate attempt: status to INCOMPLETE allows seamless resumption
+        latestAttempt.setStatus("INCOMPLETE");
+        latestAttempt.setEndTime(null);
+        latestAttempt.setFlaggedForReview(false);
+        latestAttempt.setStartTime(Instant.now());
+        examAttemptRepository.save(latestAttempt);
+
+        // Pardon past warning strikes so student starts with a clean slate
+        List<ProctoringEvent> strikes = proctoringEventRepository.findByAttemptIdAndEventType(latestAttempt.getId(), "WARNING_STRIKE");
+        int strikesPardoned = strikes.size();
+        for (ProctoringEvent strike : strikes) {
+            strike.setEventType("WARNING_STRIKE_PARDONED");
+        }
+        if (!strikes.isEmpty()) {
+            proctoringEventRepository.saveAll(strikes);
+        }
+
+        // Reopen proctoring session if present
+        proctoringSessionRepository.findByAttemptId(latestAttempt.getId()).ifPresent(ps -> {
+            ps.setEndedAt(null);
+            ps.setConnectionStatus("ONLINE");
+            proctoringSessionRepository.save(ps);
+
+            String auditReason = (reason != null && !reason.isBlank()) ? reason.trim() : "Authorized by Course Coordinator";
+            ProctoringEvent auditEvent = ProctoringEvent.builder()
+                    .session(ps)
+                    .attempt(latestAttempt)
+                    .eventType("COORDINATOR_REACCESS_GRANTED")
+                    .severity("INFO")
+                    .confidence(BigDecimal.ONE)
+                    .occurredAt(Instant.now())
+                    .metadata("{\"grantedBy\":\"" + staffEmail + "\",\"strikesPardoned\":" + strikesPardoned + ",\"reason\":\"" + auditReason.replace("\"", "\\\"") + "\"}")
+                    .build();
+            proctoringEventRepository.save(auditEvent);
+        });
+
+        auditLogService.logAdmin(staffEmail, "REGRANT_STUDENT_ACCESS",
+                "Re-granted access to student " + targetEmail + " for exam #" + examId + " (Attempt #" + latestAttempt.getId() + ", Pardoned " + strikesPardoned + " strikes). Reason: " + reason);
+
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("success", true);
+        resp.put("message", "Access successfully re-granted. Previous strikes have been pardoned, and the student may now resume their session.");
+        resp.put("attemptId", latestAttempt.getId());
+        resp.put("studentEmail", targetEmail);
+        resp.put("status", latestAttempt.getStatus());
+        resp.put("strikesPardoned", strikesPardoned);
+        return resp;
+    }
+
+    /**
+     * Re-grant exam/class access for a specific attempt by ID.
+     */
+    @Transactional
+    public Map<String, Object> regrantAttemptAccess(Long attemptId, String staffEmail, String reason) {
+        ExamAttempt attempt = examAttemptRepository.findById(attemptId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Attempt not found: " + attemptId));
+        return regrantStudentAccess(attempt.getExam().getId(), attempt.getStudentEmail(), staffEmail, reason);
     }
 
     private static String truncate(String text, int maxLen) {

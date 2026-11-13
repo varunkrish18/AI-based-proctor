@@ -87,6 +87,37 @@ export default function AdminReportView() {
     }
   }
 
+  const [regranting, setRegranting] = useState<boolean>(false);
+  const [regrantSuccess, setRegrantSuccess] = useState<string | null>(null);
+
+  async function handleRegrantAccess() {
+    if (!attemptId || !report) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to re-grant exam access to ${report.studentEmail}?\n\nThis will pardon their strikes (reset to 0), unlock their session, and allow them to resume.`
+      )
+    ) {
+      return;
+    }
+    setRegranting(true);
+    setRegrantSuccess(null);
+    try {
+      await api.post(
+        `/api/admin/attempts/${attemptId}/regrant-access`,
+        { reason: "Authorized by Course Coordinator / Examiner" },
+        "admin"
+      );
+      setRegrantSuccess("Access re-granted! Previous strikes pardoned and candidate can now resume.");
+      const rep = await api.get<AdminAttemptReport>(`/api/admin/attempts/${attemptId}/report`, "admin");
+      setReport(rep);
+      setTimeout(() => setRegrantSuccess(null), 5000);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to re-grant access");
+    } finally {
+      setRegranting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-12 text-center text-slate-500">
@@ -137,8 +168,17 @@ export default function AdminReportView() {
           </p>
         </div>
 
-        {/* Export Toolbar */}
-        <div className="flex items-center gap-2">
+        {/* Export Toolbar & Actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleRegrantAccess}
+            disabled={regranting}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md shadow-xs transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5 mr-2"
+            title="Re-grant exam access to this student (pardon strikes & allow resume)"
+          >
+            <span>🔓</span>
+            <span>{regranting ? "Unlocking…" : "Re-grant Access"}</span>
+          </button>
           <span className="text-xs text-slate-400 mr-1 font-medium">Export:</span>
           <button
             onClick={() => handleExport("pdf")}
@@ -163,6 +203,18 @@ export default function AdminReportView() {
           </button>
         </div>
       </div>
+
+      {regrantSuccess && (
+        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-3 rounded-xl flex items-center justify-between text-sm shadow-xs">
+          <div className="flex items-center gap-2">
+            <span>🎉</span>
+            <span className="font-semibold">{regrantSuccess}</span>
+          </div>
+          <button onClick={() => setRegrantSuccess(null)} className="text-emerald-700 hover:text-emerald-950 font-bold">
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Hero Overview Card */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-6">

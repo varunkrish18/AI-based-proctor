@@ -272,4 +272,18 @@ public class AdminExamController {
         return examAdminService.getProfessorStudentReport(
                 examId, auth != null ? auth.getName() : "admin");
     }
+
+    /**
+     * Re-grant exam/class access to a single student (e.g. after session termination or reaching strike limits).
+     */
+    @PostMapping("/{examId}/students/{studentEmail}/regrant-access")
+    public Map<String, Object> regrantStudentAccess(
+            @PathVariable Long examId,
+            @PathVariable String studentEmail,
+            @RequestBody(required = false) Map<String, String> body,
+            Authentication auth) {
+        String reason = body != null ? body.get("reason") : null;
+        return examAdminService.regrantStudentAccess(
+                examId, studentEmail, auth != null ? auth.getName() : "admin", reason);
+    }
 }

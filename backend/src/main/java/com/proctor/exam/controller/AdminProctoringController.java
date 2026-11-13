@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -313,6 +314,20 @@ public class AdminProctoringController {
                 "Evaluated attempt " + attemptId + ": Score=" + request.score() + ", Status=" + attempt.getStatus());
 
         return reportExportService.buildReport(attemptId);
+    }
+
+    /**
+     * Re-grant access for a specific attempt (e.g. after session termination or 10 strikes).
+     */
+    @PostMapping("/attempts/{attemptId}/regrant-access")
+    public Map<String, Object> regrantAttemptAccess(
+            @PathVariable Long attemptId,
+            @RequestBody(required = false) Map<String, String> body,
+            Authentication auth) {
+        verifyAttemptAccess(attemptId, auth);
+        String reason = body != null ? body.get("reason") : null;
+        return examAdminService.regrantAttemptAccess(
+                attemptId, auth != null ? auth.getName() : "admin", reason);
     }
 }
 

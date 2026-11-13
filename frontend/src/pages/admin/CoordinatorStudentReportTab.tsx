@@ -11,6 +11,11 @@ export interface CoordinatorStudentReportItem {
   totalQuestions: number;
   completedQuestions: number;
   incompleteQuestions: number;
+  studentEmail?: string;
+  attemptId?: number;
+  attemptStatus?: string;
+  warningStrikes?: number;
+  isTerminated?: boolean;
 }
 
 export interface CoordinatorStudentReportResponse {
@@ -38,6 +43,36 @@ export default function CoordinatorStudentReportTab({ exam }: Props) {
   const [professorFilter, setProfessorFilter] = useState("ALL");
   const [sortField, setSortField] = useState<SortField>("completedQuestions");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  // Re-grant Access states
+  const [regrantingEmail, setRegrantingEmail] = useState<string | null>(null);
+  const [regrantSuccess, setRegrantSuccess] = useState<string | null>(null);
+  const [regrantModalStudent, setRegrantModalStudent] = useState<CoordinatorStudentReportItem | null>(null);
+  const [regrantReason, setRegrantReason] = useState("");
+
+  async function confirmRegrantAccess() {
+    if (!regrantModalStudent) return;
+    const emailOrReg = regrantModalStudent.studentEmail || regrantModalStudent.registerNumber;
+    setRegrantingEmail(emailOrReg);
+    try {
+      await api.post(
+        `/api/admin/exams/${exam.id}/students/${encodeURIComponent(emailOrReg)}/regrant-access`,
+        { reason: regrantReason || "Authorized by Course Coordinator" },
+        "admin"
+      );
+      setRegrantSuccess(
+        `✅ Re-access successfully granted to ${regrantModalStudent.name} (${regrantModalStudent.registerNumber}). Strikes reset to 0, session unlocked.`
+      );
+      setRegrantModalStudent(null);
+      setRegrantReason("");
+      await fetchReport();
+      setTimeout(() => setRegrantSuccess(null), 6000);
+    } catch (e: any) {
+      alert(e?.message || "Failed to grant re-access to student.");
+    } finally {
+      setRegrantingEmail(null);
+    }
+  }
 
   useEffect(() => {
     fetchReport();
@@ -592,7 +627,7 @@ export default function CoordinatorStudentReportTab({ exam }: Props) {
                 {/* 7. In complete */}
                 <th
                   onClick={() => toggleSort("incompleteQuestions")}
-                  className="py-3.5 px-4 text-center cursor-pointer hover:bg-slate-800 transition text-amber-300"
+                  className="py-3.5 px-4 border-r border-slate-700 text-center cursor-pointer hover:bg-slate-800 transition text-amber-300"
                   title="Click to sort by Incomplete questions (Asc / Desc)"
                 >
                   <div className="flex items-center justify-center gap-1">
@@ -601,6 +636,11 @@ export default function CoordinatorStudentReportTab({ exam }: Props) {
                       <span>{sortDirection === "asc" ? "▲" : "▼"}</span>
                     )}
                   </div>
+                </th>
+
+                {/* 8. Status & Re-Access Action */}
+                <th className="py-3.5 px-4 text-center">
+                  Status &amp; Actions
                 </th>
               </tr>
             </thead>
@@ -647,7 +687,7 @@ export default function CoordinatorStudentReportTab({ exam }: Props) {
                     </td>
 
                     {/* 7. In complete */}
-                    <td className="py-3 px-4 text-center bg-amber-50/30">
+                    <td className="py-3 px-4 text-center border-r border-slate-200 bg-amber-50/30">
                       <span
                         className={`inline-block px-2.5 py-1 rounded-full font-mono font-black text-xs ${
                           s.incompleteQuestions === 0
@@ -658,11 +698,59 @@ export default function CoordinatorStudentReportTab({ exam }: Props) {
                         {s.incompleteQuestions}
                       </span>
                     </td>
+
+                    {/* 8. Status & Re-Access */}
+                    <td className="py-3 px-4 text-center whitespace-nowrap">
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        {s.isTerminated || (s.warningStrikes ?? 0) >= (exam.isClass ? 10 : 3) || s.attemptStatus === "TERMINATED" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                            <span>⛔</span> Terminated ({s.warningStrikes ?? 10} Strikes)
+                          </span>
+                        ) : s.attemptStatus === "SUBMITTED" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <span>✅</span> Submitted
+                          </span>
+                        ) : s.attemptStatus === "INCOMPLETE" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-amber-100 text-amber-900 border border-amber-300">
+                            <span>🟡</span> Re-access Granted
+                          </span>
+                        ) : s.attemptStatus === "IN_PROGRESS" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] bg-blue-100 text-blue-800 border border-blue-300">
+                            <span>🟢</span> In Progress
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )}
+
+                        {(s.attemptId || s.isTerminated || s.attemptStatus) && (
+                          <button
+                            onClick={() => {
+                              setRegrantModalStudent(s);
+                              setRegrantReason(
+                                s.isTerminated || (s.warningStrikes ?? 0) >= 10
+                                  ? "Pardoned strike termination: Authorized by Course Coordinator"
+                                  : "Authorized by Course Coordinator"
+                              );
+                            }}
+                            disabled={regrantingEmail === (s.studentEmail || s.registerNumber)}
+                            className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-[11px] px-2.5 py-1 rounded-lg transition-colors shadow-2xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            title="Re-grant access for this student: resets strikes to 0 and unlocks session"
+                          >
+                            <span>🔓</span>
+                            <span>
+                              {regrantingEmail === (s.studentEmail || s.registerNumber)
+                                ? "Unlocking…"
+                                : "Re-grant Access"}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <div className="text-3xl mb-2">📋</div>
                     <p className="font-semibold text-slate-600">No student records found</p>
                     <p className="text-xs text-slate-400 mt-0.5">
@@ -677,6 +765,99 @@ export default function CoordinatorStudentReportTab({ exam }: Props) {
           </table>
         </div>
       </div>
+
+      {/* Success Notification Banner */}
+      {regrantSuccess && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-900 border border-emerald-700 text-emerald-100 px-5 py-3.5 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-up">
+          <span className="text-xl">🎉</span>
+          <span className="text-sm font-semibold">{regrantSuccess}</span>
+          <button
+            onClick={() => setRegrantSuccess(null)}
+            className="ml-2 text-emerald-300 hover:text-white font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {regrantModalStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden animate-scale-in">
+            <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 px-6 py-4 text-white">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🔓</span>
+                <div>
+                  <h3 className="font-bold text-base">Re-grant Student Access</h3>
+                  <p className="text-xs text-indigo-300">Course Coordinator Override</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3.5 text-xs text-indigo-950 space-y-1">
+                <p>
+                  <strong>Candidate:</strong> {regrantModalStudent.name}
+                </p>
+                <p>
+                  <strong>Register Number:</strong> {regrantModalStudent.registerNumber}
+                </p>
+                <p>
+                  <strong>Assigned Professor:</strong> {regrantModalStudent.profName}
+                </p>
+                {regrantModalStudent.warningStrikes !== undefined && (
+                  <p>
+                    <strong>Current Strike Count:</strong>{" "}
+                    <span className="font-bold text-rose-700">{regrantModalStudent.warningStrikes} Strikes</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="text-xs text-slate-600 leading-relaxed bg-amber-50 border border-amber-200 rounded-xl p-3">
+                ⚠️ Re-granting access will:
+                <ul className="list-disc list-inside mt-1 space-y-0.5 text-slate-700">
+                  <li>Pardon all previous strikes (active strikes reset to <strong>0</strong>).</li>
+                  <li>Unlock their session so they can immediately log in and resume where they left off.</li>
+                  <li>Keep their completed questions and code submissions intact.</li>
+                </ul>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reason for Authorization (Audit Log):
+                </label>
+                <input
+                  type="text"
+                  value={regrantReason}
+                  onChange={(e) => setRegrantReason(e.target.value)}
+                  placeholder="e.g. Webcam occlusion false alarm, approved by Coordinator"
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRegrantModalStudent(null)}
+                  disabled={regrantingEmail !== null}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmRegrantAccess}
+                  disabled={regrantingEmail !== null}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-xl transition shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <span>🔓</span>
+                  <span>{regrantingEmail !== null ? "Unlocking…" : "Confirm Re-grant Access"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
