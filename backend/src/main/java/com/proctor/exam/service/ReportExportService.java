@@ -349,7 +349,8 @@ public class ReportExportService {
         }
 
         return new AdminAttemptReportResponse(
-                a.getId(), exam.getId(), a.getStudentEmail(), studentName, a.getAttemptNumber(),
+                a.getId(), exam.getId(), a.getStudentEmail(), studentName,
+                a.getAttemptNumber() != null ? a.getAttemptNumber() : 1,
                 exam.getName(), exam.getSubject(), exam.getDurationMinutes(),
                 a.getStatus(), a.getStartTime(), a.getEndTime(), a.getScore(),
                 Boolean.TRUE.equals(a.getFlaggedForReview()), ctx.riskScore,
