@@ -131,7 +131,7 @@ public class ExamAdminService {
                 .microphoneRequired(req.microphoneRequired() == null || req.microphoneRequired())
                 .screenRequired(req.screenRequired() == null || req.screenRequired())
                 .locationRequired(Boolean.TRUE.equals(req.locationRequired()))
-                .proctoringConfig(buildProctoringConfigWithAudio(req.audioInputLevel()))
+                .proctoringConfig(buildProctoringConfigWithAudio(req.audioInputLevel(), req.maxWarnings() != null ? req.maxWarnings() : (isClassMode ? 10 : 3), null))
                 .status("DRAFT")
                 .createdBy(admin.getId())
                 .assignedProfessorId(profId)
@@ -207,8 +207,8 @@ public class ExamAdminService {
         if (req.locationRequired() != null) {
             exam.setLocationRequired(req.locationRequired());
         }
-        if (req.audioInputLevel() != null) {
-            exam.setProctoringConfig(buildProctoringConfigWithAudio(req.audioInputLevel()));
+        if (req.audioInputLevel() != null || req.maxWarnings() != null) {
+            exam.setProctoringConfig(buildProctoringConfigWithAudio(req.audioInputLevel(), req.maxWarnings(), exam.getProctoringConfig()));
         }
         if (req.openToAll() != null) {
             exam.setOpenToAll(req.openToAll());
@@ -1235,13 +1235,19 @@ public class ExamAdminService {
         deleteQuestion(examId, questionId, "admin");
     }
 
-    private String buildProctoringConfigWithAudio(Integer audioInputLevel) {
-        int audioLevel = audioInputLevel != null ? Math.max(1, Math.min(100, audioInputLevel)) : 20;
-        String pConfig = Exam.DEFAULT_PROCTORING_CONFIG;
+    private String buildProctoringConfigWithAudio(Integer audioInputLevel, Integer maxWarnings, String existingConfig) {
+        String pConfig = (existingConfig != null && !existingConfig.isBlank()) ? existingConfig : Exam.DEFAULT_PROCTORING_CONFIG;
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             com.fasterxml.jackson.databind.node.ObjectNode node = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(pConfig);
-            node.put("audioInputLevel", audioLevel);
+            if (audioInputLevel != null) {
+                int audioLevel = Math.max(1, Math.min(100, audioInputLevel));
+                node.put("audioInputLevel", audioLevel);
+            }
+            if (maxWarnings != null) {
+                int warningsLimit = Math.max(1, Math.min(100, maxWarnings));
+                node.put("maxWarnings", warningsLimit);
+            }
             return mapper.writeValueAsString(node);
         } catch (Exception ignored) {
             return pConfig;
@@ -1545,8 +1551,7 @@ public class ExamAdminService {
         checkClassSettingModificationAllowed(exam, adminEmail);
 
         if (addMinutes != null && addMinutes != 0) {
-            int currentDur = exam.getDurationMinutes() != null ? exam.getDurationMinutes() : 60;
-            int newDur = Math.max(1, currentDur + addMinutes);
+            int newDur = Math.max(1, exam.getDurationMinutes() + addMinutes);
             exam.setDurationMinutes(newDur);
             if (exam.getEndAt() != null) {
                 exam.setEndAt(exam.getEndAt().plus(addMinutes, java.time.temporal.ChronoUnit.MINUTES));

@@ -397,7 +397,7 @@ public class ReportExportService {
             examTable.setWidthPercentage(100);
             addPdfRow(examTable, "Examination Title", exam.getName());
             addPdfRow(examTable, "Subject / Category", exam.getSubject() != null ? exam.getSubject() : "General");
-            addPdfRow(examTable, "Duration", exam.getDurationMinutes() != null ? exam.getDurationMinutes() + " minutes" : "♾️ Untimed");
+            addPdfRow(examTable, "Duration", exam.getDurationMinutes() + " minutes");
             addPdfRow(examTable, "Configured Questions", String.valueOf(exam.getNumQuestions()));
             addPdfRow(examTable, "Total Candidate Attempts", String.valueOf(attempts.size()));
 

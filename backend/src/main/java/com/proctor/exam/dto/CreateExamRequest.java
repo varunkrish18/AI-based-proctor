@@ -23,6 +23,7 @@ public record CreateExamRequest(
         Boolean screenRequired,
         Boolean locationRequired,
         Integer audioInputLevel,
+        @Min(1) Integer maxWarnings,
         Long assignedProfessorId,
         String assignedProfessorEmail,
         String assignedProfessorName,

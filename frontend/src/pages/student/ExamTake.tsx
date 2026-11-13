@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { useEventLogger } from "../../hooks/useEventLogger";
+import { useFaceDetector } from "../../hooks/useFaceDetector";
+import { useSpeechDetector, type SpeechDetectionEvent } from "../../hooks/useSpeechDetector";
+import { runProctoringChecks } from "../../utils/proctoringGuard";
+import { registerStream, stopAllStreams } from "../../utils/MediaRegistry";
 import { getTrustedEpochMs, syncTrustedTime } from "../../utils/networkTime";
-import { AudioSpeechClassifier, type SpeechAnalysisMetrics } from "../../utils/audioSpeechClassifier";
 import CodeEditor from "../../components/CodeEditor";
 import type {
   StartExamResponse,
@@ -128,6 +131,7 @@ export default function ExamTake() {
 
   const webcamStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const [activeMediaStream, setActiveMediaStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -147,22 +151,27 @@ export default function ExamTake() {
   const cameraCoveredSnappedRef = useRef<boolean>(false);
   const faceMissingStartRef = useRef<number | null>(null);
   const faceMissingSnappedRef = useRef<boolean>(false);
+  const multipleFacesStartRef = useRef<number | null>(null);
+  const multipleFacesSnappedRef = useRef<boolean>(false);
+  const blurStartRef = useRef<number | null>(null);
   const lastStrikeTimeRef = useRef<number>(0);
   const lastPersonBehindPhotoTime = useRef<number>(0);
   const lastObjectPhotoTime = useRef<number>(0);
   const lastVoiceStrikeTimeRef = useRef<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const speechRecognitionRef = useRef<any>(null);
-  const audioClassifierRef = useRef<AudioSpeechClassifier | null>(null);
-  const lastMouthMovementTimeRef = useRef<number>(0);
-  const prevMouthDataRef = useRef<Uint8Array | null>(null);
   const voiceEscalationRef = useRef<{ stage: number; lastTime: number }>({ stage: 0, lastTime: 0 });
 
   const consecutiveFrameErrors = useRef(0);
-  const nextCaptureDelayRef = useRef(1000);
+  const nextCaptureDelayRef = useRef(2500);
 
   // Event logging hook (Phase 3)
   const { logEvent, startDurationEvent, flushNow } = useEventLogger(session?.attemptId);
+
+  // ViBe Client-Side Edge CV Face, Pose & Blur Detector (Web Worker)
+  const edgeCv = useFaceDetector(
+    videoRef,
+    Boolean(session && screenGatePassed && !submittedRef.current && session.webcamRequired !== false)
+  );
 
   const connectionTrackerRef = useRef<(() => number) | null>(null);
 
@@ -272,10 +281,12 @@ export default function ExamTake() {
 
   // Clean up streams on unmount
   const stopAllMediaStreams = useCallback(() => {
+    stopAllStreams();
     if (webcamStreamRef.current) {
       webcamStreamRef.current.getTracks().forEach((t) => t.stop());
       webcamStreamRef.current = null;
     }
+    setActiveMediaStream(null);
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
@@ -289,20 +300,9 @@ export default function ExamTake() {
     if (bgVideoRef.current) {
       bgVideoRef.current.srcObject = null;
     }
-    if (audioClassifierRef.current) {
-      audioClassifierRef.current.stop();
-      audioClassifierRef.current = null;
-    }
     if (audioContextRef.current && audioContextRef.current.state !== "closed") {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
-    }
-    if (speechRecognitionRef.current) {
-      try {
-        speechRecognitionRef.current.onend = null;
-        speechRecognitionRef.current.stop();
-      } catch {}
-      speechRecognitionRef.current = null;
     }
   }, []);
 
@@ -615,7 +615,20 @@ export default function ExamTake() {
           }
           throw new Error(`Media access error: ${mediaErr.message || "Failed to initialize camera or microphone"}. Permissions must be allowed.`);
         }
+        if (webcamRequired) {
+          const violations = await runProctoringChecks(userMedia);
+          if (violations.length > 0) {
+            userMedia.getTracks().forEach((t) => t.stop());
+            logEvent("VIRTUAL_CAMERA_BLOCKED", undefined, {
+              reason: violations[0].reason,
+              type: violations[0].type,
+            });
+            throw new Error(violations[0].reason);
+          }
+        }
+        registerStream("ExamTake-userMedia", userMedia);
         webcamStreamRef.current = userMedia;
+        setActiveMediaStream(userMedia);
 
         // Unlock and pre-initialize AudioContext within direct user gesture
         if (micRequired) {
@@ -836,10 +849,24 @@ export default function ExamTake() {
           : false,
       });
 
+      if (webcamRequired) {
+        const violations = await runProctoringChecks(stream);
+        if (violations.length > 0) {
+          stream.getTracks().forEach((t) => t.stop());
+          logEvent("VIRTUAL_CAMERA_BLOCKED", undefined, {
+            reason: violations[0].reason,
+            type: violations[0].type,
+          });
+          throw new Error(violations[0].reason);
+        }
+      }
+
       if (webcamStreamRef.current) {
         webcamStreamRef.current.getTracks().forEach((t) => t.stop());
       }
+      registerStream("ExamTake-userMedia", stream);
       webcamStreamRef.current = stream;
+      setActiveMediaStream(stream);
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -913,56 +940,249 @@ export default function ExamTake() {
     }
   }
 
-  // PROCESS 1: Real-time Lip Movement (Mouth Motion) Tracker
-  // Samples lower-face mouth ROI to determine if candidate is actively moving lips/speaking
+  // Helper to capture a clean 320x240 JPEG snapshot from the live video element
+  const takeCleanSnapshot = useCallback((): string | null => {
+    const v = videoRef.current;
+    if (!v || v.readyState < 2) return null;
+    try {
+      const snapCanvas = document.createElement("canvas");
+      snapCanvas.width = 320;
+      snapCanvas.height = 240;
+      const sCtx = snapCanvas.getContext("2d");
+      if (!sCtx) return null;
+      sCtx.drawImage(v, 0, 0, 320, 240);
+      return snapCanvas.toDataURL("image/jpeg", 0.7);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // ViBe Client-Side Edge CV Enforcement Loop (3.5 FPS via Web Worker)
   useEffect(() => {
-    if (!session || !screenGatePassed || submittedRef.current) return;
-    const mouthCanvas = document.createElement("canvas");
-    mouthCanvas.width = 32;
-    mouthCanvas.height = 24;
-    const ctx = mouthCanvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
+    if (
+      !session ||
+      !screenGatePassed ||
+      submittedRef.current ||
+      session.webcamRequired === false ||
+      !edgeCv.ready ||
+      edgeCv.faceCount === null
+    ) {
+      return;
+    }
 
-    const interval = setInterval(() => {
-      const video = videoRef.current;
-      if (!video || video.readyState < 2) return;
+    const now = Date.now();
+    const faceCount = edgeCv.faceCount ?? 0;
+    const faceDetected = edgeCv.faceDetected;
+    const isCameraCovered = edgeCv.cameraCovered;
+    const gazeDir = edgeCv.gazeDirection || "CENTER";
 
-      try {
-        const vw = video.videoWidth || 320;
-        const vh = video.videoHeight || 240;
-        // Lower center portion of video portrait: mouth zone (x: 35%-65%, y: 58%-82%)
-        const mx = Math.floor(vw * 0.35);
-        const my = Math.floor(vh * 0.58);
-        const mw = Math.floor(vw * 0.30);
-        const mh = Math.floor(vh * 0.24);
+    // Synchronize real-time Edge CV results into aiAnalysis state for instant UI feedback
+    setAiAnalysis((prev) => ({
+      faceDetected,
+      faceCount,
+      gazeDirection: gazeDir,
+      headPose: prev?.headPose ?? {
+        yaw: gazeDir === "LEFT" ? -25 : gazeDir === "RIGHT" ? 25 : 0,
+        pitch: gazeDir === "UP" ? 20 : gazeDir === "DOWN" ? -20 : 0,
+        roll: 0,
+      },
+      cameraCovered: isCameraCovered,
+      personBehindDetected: faceCount > 1,
+      objectDetected: edgeCv.objectDetected,
+      phoneDetected: edgeCv.phoneDetected,
+      detectedObjects: edgeCv.detectedObjects,
+      confidence: 0.95,
+      events: prev?.events ?? [],
+    }));
 
-        ctx.drawImage(video, mx, my, mw, mh, 0, 0, 32, 24);
-        const img = ctx.getImageData(0, 0, 32, 24).data;
-        const currentMouthData = new Uint8Array(32 * 24);
+    // Allow a 4-second initial grace period when entering the exam (ViBe pattern)
+    if (now - examStartTimeRef.current < 4000) {
+      return;
+    }
 
-        for (let i = 0; i < currentMouthData.length; i++) {
-          currentMouthData[i] = (img[i * 4] * 299 + img[i * 4 + 1] * 587 + img[i * 4 + 2] * 114) / 1000;
+    // 1. Camera Covered / Obstructed Detection
+    if (isCameraCovered) {
+      if (!cameraCoveredStartRef.current) {
+        cameraCoveredStartRef.current = now;
+      } else {
+        const elapsedMs = now - cameraCoveredStartRef.current;
+        if (elapsedMs >= 2500 && !cameraCoveredSnappedRef.current) {
+          cameraCoveredSnappedRef.current = true;
+          const photo = takeCleanSnapshot();
+          logEvent("CAMERA_COVERED", Math.round(elapsedMs / 1000), {
+            photo,
+            reason: "Webcam lens is covered or occluded (Edge CV)",
+          });
+          flushNow();
+          issueWarningStrike(
+            "Camera Covered / Occluded",
+            "Your webcam appears to be covered or blocked. Keep your camera clear and your face fully visible."
+          );
         }
-
-        if (prevMouthDataRef.current) {
-          let diffSum = 0;
-          for (let i = 0; i < currentMouthData.length; i++) {
-            diffSum += Math.abs(currentMouthData[i] - prevMouthDataRef.current[i]);
-          }
-          const avgDiff = diffSum / currentMouthData.length;
-          // Lip movement threshold (talking produces avgDiff >= 3.8)
-          if (avgDiff >= 3.8) {
-            lastMouthMovementTimeRef.current = Date.now();
-          }
-        }
-        prevMouthDataRef.current = currentMouthData;
-      } catch {
-        // ignore sampling errors
       }
-    }, 120);
+    } else {
+      cameraCoveredStartRef.current = null;
+      cameraCoveredSnappedRef.current = false;
+    }
 
-    return () => clearInterval(interval);
-  }, [session, screenGatePassed]);
+    // 2. Camera Blur Detection (ViBe Laplacian Variance Check)
+    if (edgeCv.isBlurry && !isCameraCovered) {
+      if (!blurStartRef.current) {
+        blurStartRef.current = now;
+      } else if (now - blurStartRef.current >= 4000) {
+        logEvent("CAMERA_BLURRY", Math.round((now - blurStartRef.current) / 1000), {
+          blurVariance: edgeCv.blurVariance,
+          reason: "Camera feed is excessively blurry",
+        });
+        blurStartRef.current = now; // reset timer so it doesn't spam every tick
+      }
+    } else {
+      blurStartRef.current = null;
+    }
+
+    // 3. Face Missing Detection (0 faces in frame)
+    if (!faceDetected && !isCameraCovered) {
+      if (!faceMissingStartRef.current) {
+        faceMissingStartRef.current = now;
+      } else {
+        const elapsedMs = now - faceMissingStartRef.current;
+        if (elapsedMs >= 2500 && !faceMissingSnappedRef.current) {
+          faceMissingSnappedRef.current = true;
+          const photo = takeCleanSnapshot();
+          logEvent("FACE_NOT_VISIBLE", Math.round(elapsedMs / 1000), {
+            photo,
+            durationSeconds: Math.round(elapsedMs / 1000),
+            reason: "Candidate face not detected or obstructed in webcam view for >= 2.5s (Edge CV)",
+          });
+          flushNow();
+          issueWarningStrike(
+            "Face Not Detected / Obstructed",
+            "Your face is obstructed or has left the camera view. Please keep your face clearly visible in the frame at all times."
+          );
+        }
+      }
+    } else {
+      faceMissingStartRef.current = null;
+      faceMissingSnappedRef.current = false;
+    }
+
+    // 4. Multiple Faces Detection (> 1 face in frame)
+    if (faceCount > 1) {
+      if (now - lastPersonBehindPhotoTime.current >= 6000) {
+        lastPersonBehindPhotoTime.current = now;
+        const photo = takeCleanSnapshot();
+        logEvent("PERSON_BEHIND_DETECTED", undefined, {
+          photo,
+          faceCount,
+          reason: `Multiple faces (${faceCount}) detected in camera frame (Edge CV)`,
+        });
+        flushNow();
+      }
+      if (!multipleFacesStartRef.current) {
+        multipleFacesStartRef.current = now;
+      } else {
+        const elapsedMs = now - multipleFacesStartRef.current;
+        if (elapsedMs >= 2500 && !multipleFacesSnappedRef.current) {
+          multipleFacesSnappedRef.current = true;
+          issueWarningStrike(
+            `Multiple People Detected (${faceCount} Faces)`,
+            "More than one person was detected in your camera frame. You must take the examination completely alone."
+          );
+        }
+      }
+    } else {
+      multipleFacesStartRef.current = null;
+      multipleFacesSnappedRef.current = false;
+    }
+
+    // 5. Head Pose / Looking Away Detection (ViBe Geometric Landmark Heuristic)
+    if (faceDetected && faceCount === 1 && edgeCv.isLookingAway) {
+      const dir = (gazeDir === "CENTER" ? "AWAY" : gazeDir) as
+        | "UP"
+        | "DOWN"
+        | "LEFT"
+        | "RIGHT"
+        | "AWAY";
+      if (!lookAwayStartRef.current) {
+        lookAwayStartRef.current = now;
+        gazeWarningLoggedRef.current = false;
+      } else {
+        const elapsedMs = now - lookAwayStartRef.current;
+
+        if (
+          elapsedMs >= 800 &&
+          !gazeWarningPopup &&
+          now - lastGazePopupDismissTime.current >= 2500
+        ) {
+          setGazeWarningPopup({ direction: dir, timestamp: now });
+          if (!gazeWarningLoggedRef.current) {
+            gazeWarningLoggedRef.current = true;
+            const eventType =
+              dir === "UP"
+                ? "LOOKING_UP"
+                : dir === "DOWN"
+                ? "LOOKING_DOWN"
+                : dir === "LEFT"
+                ? "LOOKING_LEFT"
+                : dir === "RIGHT"
+                ? "LOOKING_RIGHT"
+                : "LOOKING_AWAY";
+            logEvent(eventType, Math.round(elapsedMs / 1000), {
+              direction: dir,
+              reason: `Candidate looking ${dir.toLowerCase()} away from exam screen (Edge CV)`,
+            });
+            flushNow();
+          }
+        }
+
+        if (elapsedMs >= 4500 && !lookAwaySnappedRef.current) {
+          lookAwaySnappedRef.current = true;
+          const photo = takeCleanSnapshot();
+          logEvent("LOOKING_AWAY_SNAPSHOT", Math.round(elapsedMs / 1000), {
+            photo,
+            direction: dir,
+            durationSeconds: Math.round(elapsedMs / 1000),
+            reason: `Continuous gaze looking ${dir.toLowerCase()} for >= 4.5 seconds`,
+          });
+          flushNow();
+          issueWarningStrike(
+            `Looking Away (${dir})`,
+            `You looked ${dir.toLowerCase()} away from the examination screen continuously. Keep your focus on the screen.`
+          );
+        }
+      }
+    } else {
+      lookAwayStartRef.current = null;
+      lookAwaySnappedRef.current = false;
+      gazeWarningLoggedRef.current = false;
+    }
+
+    // 6. Visual Anomaly Detection (Edge CV Camera Anomaly / Device / Occlusion Detector)
+    if (edgeCv.objectDetected || edgeCv.phoneDetected) {
+      if (now - lastObjectPhotoTime.current >= 5000) {
+        lastObjectPhotoTime.current = now;
+        const photo = takeCleanSnapshot();
+        logEvent("ANOMALY_DETECTED", undefined, {
+          photo,
+          reason: "Visual anomaly detected in camera frame (Edge CV)",
+        });
+        flushNow();
+        issueWarningStrike(
+          "Anomaly Detected",
+          "An anomaly was detected in your camera frame. Please keep your examination area clear and your face fully visible."
+        );
+      }
+    }
+  }, [
+    session,
+    screenGatePassed,
+    edgeCv,
+    gazeWarningPopup,
+    takeCleanSnapshot,
+    logEvent,
+    flushNow,
+    issueWarningStrike,
+  ]);
 
   // Periodic proctoring heartbeat every 10 seconds
   useEffect(() => {
@@ -1019,28 +1239,16 @@ export default function ExamTake() {
     };
   }, [session, screenGatePassed, startDurationEvent]);
 
-  // Frame capture loop for AI service (Phase 4 & 5)
+  // Supplemental Frame Sync for Object/Phone Detection & Backend Audit Trail
+  // Primary face, multi-face, head-pose/gaze, and blur detection run locally in edgeCv (ViBe Web Worker)
+  const edgeCvReadyRef = useRef(false);
+  edgeCvReadyRef.current = edgeCv.ready;
+
   useEffect(() => {
     if (!session || !screenGatePassed || submittedRef.current || session.webcamRequired === false) return;
 
     let timeoutId: ReturnType<typeof setTimeout>;
     let isMounted = true;
-
-    const takeCleanSnapshot = (): string | null => {
-      const v = videoRef.current;
-      if (!v || v.readyState < 2) return null;
-      try {
-        const snapCanvas = document.createElement("canvas");
-        snapCanvas.width = 320;
-        snapCanvas.height = 240;
-        const sCtx = snapCanvas.getContext("2d");
-        if (!sCtx) return null;
-        sCtx.drawImage(v, 0, 0, 320, 240);
-        return snapCanvas.toDataURL("image/jpeg", 0.7);
-      } catch {
-        return null;
-      }
-    };
 
     async function captureAndSendFrame() {
       if (!isMounted || submittedRef.current) return;
@@ -1061,164 +1269,47 @@ export default function ExamTake() {
             );
 
             if (isMounted && res) {
-              setAiAnalysis(res);
               consecutiveFrameErrors.current = 0;
-              nextCaptureDelayRef.current = 1000; // 1 second interval for snappy real-time proctoring
+              nextCaptureDelayRef.current = 2500;
 
-              // 0. Camera Covered / Occluded Detection (Deliberate obstruction)
-              const isCameraCovered =
-                res.cameraCovered === true ||
-                Boolean(res.events?.some((e) => e.type === "CAMERA_COVERED"));
-
-              if (isCameraCovered) {
-                if (!cameraCoveredStartRef.current) {
-                  cameraCoveredStartRef.current = Date.now();
-                } else {
-                  const elapsedMs = Date.now() - cameraCoveredStartRef.current;
-                  if (elapsedMs >= 2500 && !cameraCoveredSnappedRef.current) {
-                    cameraCoveredSnappedRef.current = true;
-                    const photo = takeCleanSnapshot();
-                    logEvent("CAMERA_COVERED", Math.round(elapsedMs / 1000), {
-                      photo,
-                      reason: "Webcam lens is covered or occluded",
-                    });
-                    flushNow();
-                    issueWarningStrike(
-                      "Camera Covered / Occluded",
-                      "Your webcam appears to be covered or blocked. Keep your camera clear and your face fully visible."
-                    );
-                  }
-                }
-              } else {
-                cameraCoveredStartRef.current = null;
-                cameraCoveredSnappedRef.current = false;
+              // Only merge server-side detections if the server actually flagged an object or phone;
+              // never overwrite live Edge CV state with empty fallback responses.
+              if (res.objectDetected || res.phoneDetected) {
+                setAiAnalysis((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        objectDetected: Boolean(prev.objectDetected || res.objectDetected),
+                        phoneDetected: Boolean(prev.phoneDetected || res.phoneDetected),
+                        detectedObjects:
+                          res.detectedObjects && res.detectedObjects.length > 0
+                            ? res.detectedObjects
+                            : prev.detectedObjects,
+                        events: res.events,
+                      }
+                    : res
+                );
               }
 
-              // 1. Face Missing Detection (Candidate left camera view)
-              const isFaceMissing = !res.faceDetected && !isCameraCovered;
-              if (isFaceMissing) {
-                if (!faceMissingStartRef.current) {
-                  faceMissingStartRef.current = Date.now();
-                } else {
-                  const elapsedMs = Date.now() - faceMissingStartRef.current;
-                  if (elapsedMs >= 5000 && !faceMissingSnappedRef.current) {
-                    faceMissingSnappedRef.current = true;
-                    const photo = takeCleanSnapshot();
-                    logEvent("FACE_NOT_VISIBLE", Math.round(elapsedMs / 1000), {
-                      photo,
-                      durationSeconds: Math.round(elapsedMs / 1000),
-                      reason: "Candidate face not detected in webcam view for >= 5s",
-                    });
-                    flushNow();
-                    issueWarningStrike(
-                      "Face Not Detected",
-                      "Your face has left the camera view for more than 5 seconds. Please remain seated facing your screen."
-                    );
-                  }
-                }
-              } else {
-                faceMissingStartRef.current = null;
-                faceMissingSnappedRef.current = false;
-              }
-
-              // 2. Gaze tracking: Looking UP, DOWN, LEFT, RIGHT -> Generate Warning Popup
-              // Only triggers when face IS detected and face count is exactly 1
-              const isLookingAway = res.faceDetected && res.faceCount === 1 && res.gazeDirection !== "CENTER";
-              if (isLookingAway) {
-                const dir = (res.gazeDirection || "AWAY") as "UP" | "DOWN" | "LEFT" | "RIGHT" | "AWAY";
-                if (!lookAwayStartRef.current) {
-                  lookAwayStartRef.current = Date.now();
-                  gazeWarningLoggedRef.current = false;
-                } else {
-                  const elapsedMs = Date.now() - lookAwayStartRef.current;
-                  const now = Date.now();
-
-                  // 1. Show warning popup promptly when looking away (UP, DOWN, LEFT, RIGHT)
-                  if (
-                    elapsedMs >= 800 &&
-                    !gazeWarningPopup &&
-                    now - lastGazePopupDismissTime.current >= 2500
-                  ) {
-                    setGazeWarningPopup({ direction: dir, timestamp: now });
-                    if (!gazeWarningLoggedRef.current) {
-                      gazeWarningLoggedRef.current = true;
-                      const eventType =
-                        dir === "UP"
-                          ? "LOOKING_UP"
-                          : dir === "DOWN"
-                          ? "LOOKING_DOWN"
-                          : dir === "LEFT"
-                          ? "LOOKING_LEFT"
-                          : dir === "RIGHT"
-                          ? "LOOKING_RIGHT"
-                          : "LOOKING_AWAY";
-                      logEvent(eventType, Math.round(elapsedMs / 1000), {
-                        direction: dir,
-                        reason: `Candidate looking ${dir.toLowerCase()} away from exam screen`,
-                      });
-                      flushNow();
-                    }
-                  }
-
-                  // 2. Continuous look-away for >= 5 seconds takes a clean photo snapshot for proctor review
-                  if (elapsedMs >= 5000 && !lookAwaySnappedRef.current) {
-                    lookAwaySnappedRef.current = true;
-                    const photo = takeCleanSnapshot();
-                    logEvent("LOOKING_AWAY_SNAPSHOT", Math.round(elapsedMs / 1000), {
-                      photo,
-                      direction: dir,
-                      durationSeconds: Math.round(elapsedMs / 1000),
-                      reason: `Continuous gaze looking ${dir.toLowerCase()} for >= 5 seconds`,
-                    });
-                    flushNow();
-                  }
-                }
-              } else {
-                lookAwayStartRef.current = null;
-                lookAwaySnappedRef.current = false;
-                gazeWarningLoggedRef.current = false;
-              }
-
-              // 2. Secondary person or multiple faces behind candidate: take a photo snapshot
-              if (res.personBehindDetected || res.faceCount > 1) {
-                const now = Date.now();
-                if (now - lastPersonBehindPhotoTime.current >= 6000) {
-                  lastPersonBehindPhotoTime.current = now;
-                  const photo = takeCleanSnapshot();
-                  logEvent("PERSON_BEHIND_DETECTED", undefined, {
-                    photo,
-                    faceCount: res.faceCount,
-                    reason: "Secondary person or multiple faces detected behind candidate",
-                  });
-                  flushNow();
-                }
-              }
-
-              // 3. Object detected other than candidate (e.g. mobile phone, books, laptops, devices): take a photo snapshot
-              const hasObject =
+              // Visual anomaly detected: take a photo snapshot
+              const hasAnomaly =
                 res.objectDetected ||
                 res.phoneDetected ||
                 res.events?.some(
                   (e) =>
                     e.type === "CELL_PHONE_DETECTED" ||
                     e.type === "PROHIBITED_OBJECT_DETECTED" ||
-                    e.type === "OBJECT_DETECTED"
+                    e.type === "OBJECT_DETECTED" ||
+                    e.type === "ANOMALY_DETECTED"
                 );
-              if (hasObject) {
+              if (hasAnomaly) {
                 const now = Date.now();
                 if (now - lastObjectPhotoTime.current >= 6000) {
                   lastObjectPhotoTime.current = now;
                   const photo = takeCleanSnapshot();
-                  const objs =
-                    res.detectedObjects && res.detectedObjects.length > 0
-                      ? res.detectedObjects.join(", ")
-                      : res.phoneDetected
-                      ? "cell phone"
-                      : "unauthorized object";
-                  logEvent("OBJECT_DETECTED", undefined, {
+                  logEvent("ANOMALY_DETECTED", undefined, {
                     photo,
-                    objects: objs,
-                    reason: `Unauthorized object detected: ${objs}`,
+                    reason: "Visual anomaly detected in examination view",
                   });
                   flushNow();
                 }
@@ -1228,7 +1319,6 @@ export default function ExamTake() {
         } catch {
           consecutiveFrameErrors.current++;
           if (consecutiveFrameErrors.current >= 3) {
-            // Graceful backoff to 5s if service is unreachable
             nextCaptureDelayRef.current = 5000;
           }
         }
@@ -1239,12 +1329,12 @@ export default function ExamTake() {
       }
     }
 
-    timeoutId = setTimeout(captureAndSendFrame, 1000);
+    timeoutId = setTimeout(captureAndSendFrame, 2000);
     return () => {
       isMounted = false;
       clearTimeout(timeoutId);
     };
-  }, [session, screenGatePassed, issueWarningStrike]);
+  }, [session, screenGatePassed, takeCleanSnapshot, logEvent, flushNow]);
 
   // 2-Second Camera Closed / Covered Watchdog
   // If camera module is closed (ended, muted, feed stopped)
@@ -1453,67 +1543,38 @@ export default function ExamTake() {
     };
   }, [session, screenGatePassed, issueWarningStrike, logEvent]);
 
-  // Dual-Layer Voice Detection: Web Speech Recognition (Google Engine) + Web Audio Acoustic Formants
-  useEffect(() => {
-    const micRequired = session?.microphoneRequired ?? true;
-    if (!session || !screenGatePassed || submittedRef.current || !micRequired) return;
-
-    let fallbackStream: MediaStream | null = null;
-    let isMounted = true;
-    let recognition: any = null;
-    let classifier: AudioSpeechClassifier | null = null;
-
-      // Helper: Issue speech warning combining Process 1 (Lip-Sync Fusion) and Process 4 (Progressive Escalation Ladder)
-    const triggerSpeechEvent = (
-      reasonTitle: string,
-      details: string,
-      speechType: string,
-      confidence: number,
-      rmsLevel?: number,
-      snrDb?: number,
-      transcribedText?: string
-    ) => {
-      if (!isMounted || submittedRef.current) return;
+  // ViBe Speech & Audio Detection (MediaPipe YAMNet 16kHz + Acoustic VAD + WebSpeech)
+  const handleSpeechInfraction = useCallback(
+    (event: SpeechDetectionEvent) => {
+      if (submittedRef.current) return;
       const now = Date.now();
+      // Grace period after exam starts
+      if (now - examStartTimeRef.current < 3000) return;
       // Debounce speech warnings by 3.5 seconds to prevent spamming while remaining responsive
       if (now - lastVoiceStrikeTimeRef.current < 3500) return;
       lastVoiceStrikeTimeRef.current = now;
 
-      console.warn(`[SpeechDetector] 🎙️ ${reasonTitle}: ${details} (Type: ${speechType}, Conf: ${Math.round(confidence * 100)}%)`);
+      const { reasonTitle, details, speechType, confidence, rms, snrDb, transcript } = event;
+      console.warn(
+        `[SpeechDetector] 🎙️ ${reasonTitle}: ${details} (Type: ${speechType}, Conf: ${Math.round(
+          confidence * 100
+        )}%)`
+      );
 
       const eventPayload = {
         reason: details,
         speechType,
         confidence: Math.round(confidence * 100) / 100,
-        rms: rmsLevel !== undefined ? Math.round(rmsLevel * 10) / 10 : undefined,
+        rms: rms !== undefined ? Math.round(rms * 10) / 10 : undefined,
         snrDb: snrDb !== undefined ? Math.round(snrDb * 10) / 10 : undefined,
-        transcript: transcribedText || undefined,
+        transcript: transcript || undefined,
         timestamp: new Date().toISOString(),
       };
 
-      // Dispatches baseline audit events to backend
       logEvent("SPEECH_DETECTED", undefined, eventPayload);
       logEvent("VOICE_DETECTED", undefined, eventPayload);
       flushNow();
 
-      // =========================================================================
-      // PROCESS 1: Multi-Modal Audio-Visual Fusion (Lip-Movement Sync)
-      // =========================================================================
-      // Speech is validated if:
-      // (a) Lips/mouth actively moved within the last 1500ms, OR
-      // (b) Web Speech Recognition transcribed genuine linguistic human words
-      const mouthActive = (now - lastMouthMovementTimeRef.current) < 1500;
-      const isConfirmedLinguistic = Boolean(transcribedText && transcribedText.trim().length >= 2);
-      const isLipSyncConfirmed = mouthActive || isConfirmedLinguistic;
-
-      if (!isLipSyncConfirmed) {
-        console.log(`[SpeechDetector] Acoustic sound detected but mouth was still (lip sync rejected). Discarding strikes.`);
-        return;
-      }
-
-      // =========================================================================
-      // PROCESS 4: Progressive Escalation Ladder (No Direct Fatal Strikes)
-      // =========================================================================
       // Reset escalation ladder if candidate stayed quiet for > 90 seconds
       if (now - voiceEscalationRef.current.lastTime > 90000) {
         voiceEscalationRef.current = { stage: 0, lastTime: 0 };
@@ -1528,9 +1589,9 @@ export default function ExamTake() {
         flushNow();
 
         setVoiceWarningPopup({
-          message: transcribedText
-            ? `Spoken words detected: "${transcribedText}"`
-            : "Human speech detected. Please remain completely silent.",
+          message: transcript
+            ? `Spoken words detected: "${transcript}"`
+            : `${details}. Please remain completely silent during the exam.`,
           speechType,
           confidence,
           stage: 1,
@@ -1543,8 +1604,8 @@ export default function ExamTake() {
         flushNow();
 
         setVoiceWarningPopup({
-          message: transcribedText
-            ? `Second Warning: "${transcribedText}". Continued speaking will result in an official Warning Strike.`
+          message: transcript
+            ? `Second Warning: "${transcript}". Continued speaking will result in an official Warning Strike.`
             : "SECOND WARNING: Speech detected again. One more infraction will result in an official Warning Strike.",
           speechType,
           confidence,
@@ -1553,242 +1614,35 @@ export default function ExamTake() {
         });
       } else {
         // Stage 3: Official Warning Strike (Strike 1, 2, or 3)
-        // Candidate persistently ignored Stage 1 and Stage 2 warnings within 90 seconds!
         voiceEscalationRef.current = { stage: 2, lastTime: now };
         logEvent("SPEECH_STRIKE_ISSUED", undefined, eventPayload);
         flushNow();
 
         issueWarningStrike(
           "Repeated Speech Infraction",
-          transcribedText
-            ? `Candidate spoke aloud after multiple prior warnings: "${transcribedText}".`
+          transcript
+            ? `Candidate spoke aloud after multiple prior warnings: "${transcript}".`
             : "Candidate continued speaking after two prior warnings. Strict exam silence is mandatory."
         );
       }
+    },
+    [logEvent, flushNow, issueWarningStrike]
+  );
 
-      // Auto-dismiss popup after 6 seconds
-      setTimeout(() => {
-        if (isMounted) {
-          setVoiceWarningPopup((cur) => (cur?.timestamp === now ? null : cur));
-        }
-      }, 6000);
-    };
+  const speechState = useSpeechDetector({
+    enabled: Boolean(
+      session &&
+        screenGatePassed &&
+        !submittedRef.current &&
+        (session.microphoneRequired ?? true)
+    ),
+    existingStream: activeMediaStream,
+    onSpeechDetected: handleSpeechInfraction,
+  });
 
-    // User gesture handler to ensure AudioContext stays running
-    const resumeContext = () => {
-      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
-        audioContextRef.current.resume().catch(() => {});
-      }
-    };
-    window.addEventListener("click", resumeContext);
-    window.addEventListener("keydown", resumeContext);
-
-    // Non-speech vocal sound blacklist (coughs, sneezes, throat clears, breathing, interjections)
-    const NON_SPEECH_WORDS = new Set([
-      "cough", "coughing", "coughs", "coughed", "coff", "cougher",
-      "throat", "clearing", "clear", "cleared", "ahem", "hack", "hacks", "hacking",
-      "sneeze", "sneezing", "sneezes", "sneezed",
-      "sniff", "sniffing", "snort", "snore", "burp", "hiccup",
-      "sigh", "sighing", "sighs",
-      "yawn", "yawning", "yawns",
-      "gasp", "gasping",
-      "groan", "grunt", "grunting",
-      "laughter", "laughing", "applause",
-      "noise", "sound", "hum", "humming", "click", "thud", "tap",
-      // Non-speech fillers
-      "uh", "um", "ah", "oh", "eh", "er", "hm", "hmm", "ha", "huh", "tsk", "ach"
-    ]);
-
-    // Question indicator keywords for detecting questions asked aloud
-    const QUESTION_WORDS = new Set([
-      "what", "what's", "whats", "which", "how", "why", "where", "who", "whom", "whose", "when",
-      "tell", "explain", "repeat", "answer", "google", "siri", "alexa", "chatgpt"
-    ]);
-
-    // =========================================================================
-    // LAYER 1: Web Speech Recognition (Google Engine / WebKit Speech)
-    // =========================================================================
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRec) {
-      try {
-        recognition = new SpeechRec();
-        recognition.continuous = true;
-        recognition.interimResults = false; // Only finalize real speech, never interim guess hallucinations
-        recognition.lang = navigator.language || "en-US";
-        recognition.maxAlternatives = 1;
-
-        recognition.onresult = (event: any) => {
-          if (!isMounted || submittedRef.current) return;
-          let transcriptText = "";
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const item = event.results[i];
-            if (item && item.isFinal && item[0] && item[0].transcript) {
-              const conf = item[0].confidence;
-              if (conf !== undefined && conf > 0 && conf < 0.50) continue;
-              transcriptText += item[0].transcript.trim() + " ";
-            }
-          }
-          transcriptText = transcriptText.trim();
-          if (!transcriptText) return;
-
-          // Strip brackets / annotations used by speech engines (e.g. [cough], (laughter))
-          const cleanedText = transcriptText.toLowerCase().replace(/[[\]()]/g, "").trim();
-          const tokens = cleanedText.split(/\s+/).filter(Boolean);
-
-          // Filter out known non-speech / noise / cough / hesitation tokens
-          const meaningfulWords = tokens.filter((w) => {
-            const stripped = w.replace(/[^a-z0-9]/g, "");
-            if (NON_SPEECH_WORDS.has(stripped)) return false;
-            return stripped.length >= 2;
-          });
-
-          // If no meaningful words, or only blacklisted noise tokens, safely ignore
-          if (meaningfulWords.length === 0) {
-            return;
-          }
-
-          // Check if candidate is asking a question:
-          const hasQuestionWord = tokens.some((w) => {
-            const stripped = w.replace(/[^a-z0-9]/g, "");
-            return QUESTION_WORDS.has(stripped);
-          });
-          const hasQuestionMark = transcriptText.includes("?");
-          const isAskingQuestion = (hasQuestionWord || hasQuestionMark) && meaningfulWords.length >= 2;
-
-          // Speech recognized: any genuine spoken word that is not blacklisted noise
-          if (meaningfulWords.length >= 1) {
-            console.log(`[WebSpeech] 🎙️ Candidate speech detected: "${transcriptText}"`);
-            triggerSpeechEvent(
-              isAskingQuestion ? "Question Asked Aloud" : "Speech Detected",
-              isAskingQuestion
-                ? `Question asked aloud: "${transcriptText}"`
-                : `Spoken words detected: "${transcriptText}"`,
-              "TRANSCRIPTION",
-              0.92,
-              undefined,
-              undefined,
-              transcriptText
-            );
-          }
-        };
-
-        recognition.onspeechstart = () => {
-          if (!isMounted || submittedRef.current) return;
-          console.log("[WebSpeech] Acoustic sound onset detected; listening for spoken words...");
-        };
-
-        recognition.onerror = (e: any) => {
-          if (e.error !== "no-speech" && e.error !== "aborted") {
-            console.warn("[WebSpeech] Recognition status:", e.error);
-          }
-        };
-
-        recognition.onend = () => {
-          if (isMounted && !submittedRef.current) {
-            try {
-              recognition.start();
-            } catch {
-              // Ignore if already active
-            }
-          }
-        };
-
-        try {
-          recognition.start();
-          speechRecognitionRef.current = recognition;
-          console.log("[WebSpeech] Engine active and listening for vocal infractions");
-        } catch (startErr) {
-          console.warn("[WebSpeech] Start error:", startErr);
-        }
-      } catch (err) {
-        console.warn("[WebSpeech] SpeechRecognition init failed:", err);
-      }
-    }
-
-    // =========================================================================
-    // LAYER 2: AudioSpeechClassifier Pipeline (VAD + Pitch Harmonicity + Multi-Band Noise Floor)
-    // =========================================================================
-    async function initAudioDetection() {
-      try {
-        let streamToUse: MediaStream | null = webcamStreamRef.current;
-        if (!streamToUse || streamToUse.getAudioTracks().length === 0 || !streamToUse.getAudioTracks()[0].enabled) {
-          if (!navigator.mediaDevices?.getUserMedia) {
-            console.warn("[SpeechDetector] getUserMedia unavailable in this context");
-            return;
-          }
-          try {
-            fallbackStream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                echoCancellation: true,
-                noiseSuppression: false,
-                autoGainControl: true,
-              },
-            });
-            streamToUse = fallbackStream;
-          } catch (micErr) {
-            console.warn("[SpeechDetector] Could not acquire audio stream fallback:", micErr);
-            return;
-          }
-        }
-
-        if (!isMounted || !streamToUse || streamToUse.getAudioTracks().length === 0) return;
-
-        // Initialize production AudioSpeechClassifier with active audioContext
-        classifier = new AudioSpeechClassifier(
-          streamToUse,
-          {
-            onSpeechConfirmed: (metrics: SpeechAnalysisMetrics) => {
-              if (!isMounted || submittedRef.current) return;
-              const desc =
-                metrics.speechType === "QUIET_SPEECH"
-                  ? "Quiet / low-volume speech detected"
-                  : metrics.speechType === "WHISPER"
-                  ? "Whispered speech detected"
-                  : "Spoken voice detected";
-              triggerSpeechEvent(
-                "Speech Detected",
-                desc,
-                metrics.speechType,
-                metrics.confidence,
-                metrics.rms,
-                metrics.snrDb
-              );
-            },
-            onVolumeUpdate: (normalizedLevel: number) => {
-              if (isMounted) {
-                setMicAudioLevel(normalizedLevel);
-              }
-            },
-          },
-          audioContextRef.current
-        );
-
-        await classifier.start();
-        audioClassifierRef.current = classifier;
-      } catch (err) {
-        console.error("[SpeechDetector] Audio classifier initialization error:", err);
-      }
-    }
-
-    initAudioDetection();
-
-    return () => {
-      isMounted = false;
-      classifier?.stop();
-      if (audioClassifierRef.current === classifier) {
-        audioClassifierRef.current = null;
-      }
-      if (recognition) {
-        try {
-          recognition.onend = null;
-          recognition.stop();
-        } catch {}
-      }
-      if (fallbackStream) {
-        fallbackStream.getTracks().forEach((t) => t.stop());
-      }
-    };
-  }, [session, screenGatePassed, issueWarningStrike, logEvent, flushNow]);
+  useEffect(() => {
+    setMicAudioLevel(speechState.audioLevel);
+  }, [speechState.audioLevel]);
 
   // (Warning polling removed — proctoring infractions are now handled directly
   //  via the issueWarningStrike() 3-Strike system without any server round-trip.)
@@ -2160,6 +2014,7 @@ export default function ExamTake() {
           isTerminated: boolean;
           remainingSeconds: number;
           durationMinutes: number;
+          maxWarnings?: number;
           endAt: string | null;
           message: string | null;
         }>(`/api/student/exams/${examId}/live-sync?attemptId=${session.attemptId}`, "student");
@@ -2176,8 +2031,19 @@ export default function ExamTake() {
           return;
         }
 
-        if (syncRes.durationMinutes && session.durationMinutes !== syncRes.durationMinutes) {
-          setSession((prev) => (prev ? { ...prev, durationMinutes: syncRes.durationMinutes } : prev));
+        if (
+          (syncRes.durationMinutes && session.durationMinutes !== syncRes.durationMinutes) ||
+          (syncRes.maxWarnings && session.maxWarnings !== syncRes.maxWarnings)
+        ) {
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  durationMinutes: syncRes.durationMinutes ?? prev.durationMinutes,
+                  maxWarnings: syncRes.maxWarnings ?? prev.maxWarnings,
+                }
+              : prev
+          );
         }
 
         if (!isUntimed) {
@@ -3184,19 +3050,30 @@ export default function ExamTake() {
         </div>
       )}
 
-      {/* Pause Class Session Confirmation Modal */}
+      {/* Terminate Session Confirmation Modal */}
       {showTerminateConfirm && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl text-slate-900 space-y-4 border border-slate-200">
-            <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto text-2xl font-bold shadow-inner">
-              💾
+            <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-2xl font-bold shadow-inner">
+              🚪
             </div>
             <h3 className="text-xl font-bold text-center text-slate-900">
-              Pause Class Session?
+              Terminate {session?.isClass ? "Class" : "Examination"}?
             </h3>
             <p className="text-sm text-slate-600 text-center leading-relaxed">
-              Your answers and written code will remain saved. You can return to your dashboard and resume this class anytime.
+              Are you sure you want to terminate without submitting? Your session will be recorded as <strong className="text-amber-600">INCOMPLETE</strong>. You will be able to re-enter and take it later.
             </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1">
+              <p className="font-bold flex items-center gap-1 text-amber-800">
+                <span>💡</span> Examination Rule Notice:
+              </p>
+              <p>
+                • Terminating now marks your attempt as <strong>Incomplete</strong>.
+              </p>
+              <p>
+                • If you pass the test cases and submit, it will be marked as <strong>Completed</strong> and cannot be attempted again.
+              </p>
+            </div>
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
@@ -3210,18 +3087,24 @@ export default function ExamTake() {
                 type="button"
                 onClick={handleTerminate}
                 disabled={terminating}
-                className="px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-lg transition shadow-sm cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-lg transition shadow-sm cursor-pointer flex items-center gap-1.5"
               >
-                <span>💾</span>
-                <span>{terminating ? "Saving…" : "Save & Exit Class"}</span>
+                <span>🚪</span>
+                <span>{terminating ? "Terminating…" : "Yes, Terminate Session"}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Hidden elements for computer-vision capture */}
-      <video ref={videoRef} autoPlay playsInline muted className="hidden" />
+      {/* Offscreen video element for computer-vision capture (avoid display:none so browser decodes frames continuously) */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="fixed -top-[9999px] -left-[9999px] w-64 h-48 opacity-0 pointer-events-none"
+      />
       <canvas ref={canvasRef} width={320} height={240} className="hidden" />
 
       {/* Top Navbar with live proctoring channel status badges */}
@@ -3357,18 +3240,16 @@ export default function ExamTake() {
           )}
           <span className="text-sm text-slate-300 hidden sm:inline">{answeredCount} answered</span>
 
-          {/* Voluntary Pause & Exit button ONLY for Class sessions */}
-          {session?.isClass && (
-            <button
-              type="button"
-              onClick={() => setShowTerminateConfirm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 transition shadow-xs cursor-pointer active:scale-98"
-              title="Pause without submitting. Your progress is saved and you can resume anytime."
-            >
-              <span>💾</span>
-              <span>Pause & Exit Class</span>
-            </button>
-          )}
+          {/* Student voluntary terminate button */}
+          <button
+            type="button"
+            onClick={() => setShowTerminateConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-500/60 text-rose-200 transition shadow-xs cursor-pointer active:scale-98"
+            title="Terminate without submitting. Attempt will be marked as Incomplete, allowing you to re-take or resume later."
+          >
+            <span>🚪</span>
+            <span>Terminate {session?.isClass ? "Class" : "Exam"}</span>
+          </button>
         </div>
       </div>
 
@@ -3982,6 +3863,8 @@ export default function ExamTake() {
                           ? "bg-rose-500/80 text-white border-rose-400 animate-pulse"
                           : aiAnalysis.faceCount > 1
                           ? "bg-rose-600/90 text-white border-rose-400"
+                          : edgeCv.isBlurry
+                          ? "bg-amber-600/90 text-white border-amber-400"
                           : aiAnalysis.gazeDirection !== "CENTER"
                           ? "bg-amber-500/85 text-white border-amber-300"
                           : "bg-emerald-500/80 text-white border-emerald-400"
@@ -3991,21 +3874,21 @@ export default function ExamTake() {
                         ? "🚨 Camera Covered!"
                         : aiAnalysis.personBehindDetected
                         ? "👥 Person Behind!"
-                        : aiAnalysis.phoneDetected
-                        ? "🚨 Mobile Phone!"
-                        : aiAnalysis.objectDetected
-                        ? "⚠️ Object Detected!"
+                        : aiAnalysis.phoneDetected || aiAnalysis.objectDetected
+                        ? "🚨 Anomaly Detected!"
                         : !aiAnalysis.faceDetected
                         ? "⚠️ No Face"
                         : aiAnalysis.faceCount > 1
                         ? `⚠️ ${aiAnalysis.faceCount} Faces`
+                        : edgeCv.isBlurry
+                        ? "⚠️ Camera Blurry"
                         : aiAnalysis.gazeDirection !== "CENTER"
                         ? `⚠️ Looking ${aiAnalysis.gazeDirection}`
                         : "✓ Face In Frame"}
                     </span>
                   ) : (
                     <span className="text-[10px] font-medium bg-black/60 text-slate-300 px-2 py-0.5 rounded-full backdrop-blur-xs border border-white/10">
-                      Calibrating AI…
+                      Calibrating Edge CV…
                     </span>
                   )}
 
@@ -4017,21 +3900,28 @@ export default function ExamTake() {
                       }`}
                       title={`Webcam: ${webcamStatus}`}
                     />
-                    <div className="flex items-center gap-0.5" title={`Mic: ${micStatus} (Level: ${micAudioLevel}%, Admin Gain: ${session?.audioInputLevel ?? 20}%)`}>
+                    <div
+                      className="flex items-center gap-1"
+                      title={`Mic: ${micStatus} (Level: ${micAudioLevel}%)`}
+                    >
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${
                           micStatus === "ACTIVE"
-                            ? micAudioLevel > 30
+                            ? speechState.isSpeaking || micAudioLevel > 30
                               ? "bg-amber-400 animate-ping"
                               : "bg-emerald-400"
                             : "bg-rose-400"
                         }`}
                       />
-                      {micAudioLevel > 10 && (
+                      {speechState.isSpeaking ? (
+                        <span className="text-[9px] text-amber-300 font-bold animate-pulse">
+                          🗣️
+                        </span>
+                      ) : micAudioLevel > 8 ? (
                         <span className="text-[9px] text-emerald-400 font-mono">
                           {micAudioLevel > 35 ? "🔊" : "🎤"}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
@@ -4043,13 +3933,26 @@ export default function ExamTake() {
                 </div>
               </div>
 
-              {/* Footer */}
-              <div className="px-3 py-1.5 bg-slate-900 text-[10px] text-slate-400 flex justify-between items-center border-t border-slate-800">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                  <span>Blur Active</span>
+              {/* Footer with ViBe Live Mic VU Bar */}
+              <div className="px-3 py-1.5 bg-slate-900 text-[10px] text-slate-400 flex justify-between items-center border-t border-slate-800 gap-2">
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <span className="text-[9px] text-slate-400 shrink-0">🎤</span>
+                  <div className="w-16 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-700">
+                    <div
+                      className={`h-full transition-none rounded-full ${
+                        speechState.isSpeaking
+                          ? "bg-amber-400"
+                          : micAudioLevel > 12
+                          ? "bg-emerald-400"
+                          : "bg-slate-600"
+                      }`}
+                      style={{ width: `${Math.max(5, micAudioLevel)}%` }}
+                    />
+                  </div>
+                </div>
+                <span className="text-emerald-400 font-mono text-[9px] shrink-0">
+                  {edgeCv.ready ? "EDGE AI ●" : "MONITORED ●"}
                 </span>
-                <span className="text-emerald-400 font-mono text-[9px]">MONITORED ●</span>
               </div>
             </div>
           )}

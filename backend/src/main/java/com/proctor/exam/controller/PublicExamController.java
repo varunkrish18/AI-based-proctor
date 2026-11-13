@@ -20,10 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import java.util.*;
 
-/**
- * Unauthenticated endpoints: the public exams list (landing page), network
- * time, and email verification.
- */
+/** Unauthenticated endpoints: the public exams list (landing page), network time, and email verification. */
 @RestController
 @RequestMapping("/api/exams")
 public class PublicExamController {
@@ -39,14 +36,14 @@ public class PublicExamController {
     private final com.proctor.exam.repository.ExamAttemptRepository attemptRepository;
 
     public PublicExamController(ExamRepository examRepository,
-            StudentExamService studentExamService,
-            TrustedTimeService trustedTimeService,
-            com.proctor.exam.service.CodeExecutionService codeExecutionService,
-            ExamAssignmentRepository assignmentRepository,
-            StudentRepository studentRepository,
-            AdminRepository adminRepository,
-            ProfessorRepository professorRepository,
-            com.proctor.exam.repository.ExamAttemptRepository attemptRepository) {
+                                StudentExamService studentExamService,
+                                TrustedTimeService trustedTimeService,
+                                com.proctor.exam.service.CodeExecutionService codeExecutionService,
+                                ExamAssignmentRepository assignmentRepository,
+                                StudentRepository studentRepository,
+                                AdminRepository adminRepository,
+                                ProfessorRepository professorRepository,
+                                com.proctor.exam.repository.ExamAttemptRepository attemptRepository) {
         this.examRepository = examRepository;
         this.studentExamService = studentExamService;
         this.trustedTimeService = trustedTimeService;
@@ -64,25 +61,21 @@ public class PublicExamController {
                 String role = a.getAuthority().toUpperCase();
                 return role.equals("ROLE_PROFESSOR") || role.equals("ROLE_FACULTY") || role.equals("ROLE_EXAMINER");
             });
-            if (hasProfRole)
-                return true;
+            if (hasProfRole) return true;
         }
         if (email != null && !email.isBlank()) {
-            if (professorRepository.findByEmailIgnoreCase(email.trim()).isPresent())
-                return true;
+            if (professorRepository.findByEmailIgnoreCase(email.trim()).isPresent()) return true;
             Admin admin = adminRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
             if (admin != null) {
                 String r = admin.getRole();
-                return "PROFESSOR".equalsIgnoreCase(r) || "FACULTY".equalsIgnoreCase(r)
-                        || "EXAMINER".equalsIgnoreCase(r);
+                return "PROFESSOR".equalsIgnoreCase(r) || "FACULTY".equalsIgnoreCase(r) || "EXAMINER".equalsIgnoreCase(r);
             }
         }
         return false;
     }
 
     private boolean isExamAssignedOrCreatedByProf(Exam e, String email) {
-        if (email == null || email.isBlank())
-            return false;
+        if (email == null || email.isBlank()) return false;
         String emailLower = email.trim().toLowerCase();
         Admin admin = adminRepository.findByEmail(emailLower).orElse(null);
         Professor prof = professorRepository.findByEmailIgnoreCase(emailLower).orElse(null);
@@ -90,11 +83,9 @@ public class PublicExamController {
         Long profId = prof != null ? prof.getId() : null;
 
         boolean isCreator = adminId != null && e.getCreatedBy() != null && e.getCreatedBy().equals(adminId);
-        boolean isAssignedByEmail = e.getAssignedProfessorEmail() != null
-                && e.getAssignedProfessorEmail().equalsIgnoreCase(emailLower);
+        boolean isAssignedByEmail = e.getAssignedProfessorEmail() != null && e.getAssignedProfessorEmail().equalsIgnoreCase(emailLower);
         boolean isAssignedById = e.getAssignedProfessorId() != null &&
-                ((adminId != null && e.getAssignedProfessorId().equals(adminId))
-                        || (profId != null && e.getAssignedProfessorId().equals(profId)));
+                ((adminId != null && e.getAssignedProfessorId().equals(adminId)) || (profId != null && e.getAssignedProfessorId().equals(profId)));
 
         return isCreator || isAssignedByEmail || isAssignedById;
     }
@@ -105,7 +96,8 @@ public class PublicExamController {
         return Map.of(
                 "iso", now.toString(),
                 "epochMillis", now.toEpochMilli(),
-                "source", trustedTimeService.getTimeSource());
+                "source", trustedTimeService.getTimeSource()
+        );
     }
 
     @GetMapping("/public")
@@ -125,56 +117,42 @@ public class PublicExamController {
             searchIdentifiers.add(callerIdentifier);
 
             studentRepository.findByEmailIgnoreCase(callerIdentifier).ifPresent(s -> {
-                if (s.getEmail() != null)
-                    searchIdentifiers.add(s.getEmail().trim().toLowerCase());
-                if (s.getRegisterNumber() != null)
-                    searchIdentifiers.add(s.getRegisterNumber().trim().toLowerCase());
+                if (s.getEmail() != null) searchIdentifiers.add(s.getEmail().trim().toLowerCase());
+                if (s.getRegisterNumber() != null) searchIdentifiers.add(s.getRegisterNumber().trim().toLowerCase());
             });
 
             studentRepository.findByRegisterNumberIgnoreCase(callerIdentifier).ifPresent(s -> {
-                if (s.getEmail() != null)
-                    searchIdentifiers.add(s.getEmail().trim().toLowerCase());
-                if (s.getRegisterNumber() != null)
-                    searchIdentifiers.add(s.getRegisterNumber().trim().toLowerCase());
+                if (s.getEmail() != null) searchIdentifiers.add(s.getEmail().trim().toLowerCase());
+                if (s.getRegisterNumber() != null) searchIdentifiers.add(s.getRegisterNumber().trim().toLowerCase());
             });
 
             Set<Long> assignedExamIds = assignmentRepository.findAssignedExamIdsByStudentIdentifiers(searchIdentifiers);
 
-            // Students see the exams and classes they are assigned to, as well as
-            // open-to-all exams
+            // Students see the exams and classes they are assigned to, as well as open-to-all exams
             publishedExams = publishedExams.stream()
                     .filter(e -> assignedExamIds.contains(e.getId()) || e.isOpenToAll())
                     .toList();
 
             try {
-                List<com.proctor.exam.entity.ExamAttempt> attempts = attemptRepository
-                        .findByStudentEmailIgnoreCaseIn(searchIdentifiers);
+                List<com.proctor.exam.entity.ExamAttempt> attempts = attemptRepository.findByStudentEmailIgnoreCaseIn(searchIdentifiers);
                 for (com.proctor.exam.entity.ExamAttempt a : attempts) {
                     if (a.getExam() != null && a.getExam().getId() != null) {
                         Long eid = a.getExam().getId();
                         String prev = attemptStatusByExamId.get(eid);
-                        boolean isClass = a.getExam() != null && Boolean.TRUE.equals(a.getExam().getIsClass());
-                        if ("SUBMITTED".equalsIgnoreCase(a.getStatus())
-                                || "COMPLETED".equalsIgnoreCase(a.getStatus())) {
+                        if ("SUBMITTED".equalsIgnoreCase(a.getStatus()) || "COMPLETED".equalsIgnoreCase(a.getStatus())) {
                             attemptStatusByExamId.put(eid, "COMPLETED");
                         } else if (!"COMPLETED".equals(prev)) {
                             if ("IN_PROGRESS".equalsIgnoreCase(a.getStatus())) {
                                 attemptStatusByExamId.put(eid, "IN_PROGRESS");
-                            } else if (isClass && "INCOMPLETE".equalsIgnoreCase(a.getStatus())) {
+                            } else if ("INCOMPLETE".equalsIgnoreCase(a.getStatus()) || "TERMINATED".equalsIgnoreCase(a.getStatus())) {
                                 attemptStatusByExamId.put(eid, "INCOMPLETE");
-                            } else if ("TERMINATED".equalsIgnoreCase(a.getStatus())
-                                    || "EXPIRED".equalsIgnoreCase(a.getStatus())
-                                    || "INCOMPLETE".equalsIgnoreCase(a.getStatus())) {
-                                attemptStatusByExamId.put(eid, "TERMINATED");
                             }
                         }
                     }
                 }
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
         } else if (isAuthenticated && isProfessorOrFaculty(auth, auth.getName())) {
-            // Professor should ONLY see the class or exam assigned to him and the exam he
-            // created;
+            // Professor should ONLY see the class or exam assigned to him and the exam he created;
             // other than that he should not see any exam or class
             String profEmail = auth.getName();
             publishedExams = publishedExams.stream()
@@ -202,23 +180,21 @@ public class PublicExamController {
                         e.getAssignedProfessorName(),
                         Boolean.TRUE.equals(e.getIsClass()),
                         e.isOpenToAll(),
-                        attemptStatusByExamId.get(e.getId())))
+                        attemptStatusByExamId.get(e.getId())
+                ))
                 .toList();
     }
 
     private String computeDisplayStatus(Exam e, Instant now) {
-        if (now.isBefore(e.getStartAt()))
-            return "UPCOMING";
-        if (now.isAfter(e.getEndAt()))
-            return "CLOSED";
+        if (now.isBefore(e.getStartAt())) return "UPCOMING";
+        if (now.isAfter(e.getEndAt())) return "CLOSED";
         return "OPEN";
     }
 
     @GetMapping("/{examId}")
     public Map<String, Object> getPublicExamDetails(@PathVariable Long examId, Authentication auth) {
         Exam exam = examRepository.findById(examId)
-                .orElseThrow(() -> new com.proctor.exam.exception.ApiException(
-                        org.springframework.http.HttpStatus.NOT_FOUND, "Exam not found."));
+                .orElseThrow(() -> new com.proctor.exam.exception.ApiException(org.springframework.http.HttpStatus.NOT_FOUND, "Exam not found."));
 
         boolean isAuthenticated = auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName());
         boolean isStudent = isAuthenticated && auth.getAuthorities().stream()
@@ -228,24 +204,23 @@ public class PublicExamController {
             String callerIdentifier = auth.getName().trim().toLowerCase();
             boolean isAssigned = assignmentRepository.existsByExamIdAndStudentEmailIgnoreCase(examId, callerIdentifier);
             if (!isAssigned) {
-                Optional<com.proctor.exam.entity.Student> sOpt = studentRepository
-                        .findByEmailIgnoreCase(callerIdentifier);
+                Optional<com.proctor.exam.entity.Student> sOpt = studentRepository.findByEmailIgnoreCase(callerIdentifier);
                 if (sOpt.isPresent() && sOpt.get().getRegisterNumber() != null) {
-                    isAssigned = assignmentRepository.existsByExamIdAndStudentEmailIgnoreCase(examId,
-                            sOpt.get().getRegisterNumber().trim().toLowerCase());
+                    isAssigned = assignmentRepository.existsByExamIdAndStudentEmailIgnoreCase(examId, sOpt.get().getRegisterNumber().trim().toLowerCase());
                 }
             }
             if (!isAssigned) {
                 throw new com.proctor.exam.exception.ApiException(
                         org.springframework.http.HttpStatus.FORBIDDEN,
-                        "You are not assigned to this "
-                                + (Boolean.TRUE.equals(exam.getIsClass()) ? "class" : "examination") + ".");
+                        "You are not assigned to this " + (Boolean.TRUE.equals(exam.getIsClass()) ? "class" : "examination") + "."
+                );
             }
         } else if (isAuthenticated && isProfessorOrFaculty(auth, auth.getName())) {
             if (!isExamAssignedOrCreatedByProf(exam, auth.getName())) {
                 throw new com.proctor.exam.exception.ApiException(
                         org.springframework.http.HttpStatus.FORBIDDEN,
-                        "Access denied: As a Professor / Faculty, you can only view and access examinations or classes assigned to or created by you.");
+                        "Access denied: As a Professor / Faculty, you can only view and access examinations or classes assigned to or created by you."
+                );
             }
         }
 
@@ -268,15 +243,12 @@ public class PublicExamController {
     }
 
     @PostMapping("/{examId}/verify-student")
-    public VerifyStudentResponse verifyStudent(@PathVariable Long examId,
-            @Valid @RequestBody VerifyStudentRequest request) {
-        return studentExamService.verifyStudent(examId, request.email(), request.password(), request.name(),
-                request.registerNumber());
+    public VerifyStudentResponse verifyStudent(@PathVariable Long examId, @Valid @RequestBody VerifyStudentRequest request) {
+        return studentExamService.verifyStudent(examId, request.email(), request.password(), request.name(), request.registerNumber());
     }
 
     @PostMapping("/run-code")
-    public com.proctor.exam.dto.RunCodeResponse runOnlineIdeCode(
-            @Valid @RequestBody com.proctor.exam.dto.OnlineIdeRunRequest request) {
+    public com.proctor.exam.dto.RunCodeResponse runOnlineIdeCode(@Valid @RequestBody com.proctor.exam.dto.OnlineIdeRunRequest request) {
         return codeExecutionService.runAdhocCode(request.code(), request.language(), request.input());
     }
 }

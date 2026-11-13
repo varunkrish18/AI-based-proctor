@@ -45,6 +45,7 @@ export default function CourseCoordinatorDashboard() {
     screenRequired: boolean;
     locationRequired: boolean;
     audioInputLevel: number | string;
+    maxWarnings: number | string;
     assignedProfessorId: string;
     assignedProfessorEmail: string;
     assignedProfessorName: string;
@@ -62,6 +63,7 @@ export default function CourseCoordinatorDashboard() {
     screenRequired: true,
     locationRequired: false,
     audioInputLevel: 20,
+    maxWarnings: 10,
     assignedProfessorId: "",
     assignedProfessorEmail: "",
     assignedProfessorName: "",
@@ -185,6 +187,7 @@ export default function CourseCoordinatorDashboard() {
         screenRequired: classForm.screenRequired,
         locationRequired: classForm.locationRequired,
         audioInputLevel: Math.max(1, Math.min(100, Number(classForm.audioInputLevel) || 20)),
+        maxWarnings: Math.max(1, Math.min(100, Number(classForm.maxWarnings) || 10)),
         startAt: new Date(classForm.startAt).toISOString(),
         endAt: new Date(classForm.endAt).toISOString(),
       };
@@ -1142,6 +1145,47 @@ export default function CourseCoordinatorDashboard() {
                     <p className="text-[10px] text-slate-500">Randomizes question order per candidate</p>
                   </div>
                 </label>
+
+                <div className="sm:col-span-2 bg-amber-50/70 border border-amber-200 rounded-xl p-3.5">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-xs font-bold text-slate-800">
+                      ⚠️ Maximum Proctoring Warnings (Strikes Before Auto-Submit)
+                    </span>
+                    <span className="text-xs font-mono font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded">
+                      {classForm.maxWarnings} {Number(classForm.maxWarnings) === 1 ? "Strike" : "Strikes"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={1}
+                      max={30}
+                      step={1}
+                      value={Math.min(30, Math.max(1, Number(classForm.maxWarnings) || 10))}
+                      onChange={(e) => setClassField("maxWarnings", Number(e.target.value))}
+                      className="w-full accent-amber-600 cursor-pointer"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={classForm.maxWarnings}
+                      onChange={(e) => setClassField("maxWarnings", e.target.value)}
+                      onBlur={() => {
+                        const val = Number(classForm.maxWarnings);
+                        if (classForm.maxWarnings === "" || isNaN(val) || val < 1) {
+                          setClassField("maxWarnings", 10);
+                        } else if (val > 100) {
+                          setClassField("maxWarnings", 100);
+                        }
+                      }}
+                      className="w-16 px-2 py-1 text-xs border border-amber-300 rounded-md text-center font-bold bg-white"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-1">
+                    Customize how many proctoring violation warnings (strikes) are allowed before the session is automatically submitted.
+                  </p>
+                </div>
               </div>
             </div>
 

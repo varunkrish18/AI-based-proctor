@@ -93,6 +93,19 @@ public class Exam {
         return 20;
     }
 
+    public Integer getMaxWarnings() {
+        int fallback = Boolean.TRUE.equals(isClass) ? 10 : 3;
+        if (proctoringConfig != null && !proctoringConfig.isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(proctoringConfig);
+                if (node.has("maxWarnings") && !node.get("maxWarnings").isNull()) {
+                    return Math.max(1, node.get("maxWarnings").asInt(fallback));
+                }
+            } catch (Exception ignored) {}
+        }
+        return fallback;
+    }
+
     public boolean isOpenToAll() {
         if (proctoringConfig != null && !proctoringConfig.isBlank()) {
             try {

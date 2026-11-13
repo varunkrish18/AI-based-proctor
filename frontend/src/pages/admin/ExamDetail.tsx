@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import * as XLSX from "xlsx";
 import { api, downloadFile, isCoordinatorRole, isAdminRole, isProfessorUserRole } from "../../api/client";
@@ -689,7 +689,6 @@ if __name__ == '__main__':
   const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
   const [parsedBulkQuestions, setParsedBulkQuestions] = useState<any[]>([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
-  const [expandedPreviewIndex, setExpandedPreviewIndex] = useState<number | null>(null);
   const createTestCaseFileInputRef = useRef<HTMLInputElement>(null);
   const editTestCaseFileInputRef = useRef<HTMLInputElement>(null);
   const [testCaseUploadMsg, setTestCaseUploadMsg] = useState<string | null>(null);
@@ -990,8 +989,8 @@ public class Solution {
     }
   }
 
-  function downloadSampleMcqExcel() {
-    const sampleMcqRows = [
+  function downloadSampleQuestionsExcel() {
+    const sampleRows = [
       {
         "Question Type": "MCQ",
         "Question Text": "What is the time complexity of searching in a balanced Binary Search Tree?",
@@ -1001,6 +1000,13 @@ public class Solution {
         "Option D": "O(n log n)",
         "Correct Answer": "B",
         "Marks": 1,
+        "Problem Title": "",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "",
+        "Sample Output": "",
+        "Sample Explanation": "",
       },
       {
         "Question Type": "MCQ",
@@ -1011,46 +1017,58 @@ public class Solution {
         "Option D": "All of the above",
         "Correct Answer": "D",
         "Marks": 1,
+        "Problem Title": "",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "",
+        "Sample Output": "",
+        "Sample Explanation": "",
       },
       {
-        "Question Type": "MCQ",
-        "Question Text": "Which data structure operates on a LIFO (Last In First Out) basis?",
-        "Option A": "Queue",
-        "Option B": "Stack",
-        "Option C": "Array",
-        "Option D": "Linked List",
-        "Correct Answer": "B",
-        "Marks": 2,
+        "Question Type": "CODING",
+        "Question Text": "Write a C program to read two integers from standard input and print their sum.",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": 5,
+        "Problem Title": "Sum of Two Numbers (C / Python)",
+        "Constraints": "-10^5 <= a, b <= 10^5\nTime Limit: 2.0s\nMemory Limit: 128MB",
+        "Allowed Languages": "c,python,java",
+        "Code Template": "#include <stdio.h>\n\nint main() {\n    int a, b;\n    if (scanf(\"%d %d\", &a, &b) == 2) {\n        printf(\"%d\\n\", a + b);\n    }\n    return 0;\n}",
+        "Sample Input": "3 7",
+        "Sample Output": "10",
+        "Sample Explanation": "3 + 7 = 10",
       },
       {
-        "Question Type": "MCQ",
-        "Question Text": "What is the output of len([10, 20, 30]) in Python?",
-        "Option A": "2",
-        "Option B": "3",
-        "Option C": "4",
-        "Option D": "Error",
-        "Correct Answer": "B",
-        "Marks": 1,
-      },
-      {
-        "Question Type": "MCQ",
-        "Question Text": "Which keyword is used to inherit a class in Java?",
-        "Option A": "implements",
-        "Option B": "super",
-        "Option C": "extends",
-        "Option D": "inherits",
-        "Correct Answer": "C",
-        "Marks": 1,
-      },
+        "Question Type": "CODING",
+        "Question Text": "Given an integer N, print all numbers from 1 to N separated by spaces.",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": 10,
+        "Problem Title": "Print 1 to N",
+        "Constraints": "1 <= N <= 100",
+        "Allowed Languages": "c,python,java",
+        "Code Template": "import sys\n\ndef solve():\n    n = int(sys.stdin.read().strip())\n    print(' '.join(str(i) for i in range(1, n + 1)))\n\nif __name__ == '__main__':\n    solve()",
+        "Sample Input": "5",
+        "Sample Output": "1 2 3 4 5",
+        "Sample Explanation": "Prints 1 through 5",
+      }
     ];
-    const ws = XLSX.utils.json_to_sheet(sampleMcqRows);
+
+    const ws = XLSX.utils.json_to_sheet(sampleRows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "MCQs");
-    XLSX.writeFile(wb, "mcq_questions_template.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Questions");
+    XLSX.writeFile(wb, "bulk_questions_sample_template.xlsx");
   }
 
-  function downloadSampleMcqCsv() {
-    const sampleMcqRows = [
+  function downloadSampleQuestionsCsv() {
+    const sampleRows = [
       {
         "Question Type": "MCQ",
         "Question Text": "What is the time complexity of searching in a balanced Binary Search Tree?",
@@ -1060,186 +1078,75 @@ public class Solution {
         "Option D": "O(n log n)",
         "Correct Answer": "B",
         "Marks": 1,
-      },
-      {
-        "Question Type": "MCQ",
-        "Question Text": "Which function dynamically allocates memory in the C programming language?",
-        "Option A": "calloc()",
-        "Option B": "malloc()",
-        "Option C": "realloc()",
-        "Option D": "All of the above",
-        "Correct Answer": "D",
-        "Marks": 1,
-      },
-      {
-        "Question Type": "MCQ",
-        "Question Text": "Which data structure operates on a LIFO (Last In First Out) basis?",
-        "Option A": "Queue",
-        "Option B": "Stack",
-        "Option C": "Array",
-        "Option D": "Linked List",
-        "Correct Answer": "B",
-        "Marks": 2,
-      },
-      {
-        "Question Type": "MCQ",
-        "Question Text": "What is the output of len([10, 20, 30]) in Python?",
-        "Option A": "2",
-        "Option B": "3",
-        "Option C": "4",
-        "Option D": "Error",
-        "Correct Answer": "B",
-        "Marks": 1,
-      },
-      {
-        "Question Type": "MCQ",
-        "Question Text": "Which keyword is used to inherit a class in Java?",
-        "Option A": "implements",
-        "Option B": "super",
-        "Option C": "extends",
-        "Option D": "inherits",
-        "Correct Answer": "C",
-        "Marks": 1,
-      },
-    ];
-    const ws = XLSX.utils.json_to_sheet(sampleMcqRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "MCQs");
-    XLSX.writeFile(wb, "mcq_questions_template.csv", { bookType: "csv" });
-  }
-
-  function downloadSampleCodingMultiColumnExcel() {
-    const sampleCodingRows = [
-      {
-        "Question Type": "CODING",
-        "Problem Title": "Sum of Two Numbers",
-        "Question Text": "Read two integers from standard input and print their sum.",
-        "Marks": 10,
-        "Constraints": "-10^5 <= a, b <= 10^5\\nTime Limit: 2.0s\\nMemory Limit: 128MB",
-        "Allowed Languages": "c,python,java",
-        "Code Template": "#include <stdio.h>\\n\\nint main() {\\n    int a, b;\\n    if (scanf(\"%d %d\", &a, &b) == 2) {\\n        printf(\"%d\\\\n\", a + b);\\n    }\\n    return 0;\\n}",
-        "Input 1": "3 7",
-        "Expected Output 1": "10",
-        "Hidden 1": false,
-        "Explanation 1": "Sample 1: 3 + 7 = 10",
-        "Input 2": "10 20",
-        "Expected Output 2": "30",
-        "Hidden 2": false,
-        "Explanation 2": "Sample 2: 10 + 20 = 30",
-        "Input 3": "-5 5",
-        "Expected Output 3": "0",
-        "Hidden 3": false,
-        "Explanation 3": "Zero sum check",
-        "Input 4": "0 0",
-        "Expected Output 4": "0",
-        "Hidden 4": true,
-        "Explanation 4": "Hidden: zero identity",
-        "Input 5": "100000 100000",
-        "Expected Output 5": "200000",
-        "Hidden 5": true,
-        "Explanation 5": "Hidden: upper boundary",
+        "Problem Title": "",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "",
+        "Sample Output": "",
+        "Is Hidden": "",
+        "Sample Explanation": "",
       },
       {
         "Question Type": "CODING",
-        "Problem Title": "Print 1 to N",
-        "Question Text": "Given an integer N, print all numbers from 1 to N separated by spaces.",
+        "Question Text": "Write a program to read two integers and print their sum.",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
         "Marks": 5,
-        "Constraints": "1 <= N <= 100",
-        "Allowed Languages": "c,python,java",
-        "Code Template": "import sys\\n\\ndef solve():\\n    n = int(sys.stdin.read().strip())\\n    print(' '.join(str(i) for i in range(1, n + 1)))\\n\\nif __name__ == '__main__':\\n    solve()",
-        "Input 1": "5",
-        "Expected Output 1": "1 2 3 4 5",
-        "Hidden 1": false,
-        "Explanation 1": "Sample 1: print 1 to 5",
-        "Input 2": "1",
-        "Expected Output 2": "1",
-        "Hidden 2": false,
-        "Explanation 2": "Single number 1",
-        "Input 3": "10",
-        "Expected Output 3": "1 2 3 4 5 6 7 8 9 10",
-        "Hidden 3": true,
-        "Explanation 3": "Hidden: 10 numbers",
-        "Input 4": "15",
-        "Expected Output 4": "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15",
-        "Hidden 4": true,
-        "Explanation 4": "Hidden: 15 numbers",
-        "Input 5": "",
-        "Expected Output 5": "",
-        "Hidden 5": "",
-        "Explanation 5": "",
-      },
-    ];
-    const ws = XLSX.utils.json_to_sheet(sampleCodingRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "CodingQuestions");
-    XLSX.writeFile(wb, "coding_questions_template.xlsx");
-  }
-
-  function downloadSampleCodingMultiColumnCsv() {
-    const sampleCodingRows = [
-      {
-        "Question Type": "CODING",
         "Problem Title": "Sum of Two Numbers",
-        "Question Text": "Read two integers from standard input and print their sum.",
-        "Marks": 10,
-        "Constraints": "-10^5 <= a, b <= 10^5\\nTime Limit: 2.0s\\nMemory Limit: 128MB",
+        "Constraints": "-10^5 <= a, b <= 10^5",
         "Allowed Languages": "c,python,java",
-        "Code Template": "#include <stdio.h>\\n\\nint main() {\\n    int a, b;\\n    if (scanf(\"%d %d\", &a, &b) == 2) {\\n        printf(\"%d\\\\n\", a + b);\\n    }\\n    return 0;\\n}",
-        "Input 1": "3 7",
-        "Expected Output 1": "10",
-        "Hidden 1": "false",
-        "Explanation 1": "Sample 1: 3 + 7 = 10",
-        "Input 2": "10 20",
-        "Expected Output 2": "30",
-        "Hidden 2": "false",
-        "Explanation 2": "Sample 2: 10 + 20 = 30",
-        "Input 3": "-5 5",
-        "Expected Output 3": "0",
-        "Hidden 3": "false",
-        "Explanation 3": "Zero sum check",
-        "Input 4": "0 0",
-        "Expected Output 4": "0",
-        "Hidden 4": "true",
-        "Explanation 4": "Hidden: zero identity",
-        "Input 5": "100000 100000",
-        "Expected Output 5": "200000",
-        "Hidden 5": "true",
-        "Explanation 5": "Hidden: upper boundary",
+        "Code Template": "#include <stdio.h>\nint main() {\n    int a, b;\n    if (scanf(\"%d %d\", &a, &b) == 2) printf(\"%d\\n\", a + b);\n    return 0;\n}",
+        "Sample Input": "4 6",
+        "Sample Output": "10",
+        "Is Hidden": "false",
+        "Sample Explanation": "Sample 1: 4 + 6 = 10",
       },
       {
         "Question Type": "CODING",
-        "Problem Title": "Print 1 to N",
-        "Question Text": "Given an integer N, print all numbers from 1 to N separated by spaces.",
-        "Marks": 5,
-        "Constraints": "1 <= N <= 100",
-        "Allowed Languages": "c,python,java",
-        "Code Template": "import sys\\n\\ndef solve():\\n    n = int(sys.stdin.read().strip())\\n    print(' '.join(str(i) for i in range(1, n + 1)))\\n\\nif __name__ == '__main__':\\n    solve()",
-        "Input 1": "5",
-        "Expected Output 1": "1 2 3 4 5",
-        "Hidden 1": "false",
-        "Explanation 1": "Sample 1: print 1 to 5",
-        "Input 2": "1",
-        "Expected Output 2": "1",
-        "Hidden 2": "false",
-        "Explanation 2": "Single number 1",
-        "Input 3": "10",
-        "Expected Output 3": "1 2 3 4 5 6 7 8 9 10",
-        "Hidden 3": "true",
-        "Explanation 3": "Hidden: 10 numbers",
-        "Input 4": "15",
-        "Expected Output 4": "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15",
-        "Hidden 4": "true",
-        "Explanation 4": "Hidden: 15 numbers",
-        "Input 5": "",
-        "Expected Output 5": "",
-        "Hidden 5": "",
-        "Explanation 5": "",
+        "Question Text": "",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": "",
+        "Problem Title": "Sum of Two Numbers",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "10 20",
+        "Sample Output": "30",
+        "Is Hidden": "false",
+        "Sample Explanation": "Sample 2: 10 + 20 = 30",
       },
+      {
+        "Question Type": "CODING",
+        "Question Text": "",
+        "Option A": "",
+        "Option B": "",
+        "Option C": "",
+        "Option D": "",
+        "Correct Answer": "",
+        "Marks": "",
+        "Problem Title": "Sum of Two Numbers",
+        "Constraints": "",
+        "Allowed Languages": "",
+        "Code Template": "",
+        "Sample Input": "-5 5",
+        "Sample Output": "0",
+        "Is Hidden": "true",
+        "Sample Explanation": "Hidden test case: cancellation",
+      }
     ];
-    const ws = XLSX.utils.json_to_sheet(sampleCodingRows);
+
+    const ws = XLSX.utils.json_to_sheet(sampleRows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "CodingQuestions");
-    XLSX.writeFile(wb, "coding_questions_template.csv", { bookType: "csv" });
+    XLSX.utils.book_append_sheet(wb, ws, "Questions");
+    XLSX.writeFile(wb, "bulk_questions_sample_template.csv", { bookType: "csv" });
   }
 
   function downloadSampleTestCasesCsv() {
@@ -1307,25 +1214,16 @@ public class Solution {
 
       // Also check numbered columns on this row (Input 1, Output 1, Input 2, Output 2... up to 50)
       for (let k = 1; k <= 50; k++) {
-        const inK = norm[`input${k}`] || norm[`expectedinput${k}`] || norm[`sampleinput${k}`] ||
-                    norm[`stdin${k}`] || norm[`testcase${k}input`] || norm[`testcaseinput${k}`] ||
-                    norm[`test${k}input`] || norm[`tc${k}input`] || norm[`tc${k}in`] || norm[`case${k}input`];
-        const outK = norm[`output${k}`] || norm[`expectedoutput${k}`] || norm[`sampleoutput${k}`] ||
-                     norm[`stdout${k}`] || norm[`testcase${k}output`] || norm[`testcaseoutput${k}`] ||
-                     norm[`test${k}output`] || norm[`tc${k}output`] || norm[`tc${k}out`] || norm[`case${k}output`];
-        const explK = norm[`explanation${k}`] || norm[`sampleexplanation${k}`] || norm[`testcase${k}explanation`] ||
-                      norm[`testcaseexplanation${k}`] || norm[`tc${k}explanation`] || norm[`notes${k}`] || norm[`desc${k}`] || "";
-        const hidK = (norm[`hidden${k}`] || norm[`ishidden${k}`] || norm[`testcase${k}hidden`] ||
-                      norm[`testcasehidden${k}`] || norm[`tc${k}hidden`] || norm[`private${k}`] || "").toLowerCase();
+        const inK = norm[`input${k}`] || norm[`sampleinput${k}`] || norm[`stdin${k}`] || norm[`testcaseinput${k}`] || norm[`tc${k}input`];
+        const outK = norm[`output${k}`] || norm[`sampleoutput${k}`] || norm[`expectedoutput${k}`] || norm[`stdout${k}`] || norm[`testcaseoutput${k}`] || norm[`tc${k}output`];
+        const explK = norm[`explanation${k}`] || norm[`sampleexplanation${k}`] || norm[`notes${k}`] || "";
+        const hidK = (norm[`hidden${k}`] || norm[`ishidden${k}`] || norm[`private${k}`] || "").toLowerCase();
         const isHidK = hidK === "true" || hidK === "1" || hidK === "yes" || hidK === "hidden";
 
-        const inStr = String(inK ?? "").trim();
-        const outStr = String(outK ?? "").trim();
-
-        if (inStr !== "" || outStr !== "") {
+        if (inK !== undefined || outK !== undefined) {
           resultCases.push({
-            input: inStr,
-            expectedOutput: outStr,
+            input: String(inK ?? "").trim(),
+            expectedOutput: String(outK ?? "").trim(),
             isHidden: isHidK,
             explanation: String(explK ?? "").trim(),
             displayOrder: resultCases.length,
@@ -1396,27 +1294,18 @@ public class Solution {
       });
     }
 
-    // 2. Numbered columns (Multi-Column Format: Input 1, Output 1, Input 2, Output 2 ... up to 50)
+    // 2. Numbered columns (Input 1, Output 1, Input 2, Output 2 ... up to 50)
     for (let k = 1; k <= 50; k++) {
-      const inK = norm[`input${k}`] || norm[`expectedinput${k}`] || norm[`sampleinput${k}`] ||
-                  norm[`stdin${k}`] || norm[`testcase${k}input`] || norm[`testcaseinput${k}`] ||
-                  norm[`test${k}input`] || norm[`tc${k}input`] || norm[`tc${k}in`] || norm[`case${k}input`];
-      const outK = norm[`output${k}`] || norm[`expectedoutput${k}`] || norm[`sampleoutput${k}`] ||
-                   norm[`stdout${k}`] || norm[`testcase${k}output`] || norm[`testcaseoutput${k}`] ||
-                   norm[`test${k}output`] || norm[`tc${k}output`] || norm[`tc${k}out`] || norm[`case${k}output`];
-      const explK = norm[`explanation${k}`] || norm[`sampleexplanation${k}`] || norm[`testcase${k}explanation`] ||
-                    norm[`testcaseexplanation${k}`] || norm[`tc${k}explanation`] || norm[`notes${k}`] || norm[`desc${k}`] || "";
-      const hiddenK = (norm[`hidden${k}`] || norm[`ishidden${k}`] || norm[`testcase${k}hidden`] ||
-                       norm[`testcasehidden${k}`] || norm[`tc${k}hidden`] || norm[`private${k}`] || "").toLowerCase();
+      const inK = norm[`input${k}`] || norm[`sampleinput${k}`] || norm[`stdin${k}`] || norm[`testcaseinput${k}`] || norm[`tc${k}input`];
+      const outK = norm[`output${k}`] || norm[`sampleoutput${k}`] || norm[`expectedoutput${k}`] || norm[`stdout${k}`] || norm[`testcaseoutput${k}`] || norm[`tc${k}output`];
+      const explK = norm[`explanation${k}`] || norm[`sampleexplanation${k}`] || norm[`notes${k}`] || "";
+      const hiddenK = (norm[`hidden${k}`] || norm[`ishidden${k}`] || norm[`private${k}`] || "").toLowerCase();
       const isHiddenK = hiddenK === "true" || hiddenK === "1" || hiddenK === "yes" || hiddenK === "hidden";
 
-      const inStr = String(inK ?? "").trim();
-      const outStr = String(outK ?? "").trim();
-
-      if (inStr !== "" || outStr !== "") {
+      if (inK !== undefined || outK !== undefined) {
         cases.push({
-          input: inStr,
-          expectedOutput: outStr,
+          input: String(inK ?? "").trim(),
+          expectedOutput: String(outK ?? "").trim(),
           isHidden: isHiddenK,
           explanation: String(explK ?? "").trim(),
           displayOrder: cases.length,
@@ -1553,11 +1442,9 @@ public class Solution {
       // 2. Standard or Mixed Bulk Questions Parser with multi-row and multi-column test cases grouping
       const parsed: any[] = [];
       let currentCodingQuestion: any = null;
-      let currentQuestionNo: string | null = null;
 
       for (let i = 0; i < allNormRows.length; i++) {
         const norm = allNormRows[i];
-        const qNo = norm["questionnumber"] || norm["qno"] || norm["questionno"] || norm["qid"] || norm["q#"] || norm["no"] || "";
         const qTypeRaw = (norm["questiontype"] || norm["type"] || "").toUpperCase();
         const qText = norm["questiontext"] || norm["question"] || norm["statement"] || norm["problemstatement"] || "";
         const title = norm["problemtitle"] || norm["title"] || "";
@@ -1569,7 +1456,6 @@ public class Solution {
         );
 
         const isSameQuestionAsCurrent = currentCodingQuestion && (
-          (qNo && currentQuestionNo && qNo === currentQuestionNo) || // same question number
           (!qText && !title && rowHasInputOutput) || // blank question text following coding question
           (title && title.toLowerCase() === currentCodingQuestion.problemTitle.toLowerCase()) ||
           (qText && qText.toLowerCase() === currentCodingQuestion.questionText.toLowerCase())
@@ -1586,22 +1472,13 @@ public class Solution {
         }
 
         // Otherwise, this must be a new question
-        if (!qText && !title && !rowHasInputOutput) continue; // Skip empty rows
-
-        if (qNo) {
-          currentQuestionNo = qNo;
-        } else {
-          currentQuestionNo = null;
-        }
+        if (!qText && !title) continue; // Skip empty rows
 
         const marks = Number(norm["marks"] || norm["score"] || norm["points"]) || (qTypeRaw.includes("CODE") ? 5 : 1);
-        const isCoding = qTypeRaw.includes("CODE") || Boolean(
-          norm["codetemplate"] || norm["template"] || norm["sampleinput"] ||
-          norm["input"] || norm["input1"] || norm["expectedoutput1"] || title
-        );
+        const isCoding = qTypeRaw.includes("CODE") || Boolean(norm["codetemplate"] || norm["template"] || norm["sampleinput"] || norm["input"] || title);
 
         if (isCoding) {
-          const problemTitle = title || qText.slice(0, 50) || `Coding Problem ${parsed.length + 1}`;
+          const problemTitle = title || qText.slice(0, 50);
           const constraints = norm["constraints"] || "Time Limit: 5.0 seconds\nMemory Limit: 256 MB";
           const allowedLanguages = norm["allowedlanguages"] || norm["languages"] || "c,python,java";
           const codeTemplate = norm["codetemplate"] || norm["template"] || norm["startercode"] || `#include <stdio.h>\n\nint main() {\n    return 0;\n}`;
@@ -1648,7 +1525,7 @@ public class Solution {
 
           parsed.push({
             questionType: "MCQ",
-            questionText: qText || `MCQ Question ${parsed.length + 1}`,
+            questionText: qText,
             optionA: optionA || "Option A",
             optionB: optionB || "Option B",
             optionC: optionC || "Option C",
@@ -3066,72 +2943,39 @@ public class Solution {
               </button>
             </div>
 
-            {/* Separate Template Download Section */}
-            <div className="space-y-1.5">
-              <div className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <span>📥</span> Download Separate Templates:
-                </span>
-                <span className="text-[11px] text-slate-400 font-normal">
-                  Download MCQ or Coding template separately
-                </span>
+            {/* Template Download Section */}
+            <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div>
+                <div className="font-semibold text-blue-900 flex items-center gap-1.5">
+                  <span>📥</span> Download sample format templates
+                </div>
+                <p className="text-blue-700 text-[11px] mt-0.5">
+                  Pre-configured headers with sample MCQ &amp; LeetCode Coding questions ready to fill in.
+                </p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                {/* MCQ Template Card */}
-                <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3 flex flex-col justify-between gap-2 shadow-2xs">
-                  <div>
-                    <div className="font-bold text-blue-900 flex items-center gap-1.5 text-xs">
-                      <span>📝</span> MCQ Questions Template
-                    </div>
-                    <p className="text-blue-700 text-[11px] mt-0.5 leading-snug">
-                      Headers: Question Text, Option A-D, Correct Answer (A/B/C/D), Marks
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={downloadSampleMcqExcel}
-                      className="flex-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-300 font-semibold px-2 py-1.5 rounded-lg text-center transition-colors cursor-pointer text-[11px] flex items-center justify-center gap-1 shadow-2xs"
-                    >
-                      <span>📗</span> Excel (.xlsx)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={downloadSampleMcqCsv}
-                      className="flex-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-300 font-semibold px-2 py-1.5 rounded-lg text-center transition-colors cursor-pointer text-[11px] flex items-center justify-center gap-1 shadow-2xs"
-                    >
-                      <span>📄</span> CSV (.csv)
-                    </button>
-                  </div>
-                </div>
-
-                {/* Coding Template Card (Multi-Column) */}
-                <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3 flex flex-col justify-between gap-2 shadow-2xs">
-                  <div>
-                    <div className="font-bold text-indigo-900 flex items-center gap-1.5 text-xs">
-                      <span>💻</span> Coding Questions (Multi-Column)
-                    </div>
-                    <p className="text-indigo-700 text-[11px] mt-0.5 leading-snug">
-                      1 row per problem. Supports Input 1..N, Expected Output 1..N, Hidden 1..N
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={downloadSampleCodingMultiColumnExcel}
-                      className="flex-1 bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 font-semibold px-2 py-1.5 rounded-lg text-center transition-colors cursor-pointer text-[11px] flex items-center justify-center gap-1 shadow-2xs"
-                    >
-                      <span>📗</span> Excel (.xlsx)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={downloadSampleCodingMultiColumnCsv}
-                      className="flex-1 bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-300 font-semibold px-2 py-1.5 rounded-lg text-center transition-colors cursor-pointer text-[11px] flex items-center justify-center gap-1 shadow-2xs"
-                    >
-                      <span>📄</span> CSV (.csv)
-                    </button>
-                  </div>
-                </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={downloadSampleQuestionsExcel}
+                  className="bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>📗</span> Download Excel (.xlsx)
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadSampleQuestionsCsv}
+                  className="bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>📄</span> Download CSV (.csv)
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadSampleTestCasesCsv}
+                  className="bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-semibold px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  title="Download sample CSV with 15 test cases"
+                >
+                  <span>🧪</span> 15 Cases CSV (.csv)
+                </button>
               </div>
             </div>
 
@@ -3195,86 +3039,40 @@ public class Solution {
                   </div>
                 </div>
 
-                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-700 font-semibold sticky top-0 border-b border-slate-200 z-10">
+                    <thead className="bg-slate-100 text-slate-700 font-semibold sticky top-0 border-b border-slate-200">
                       <tr>
                         <th className="p-2.5 w-12 text-center">#</th>
                         <th className="p-2.5 w-20">Type</th>
                         <th className="p-2.5">Question / Problem Title</th>
                         <th className="p-2.5 w-24">Marks</th>
-                        <th className="p-2.5 w-44">Details</th>
+                        <th className="p-2.5 w-32">Details</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
                       {parsedBulkQuestions.slice(0, 50).map((pq, idx) => (
-                        <Fragment key={idx}>
-                          <tr className="hover:bg-slate-50/70">
-                            <td className="p-2.5 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
-                            <td className="p-2.5">
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                pq.questionType === "CODING"
-                                  ? "bg-indigo-100 text-indigo-800"
-                                  : "bg-blue-100 text-blue-800"
-                              }`}>
-                                {pq.questionType}
-                              </span>
-                            </td>
-                            <td className="p-2.5 text-slate-800 font-medium max-w-xs truncate">
-                              {pq.questionType === "CODING" ? pq.problemTitle : pq.questionText}
-                            </td>
-                            <td className="p-2.5 font-mono text-slate-600">{pq.marks} pts</td>
-                            <td className="p-2.5 text-slate-500 text-[11px]">
-                              {pq.questionType === "CODING" ? (
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span>
-                                    {pq.testCases?.length || 0} Testcase(s) ({pq.testCases?.filter((t: any) => !t.isHidden).length || 0} Sample, {pq.testCases?.filter((t: any) => t.isHidden).length || 0} Hidden)
-                                  </span>
-                                  {pq.testCases && pq.testCases.length > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setExpandedPreviewIndex(expandedPreviewIndex === idx ? null : idx)}
-                                      className="text-indigo-600 hover:text-indigo-800 font-semibold underline cursor-pointer text-[10px]"
-                                    >
-                                      {expandedPreviewIndex === idx ? "▲ Hide" : "▼ Details"}
-                                    </button>
-                                  )}
-                                </div>
-                              ) : (
-                                `Ans: ${String.fromCharCode(65 + (pq.correctAnswer || 0))}`
-                              )}
-                            </td>
-                          </tr>
-                          {expandedPreviewIndex === idx && pq.questionType === "CODING" && pq.testCases && (
-                            <tr className="bg-indigo-50/40">
-                              <td colSpan={5} className="p-3 border-t border-b border-indigo-100">
-                                <div className="text-[11px] font-semibold text-indigo-900 mb-1.5">
-                                  Parsed Test Cases ({pq.testCases.length} total):
-                                </div>
-                                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                                  {pq.testCases.map((tc: any, tcIdx: number) => (
-                                    <div key={tcIdx} className="bg-white p-2 rounded-lg border border-indigo-200 flex items-start justify-between gap-3 text-[11px] shadow-2xs">
-                                      <div className="flex-1 font-mono break-all">
-                                        <span className="text-slate-400 mr-2 font-bold">Case #{tcIdx + 1}</span>
-                                        <span className="font-semibold text-slate-600">Input:</span> <span className="text-slate-900 bg-slate-100 px-1 py-0.5 rounded">{tc.input || "(no stdin)"}</span>
-                                        <span className="mx-2 text-slate-300">→</span>
-                                        <span className="font-semibold text-slate-600">Output:</span> <span className="text-emerald-800 bg-emerald-50 px-1 py-0.5 rounded font-bold">{tc.expectedOutput}</span>
-                                        {tc.explanation && (
-                                          <span className="ml-2 text-slate-500 font-sans text-[10px]">({tc.explanation})</span>
-                                        )}
-                                      </div>
-                                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${
-                                        tc.isHidden ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
-                                      }`}>
-                                        {tc.isHidden ? "🔒 Hidden" : "👁️ Public"}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
+                        <tr key={idx} className="hover:bg-slate-50/70">
+                          <td className="p-2.5 text-center text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                          <td className="p-2.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              pq.questionType === "CODING"
+                                ? "bg-indigo-100 text-indigo-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}>
+                              {pq.questionType}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-slate-800 font-medium max-w-xs truncate">
+                            {pq.questionType === "CODING" ? pq.problemTitle : pq.questionText}
+                          </td>
+                          <td className="p-2.5 font-mono text-slate-600">{pq.marks} pts</td>
+                          <td className="p-2.5 text-slate-500 text-[11px]">
+                            {pq.questionType === "CODING"
+                              ? `${pq.testCases?.length || 0} Testcase(s) (${pq.testCases?.filter((t: any) => !t.isHidden).length || 0} Sample, ${pq.testCases?.filter((t: any) => t.isHidden).length || 0} Hidden)`
+                              : `Ans: ${String.fromCharCode(65 + (pq.correctAnswer || 0))}`}
+                          </td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>

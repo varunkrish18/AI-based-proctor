@@ -44,6 +44,7 @@ export default function CreateExam() {
     screenRequired: boolean;
     locationRequired: boolean;
     audioInputLevel: number | string;
+    maxWarnings: number | string;
   }>({
     name: "",
     description: "",
@@ -62,6 +63,7 @@ export default function CreateExam() {
     screenRequired: true,
     locationRequired: false,
     audioInputLevel: 20,
+    maxWarnings: 3,
   });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -123,6 +125,7 @@ export default function CreateExam() {
         negativeMarking: Math.max(0, Number(form.negativeMarking) || 0),
         maxAttempts: Math.max(1, Number(form.maxAttempts) || 1),
         audioInputLevel: Math.max(1, Math.min(100, Number(form.audioInputLevel) || 20)),
+        maxWarnings: Math.max(1, Math.min(100, Number(form.maxWarnings) || 3)),
         startAt: new Date(form.startAt).toISOString(),
         endAt: new Date(form.endAt).toISOString(),
       };
@@ -326,6 +329,47 @@ export default function CreateExam() {
                 </p>
               </div>
             )}
+
+            <div className="col-span-2 mt-2 bg-amber-50/70 border border-amber-200 rounded-lg p-3">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-semibold text-slate-800">
+                  Maximum Proctoring Warnings (Strikes Before Auto-Submit)
+                </span>
+                <span className="text-xs font-mono font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded">
+                  {form.maxWarnings} {Number(form.maxWarnings) === 1 ? "Strike" : "Strikes"}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={1}
+                  max={30}
+                  step={1}
+                  value={Math.min(30, Math.max(1, Number(form.maxWarnings) || 3))}
+                  onChange={(e) => set("maxWarnings", Number(e.target.value))}
+                  className="w-full accent-amber-600 cursor-pointer"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={form.maxWarnings}
+                  onChange={(e) => set("maxWarnings", e.target.value)}
+                  onBlur={() => {
+                    const val = Number(form.maxWarnings);
+                    if (form.maxWarnings === "" || isNaN(val) || val < 1) {
+                      set("maxWarnings", 3);
+                    } else if (val > 100) {
+                      set("maxWarnings", 100);
+                    }
+                  }}
+                  className="w-16 px-2 py-1 text-xs border border-amber-300 rounded text-center font-bold bg-white"
+                />
+              </div>
+              <p className="text-xs text-slate-600 mt-1">
+                Customize how many proctoring violation warnings (strikes) are allowed before the exam is automatically terminated and submitted.
+              </p>
+            </div>
           </div>
         </div>
 
