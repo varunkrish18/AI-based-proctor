@@ -25,6 +25,12 @@ public class UnifiedAuthController {
         return unifiedAuthService.login(request);
     }
 
+    @PostMapping("/switch-role")
+    public UnifiedAuthResponse switchRole(@RequestBody Map<String, String> body, Authentication auth) {
+        String targetRole = body != null ? body.get("role") : null;
+        return unifiedAuthService.switchRole(auth != null ? auth.getName() : null, targetRole);
+    }
+
     @PostMapping("/reset-password")
     public Map<String, Object> resetPassword(@Valid @RequestBody ResetPasswordRequest request, Authentication auth) {
         return unifiedAuthService.resetPassword(request, auth != null ? auth.getName() : null);

@@ -381,8 +381,11 @@ export function saveUnifiedAuth(data: UnifiedAuthResponse) {
     department: data.department,
     identifier: data.identifier,
     mustResetPassword: !!data.mustResetPassword,
+    availableRoles: data.availableRoles && data.availableRoles.length > 0 ? data.availableRoles : (data.role ? [data.role.toUpperCase()] : []),
   };
   sessionStorage.setItem("aeps.currentUser", JSON.stringify(user));
+  // Dispatch custom storage/role event so all active components react immediately
+  window.dispatchEvent(new CustomEvent("aeps_role_changed", { detail: user }));
 }
 
 export function getCurrentUser(): UnifiedAuthUser | null {
@@ -445,17 +448,55 @@ export function clearAllAuth() {
   clearToken("student");
 }
 
-export async function unifiedLogin(identifier: string, password: string): Promise<UnifiedAuthResponse> {
+export function getAvailableRoles(): string[] {
+  const user = getCurrentUser();
+  if (user?.availableRoles && user.availableRoles.length > 0) {
+    return user.availableRoles;
+  }
+  const role = user?.role ? user.role.toUpperCase() : null;
+  if (role === "COURSE_COORDINATOR") {
+    return ["COURSE_COORDINATOR", "PROFESSOR"];
+  }
+  return role ? [role] : [];
+}
+
+export async function unifiedLogin(identifier: string, password: string, preferredRole?: string): Promise<UnifiedAuthResponse> {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "ngrok-skip-browser-warning": "true",
     },
-    body: JSON.stringify({ identifier, password }),
+    body: JSON.stringify({ identifier, password, preferredRole: preferredRole || undefined }),
   });
   if (!res.ok) {
     let msg = "Invalid login credentials";
+    try {
+      const err = await res.json();
+      msg = err.message || msg;
+    } catch {
+      // non-json
+    }
+    throw new ApiError(res.status, msg);
+  }
+  const data = (await res.json()) as UnifiedAuthResponse;
+  saveUnifiedAuth(data);
+  return data;
+}
+
+export async function switchUserRole(newRole: string): Promise<UnifiedAuthResponse> {
+  const token = getToken();
+  const res = await fetch(`${BASE_URL}/api/auth/switch-role`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "ngrok-skip-browser-warning": "true",
+    },
+    body: JSON.stringify({ role: newRole }),
+  });
+  if (!res.ok) {
+    let msg = "Failed to switch role";
     try {
       const err = await res.json();
       msg = err.message || msg;

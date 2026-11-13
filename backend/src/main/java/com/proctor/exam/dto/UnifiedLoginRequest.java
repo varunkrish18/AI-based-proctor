@@ -7,5 +7,12 @@ public record UnifiedLoginRequest(
         String identifier,
 
         @NotBlank(message = "Password is required")
-        String password
-) {}
+        String password,
+
+        String preferredRole
+) {
+    public UnifiedLoginRequest(String identifier, String password) {
+        this(identifier, password, null);
+    }
+}
+

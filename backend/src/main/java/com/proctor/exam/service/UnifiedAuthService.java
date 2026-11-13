@@ -24,8 +24,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class UnifiedAuthService {
@@ -66,14 +65,86 @@ public class UnifiedAuthService {
         this.auditLogService = auditLogService;
     }
 
+    public List<String> determineAvailableRoles(Admin admin, Professor professor) {
+        Set<String> roles = new LinkedHashSet<>();
+        if (admin != null && admin.getRole() != null) {
+            String adminRole = admin.getRole().toUpperCase();
+            roles.add(adminRole);
+            if ("COURSE_COORDINATOR".equals(adminRole)) {
+                roles.add("PROFESSOR");
+            }
+        }
+        if (professor != null) {
+            roles.add("PROFESSOR");
+        }
+        if (roles.isEmpty()) {
+            roles.add("STUDENT");
+        }
+        return new ArrayList<>(roles);
+    }
+
     @Transactional
     public UnifiedAuthResponse login(UnifiedLoginRequest request) {
         String idRaw = request.identifier().trim();
         String pwd = request.password().trim();
+        String preferredRole = request.preferredRole() != null && !request.preferredRole().isBlank()
+                ? request.preferredRole().trim().toUpperCase()
+                : null;
 
-        // 1. Check Admin / Coordinator / Synced Staff
         Admin admin = adminRepository.findByEmail(idRaw.toLowerCase()).orElse(null);
-        if (admin != null) {
+        Professor professor = professorRepository.findByEmailIgnoreCase(idRaw).orElse(null);
+        if (professor == null) {
+            professor = professorRepository.findByStaffCodeIgnoreCase(idRaw).orElse(null);
+        }
+
+        List<String> availableRoles = determineAvailableRoles(admin, professor);
+
+        // 1. If preferredRole is PROFESSOR and user qualifies as PROFESSOR:
+        if ("PROFESSOR".equals(preferredRole) && availableRoles.contains("PROFESSOR")) {
+            boolean pwdMatches = false;
+            if (professor != null) {
+                pwdMatches = (professor.getPasswordHash() != null && passwordEncoder.matches(pwd, professor.getPasswordHash()))
+                        || (professor.getDisplayPassword() != null && professor.getDisplayPassword().equals(pwd));
+            }
+            if (!pwdMatches && admin != null) {
+                pwdMatches = (admin.getPasswordHash() != null && passwordEncoder.matches(pwd, admin.getPasswordHash()))
+                        || (admin.getDisplayPassword() != null && admin.getDisplayPassword().equals(pwd));
+            }
+
+            if (!pwdMatches) {
+                auditLogService.logAdmin(idRaw, "LOGIN_FAILED", "Professor password mismatch");
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid identifier or password.");
+            }
+
+            Admin syncedAdmin = admin != null ? admin : adminRepository.findByEmail(idRaw.toLowerCase()).orElse(null);
+            if (syncedAdmin == null && professor != null) {
+                syncedAdmin = adminRepository.save(Admin.builder()
+                        .email(professor.getEmail().toLowerCase())
+                        .fullName(professor.getFullName())
+                        .department(professor.getDepartment())
+                        .role("PROFESSOR")
+                        .displayPassword(professor.getDisplayPassword())
+                        .passwordHash(professor.getPasswordHash())
+                        .mustResetPassword(Boolean.TRUE.equals(professor.getMustResetPassword()))
+                        .build());
+            }
+
+            String profEmail = professor != null ? professor.getEmail() : (admin != null ? admin.getEmail() : idRaw.toLowerCase());
+            String profName = professor != null ? professor.getFullName() : (admin != null ? admin.getFullName() : "Professor");
+            String profDept = professor != null ? professor.getDepartment() : (admin != null ? admin.getDepartment() : null);
+            String staffCode = professor != null ? professor.getStaffCode() : null;
+            boolean mustReset = (professor != null && Boolean.TRUE.equals(professor.getMustResetPassword()))
+                    || (admin != null && Boolean.TRUE.equals(admin.getMustResetPassword()));
+
+            String accessToken = jwtService.generateUserToken(profEmail, "PROFESSOR", profDept, profName, staffCode, mustReset);
+            String rawRefreshToken = syncedAdmin != null ? issueRefreshToken(syncedAdmin) : null;
+
+            auditLogService.logAdmin(profEmail, "LOGIN_SUCCESS", "Logged in with chosen role PROFESSOR");
+            return new UnifiedAuthResponse(accessToken, rawRefreshToken, "PROFESSOR", profEmail, profName, profDept, staffCode, mustReset, adminAccessMinutes * 60, availableRoles);
+        }
+
+        // 2. Check Admin / Coordinator / Synced Staff (Standard path or explicitly requested)
+        if (admin != null && (preferredRole == null || preferredRole.equalsIgnoreCase(admin.getRole()))) {
             if (admin.getLockedUntil() != null && admin.getLockedUntil().isAfter(Instant.now())) {
                 auditLogService.logAdmin(admin.getEmail(), "ADMIN_LOGIN_LOCKED", "Account locked");
                 throw new ApiException(HttpStatus.LOCKED, "Account locked due to repeated failed attempts. Try again later.");
@@ -81,6 +152,11 @@ public class UnifiedAuthService {
 
             boolean pwdMatches = (admin.getPasswordHash() != null && passwordEncoder.matches(pwd, admin.getPasswordHash()))
                     || (admin.getDisplayPassword() != null && admin.getDisplayPassword().equals(pwd));
+
+            if (!pwdMatches && professor != null) {
+                pwdMatches = (professor.getPasswordHash() != null && passwordEncoder.matches(pwd, professor.getPasswordHash()))
+                        || (professor.getDisplayPassword() != null && professor.getDisplayPassword().equals(pwd));
+            }
 
             if (!pwdMatches) {
                 registerAdminFailedAttempt(admin);
@@ -99,18 +175,18 @@ public class UnifiedAuthService {
             String rawRefreshToken = issueRefreshToken(admin);
 
             auditLogService.logAdmin(admin.getEmail(), "LOGIN_SUCCESS", "Logged in with role " + role);
-            return new UnifiedAuthResponse(accessToken, rawRefreshToken, role, admin.getEmail(), admin.getFullName(), admin.getDepartment(), null, mustReset, adminAccessMinutes * 60);
+            return new UnifiedAuthResponse(accessToken, rawRefreshToken, role, admin.getEmail(), admin.getFullName(), admin.getDepartment(), null, mustReset, adminAccessMinutes * 60, availableRoles);
         }
 
-        // 2. Check Professor by email OR staff code
-        Professor professor = professorRepository.findByEmailIgnoreCase(idRaw).orElse(null);
-        if (professor == null) {
-            professor = professorRepository.findByStaffCodeIgnoreCase(idRaw).orElse(null);
-        }
-
+        // 3. Check Professor by email OR staff code
         if (professor != null) {
             boolean pwdMatches = (professor.getPasswordHash() != null && passwordEncoder.matches(pwd, professor.getPasswordHash()))
                     || (professor.getDisplayPassword() != null && professor.getDisplayPassword().equals(pwd));
+
+            if (!pwdMatches && admin != null) {
+                pwdMatches = (admin.getPasswordHash() != null && passwordEncoder.matches(pwd, admin.getPasswordHash()))
+                        || (admin.getDisplayPassword() != null && admin.getDisplayPassword().equals(pwd));
+            }
 
             if (!pwdMatches) {
                 auditLogService.logAdmin(professor.getEmail(), "LOGIN_FAILED", "Professor password mismatch");
@@ -136,10 +212,10 @@ public class UnifiedAuthService {
             String rawRefreshToken = issueRefreshToken(syncedAdmin);
 
             auditLogService.logAdmin(professor.getEmail(), "LOGIN_SUCCESS", "Professor logged in: " + professor.getStaffCode());
-            return new UnifiedAuthResponse(accessToken, rawRefreshToken, "PROFESSOR", professor.getEmail(), professor.getFullName(), professor.getDepartment(), professor.getStaffCode(), mustReset, adminAccessMinutes * 60);
+            return new UnifiedAuthResponse(accessToken, rawRefreshToken, "PROFESSOR", professor.getEmail(), professor.getFullName(), professor.getDepartment(), professor.getStaffCode(), mustReset, adminAccessMinutes * 60, availableRoles);
         }
 
-        // 3. Check Student by email OR register number
+        // 4. Check Student by email OR register number
         Student student = studentRepository.findByEmailIgnoreCase(idRaw).orElse(null);
         if (student == null) {
             student = studentRepository.findByRegisterNumberIgnoreCase(idRaw).orElse(null);
@@ -158,10 +234,51 @@ public class UnifiedAuthService {
             String accessToken = jwtService.generateUserToken(student.getEmail(), "STUDENT", student.getDepartment(), student.getFullName(), student.getRegisterNumber(), mustReset);
 
             auditLogService.logAdmin(student.getEmail(), "LOGIN_SUCCESS", "Student logged in: " + student.getRegisterNumber());
-            return new UnifiedAuthResponse(accessToken, null, "STUDENT", student.getEmail(), student.getFullName(), student.getDepartment(), student.getRegisterNumber(), mustReset, studentSessionMinutes * 60);
+            return new UnifiedAuthResponse(accessToken, null, "STUDENT", student.getEmail(), student.getFullName(), student.getDepartment(), student.getRegisterNumber(), mustReset, studentSessionMinutes * 60, List.of("STUDENT"));
         }
 
         throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid email, staff code, or register number, or incorrect password.");
+    }
+
+    @Transactional
+    public UnifiedAuthResponse switchRole(String email, String targetRole) {
+        if (email == null || email.isBlank() || targetRole == null || targetRole.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Invalid role switch request.");
+        }
+        String normalizedRole = targetRole.trim().toUpperCase();
+        String emailLower = email.trim().toLowerCase();
+
+        Admin admin = adminRepository.findByEmail(emailLower).orElse(null);
+        Professor professor = professorRepository.findByEmailIgnoreCase(emailLower).orElse(null);
+
+        List<String> available = determineAvailableRoles(admin, professor);
+        if (!available.contains(normalizedRole)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You are not authorized to switch to role: " + normalizedRole);
+        }
+
+        String fullName = admin != null ? admin.getFullName() : (professor != null ? professor.getFullName() : "User");
+        String dept = admin != null ? admin.getDepartment() : (professor != null ? professor.getDepartment() : null);
+        String identifier = (professor != null && professor.getStaffCode() != null) ? professor.getStaffCode() : (admin != null ? admin.getEmail() : emailLower);
+        boolean mustReset = (admin != null && Boolean.TRUE.equals(admin.getMustResetPassword()))
+                || (professor != null && Boolean.TRUE.equals(professor.getMustResetPassword()));
+
+        String accessToken = jwtService.generateUserToken(emailLower, normalizedRole, dept, fullName, identifier, mustReset);
+        String rawRefreshToken = admin != null ? issueRefreshToken(admin) : null;
+
+        auditLogService.logAdmin(emailLower, "ROLE_SWITCHED", "Switched active workspace to " + normalizedRole);
+
+        return new UnifiedAuthResponse(
+                accessToken,
+                rawRefreshToken,
+                normalizedRole,
+                emailLower,
+                fullName,
+                dept,
+                identifier,
+                mustReset,
+                adminAccessMinutes * 60,
+                available
+        );
     }
 
     @Transactional

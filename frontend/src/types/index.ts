@@ -443,6 +443,7 @@ export interface UnifiedAuthUser {
   department?: string | null;
   identifier?: string | null;
   mustResetPassword: boolean;
+  availableRoles?: string[];
 }
 
 export interface UnifiedAuthResponse {
@@ -455,6 +456,7 @@ export interface UnifiedAuthResponse {
   identifier?: string | null;
   mustResetPassword: boolean;
   expiresInSeconds?: number;
+  availableRoles?: string[];
 }
 
 

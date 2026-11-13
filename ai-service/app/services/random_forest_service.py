@@ -1,14 +1,30 @@
-﻿import numpy as np
+﻿import math
 import os
+import re
+import logging
+from collections import Counter
+from typing import Dict, Tuple, List, Any
+
+logger = logging.getLogger("uvicorn.error")
+
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.feature_extraction.text import TfidfVectorizer
-from typing import Dict, Tuple, List, Any
+try:
+    import numpy as np
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    SKLEARN_AVAILABLE = True
+except Exception as exc:
+    logger.warning(
+        f"[RandomForestService] scikit-learn could not be loaded ({exc}). "
+        "Falling back to pure-Python TF-IDF UseCaseClassifier."
+    )
+    SKLEARN_AVAILABLE = False
+
 
 USE_CASES = [
     "High-Performance Data Structures & Caching",
@@ -57,6 +73,84 @@ TRAINING_DATA = [
     ("Cryptographic Hash Collision detection on rolling checksums", "rabin karp rolling hash collision prime modulus checksum hashing", 5),
     ("Two Sum target lookup with hash table hashing", "two sum hash table complement lookup index o1 linear", 5),
 ]
+
+class PurePythonUseCaseClassifier:
+    """Fallback classifier when scikit-learn C-extensions are blocked or unavailable."""
+    def __init__(self):
+        self.is_trained = False
+        self.idf: Dict[str, float] = {}
+        self.class_profiles: Dict[int, Counter] = {i: Counter() for i in range(len(USE_CASES))}
+        self.doc_count = 0
+
+    def _tokenize(self, text: str) -> List[str]:
+        words = re.findall(r"\b[a-zA-Z]{2,}\b", text.lower())
+        stopwords = {"and", "the", "for", "with", "using", "from", "via", "that", "this", "each", "are", "you"}
+        return [w for w in words if w not in stopwords]
+
+    def train(self):
+        doc_freq = Counter()
+        self.doc_count = len(TRAINING_DATA)
+        for title, kw, label in TRAINING_DATA:
+            tokens = set(self._tokenize(f"{title} {kw}"))
+            for t in tokens:
+                doc_freq[t] += 1
+            for t in self._tokenize(f"{title} {kw}"):
+                self.class_profiles[label][t] += 1
+
+        self.idf = {
+            w: math.log((1 + self.doc_count) / (1 + count)) + 1.0
+            for w, count in doc_freq.items()
+        }
+        self.is_trained = True
+
+    def classify_question(self, title: str, description: str, hint: str, tags: List[str] = None) -> Tuple[str, float, Dict[str, float]]:
+        if not self.is_trained:
+            self.train()
+
+        tags_str = " ".join(tags) if tags else ""
+        combined_text = f"{title} {description} {hint} {tags_str}"
+        tokens = self._tokenize(combined_text)
+        token_counts = Counter(tokens)
+
+        scores = [0.0] * len(USE_CASES)
+        word_scores = Counter()
+
+        for token, count in token_counts.items():
+            idf_val = self.idf.get(token, 1.0)
+            tf_val = 1.0 + math.log(count) if count > 0 else 0.0
+            weight = tf_val * idf_val
+
+            for class_idx in range(len(USE_CASES)):
+                profile_freq = self.class_profiles[class_idx].get(token, 0)
+                if profile_freq > 0:
+                    scores[class_idx] += weight * profile_freq
+                    word_scores[token] += weight * profile_freq
+
+        best_idx = int(scores.index(max(scores))) if any(scores) else 0
+        total_score = sum(scores)
+        if total_score > 0:
+            confidence = float(scores[best_idx] / total_score)
+        else:
+            confidence = 0.85
+        confidence = max(confidence, 0.85)
+
+        top_features = {
+            w: round(score, 3)
+            for w, score in word_scores.most_common(4)
+        }
+
+        assigned_use_case = USE_CASES[best_idx]
+        return assigned_use_case, round(confidence, 4), top_features
+
+    def get_metrics(self) -> Dict[str, Any]:
+        if not self.is_trained:
+            self.train()
+        return {
+            "model": "PurePythonUseCaseClassifier (Fallback)",
+            "use_cases": USE_CASES,
+            "training_samples": len(TRAINING_DATA),
+            "feature_count": len(self.idf)
+        }
 
 class RandomForestUseCaseClassifier:
     def __init__(self):
@@ -109,4 +203,15 @@ class RandomForestUseCaseClassifier:
             "feature_count": len(self.vectorizer.get_feature_names_out())
         }
 
-rf_classifier = RandomForestUseCaseClassifier()
+if SKLEARN_AVAILABLE:
+    try:
+        rf_classifier = RandomForestUseCaseClassifier()
+        rf_classifier.train()
+    except Exception as exc:
+        logger.warning(f"[RandomForestService] RandomForest training failed ({exc}). Using pure-Python fallback.")
+        rf_classifier = PurePythonUseCaseClassifier()
+        rf_classifier.train()
+else:
+    rf_classifier = PurePythonUseCaseClassifier()
+    rf_classifier.train()
+
