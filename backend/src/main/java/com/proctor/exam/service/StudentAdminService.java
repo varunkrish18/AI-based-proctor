@@ -68,6 +68,16 @@ public class StudentAdminService {
         this.auditLogService = auditLogService;
     }
 
+    public static String normalizeYear(String yearStr) {
+        if (yearStr == null || yearStr.trim().isBlank()) return null;
+        String y = yearStr.trim().toUpperCase();
+        if (y.contains("4") || y.contains("IV") || y.contains("FOURTH")) return "4th Year";
+        if (y.contains("3") || y.contains("III") || y.contains("THIRD")) return "3rd Year";
+        if (y.contains("2") || y.contains("II") || y.contains("SECOND")) return "2nd Year";
+        if (y.contains("1") || y.contains("I") || y.contains("FIRST")) return "1st Year";
+        return yearStr.trim();
+    }
+
     public String generateSecurePassword() {
         StringBuilder sb = new StringBuilder(8);
         for (int i = 0; i < 8; i++) {
@@ -119,7 +129,7 @@ public class StudentAdminService {
                 .fullName(request.fullName().trim())
                 .department(request.department() != null ? request.department().trim() : null)
                 .registerNumber(regNumber.isBlank() ? null : regNumber)
-                .year(request.year() != null ? request.year().trim() : null)
+                .year(normalizeYear(request.year()))
                 .email(email)
                 .displayPassword(rawPassword)
                 .passwordHash(STUDENT_PASSWORD_ENCODER.encode(rawPassword))
@@ -160,7 +170,7 @@ public class StudentAdminService {
         student.setEmail(newEmail);
         student.setRegisterNumber(newReg.isBlank() ? null : newReg);
         student.setDepartment(request.department() != null ? request.department().trim() : null);
-        student.setYear(request.year() != null ? request.year().trim() : null);
+        student.setYear(normalizeYear(request.year()));
 
         if (request.password() != null && !request.password().trim().isBlank()) {
             String rawPassword = request.password().trim();
@@ -281,9 +291,7 @@ public class StudentAdminService {
             String department = (req.department() != null && !req.department().trim().isBlank())
                     ? req.department().trim()
                     : null;
-            String year = (req.year() != null && !req.year().trim().isBlank())
-                    ? req.year().trim()
-                    : null;
+            String year = normalizeYear(req.year());
             String password = (req.password() != null && !req.password().trim().isBlank())
                     ? req.password().trim()
                     : defaultPassword;
@@ -933,12 +941,13 @@ public class StudentAdminService {
     }
 
     private StudentUserResponse toResponse(Student s) {
+        String normYear = normalizeYear(s.getYear());
         return new StudentUserResponse(
                 s.getId(),
                 s.getFullName(),
                 s.getDepartment(),
                 s.getRegisterNumber(),
-                s.getYear(),
+                normYear != null ? normYear : s.getYear(),
                 s.getEmail(),
                 s.getDisplayPassword(),
                 s.getCreatedAt()

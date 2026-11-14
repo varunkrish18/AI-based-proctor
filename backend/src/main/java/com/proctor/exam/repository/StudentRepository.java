@@ -35,7 +35,7 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
            " LOWER(s.registerNumber) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
            " LOWER(s.email) LIKE LOWER(CONCAT('%', :query, '%'))) AND " +
            "(:department IS NULL OR :department = 'ALL' OR s.department = :department) AND " +
-           "(:year IS NULL OR :year = 'ALL' OR s.year = :year) " +
+           "(:year IS NULL OR :year = 'ALL' OR LOWER(TRIM(s.year)) = LOWER(TRIM(:year))) " +
            "ORDER BY s.id DESC")
     List<Student> searchStudents(@Param("query") String query,
                                  @Param("department") String department,

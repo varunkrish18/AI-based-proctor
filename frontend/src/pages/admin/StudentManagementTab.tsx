@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import * as XLSX from "xlsx";
 import { api, downloadFile, downloadFilePost } from "../../api/client";
-import { fetchClassSections, syncClassSectionsToServer } from "../../utils/sectionUtils";
+import { fetchClassSections, syncClassSectionsToServer, normalizeYear } from "../../utils/sectionUtils";
 import type { StudentUser, CreateStudentPayload, UpdateStudentPayload, BulkStudentUploadResult } from "../../types";
 
 const PRESET_DEPARTMENTS = [
@@ -171,7 +171,11 @@ export default function StudentManagementTab() {
     setError(null);
     try {
       const data = await api.get<StudentUser[]>("/api/admin/students", "admin");
-      setStudents(data);
+      const normalizedData = (data || []).map((s) => ({
+        ...s,
+        year: normalizeYear(s.year) || s.year,
+      }));
+      setStudents(normalizedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load student credentials.");
     } finally {
@@ -248,10 +252,18 @@ export default function StudentManagementTab() {
     setCreateError(null);
     setCreateSubmitting(true);
     try {
-      const newStudent = await api.post<StudentUser>("/api/admin/students", createForm, "admin");
-      setStudents((prev) => [newStudent, ...prev]);
+      const payload: CreateStudentPayload = {
+        ...createForm,
+        year: normalizeYear(createForm.year) || createForm.year,
+      };
+      const newStudent = await api.post<StudentUser>("/api/admin/students", payload, "admin");
+      const normalizedStudent = {
+        ...newStudent,
+        year: normalizeYear(newStudent.year) || newStudent.year,
+      };
+      setStudents((prev) => [normalizedStudent, ...prev]);
       setShowCreateModal(false);
-      setSuccessMsg(`Student '${newStudent.fullName}' (${newStudent.registerNumber}) registered successfully!`);
+      setSuccessMsg(`Student '${normalizedStudent.fullName}' (${normalizedStudent.registerNumber}) registered successfully!`);
       setCreateForm({
         fullName: "",
         department: "Computer Science & Engineering",
@@ -274,7 +286,7 @@ export default function StudentManagementTab() {
       fullName: student.fullName,
       department: student.department || "",
       registerNumber: student.registerNumber || "",
-      year: student.year || "",
+      year: normalizeYear(student.year) || student.year || "",
       email: student.email,
       password: student.displayPassword || "",
     });
@@ -288,14 +300,22 @@ export default function StudentManagementTab() {
     setEditError(null);
     setEditSubmitting(true);
     try {
+      const payload: UpdateStudentPayload = {
+        ...editForm,
+        year: normalizeYear(editForm.year) || editForm.year,
+      };
       const updated = await api.put<StudentUser>(
         `/api/admin/students/${editingStudent.id}`,
-        editForm,
+        payload,
         "admin"
       );
-      setStudents((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      const normalizedUpdated = {
+        ...updated,
+        year: normalizeYear(updated.year) || updated.year,
+      };
+      setStudents((prev) => prev.map((s) => (s.id === normalizedUpdated.id ? normalizedUpdated : s)));
       setEditingStudent(null);
-      setSuccessMsg(`Student credentials for '${updated.fullName}' updated successfully!`);
+      setSuccessMsg(`Student credentials for '${normalizedUpdated.fullName}' updated successfully!`);
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err) {
       setEditError(err instanceof Error ? err.message : "Failed to update student credentials.");
@@ -486,7 +506,8 @@ export default function StudentManagementTab() {
           const name = getVal("name");
           const department = getVal("department");
           const registerNumber = getVal("registerNumber");
-          const year = getVal("year");
+          const rawYear = getVal("year");
+          const year = normalizeYear(rawYear) || rawYear;
           let email = getVal("email");
           const password = getVal("password");
 
@@ -571,7 +592,7 @@ export default function StudentManagementTab() {
           fullName: r.fullName,
           department: r.department,
           registerNumber: r.registerNumber,
-          year: r.year,
+          year: normalizeYear(r.year) || r.year,
           email: r.email,
           password: r.password,
         }));
@@ -858,6 +879,10 @@ export default function StudentManagementTab() {
 
   function matchesYear(studentYear?: string | null, targetYear?: string | null): boolean {
     if (!targetYear || targetYear === "ALL") return true;
+    if (targetYear === "NONE") return !studentYear || !studentYear.trim();
+    const norm1 = normalizeYear(studentYear);
+    const norm2 = normalizeYear(targetYear);
+    if (norm1 && norm2) return norm1 === norm2;
     const r1 = getYearRoman(studentYear);
     const r2 = getYearRoman(targetYear);
     return r1 === r2;
@@ -1249,9 +1274,22 @@ export default function StudentManagementTab() {
   const allYears = useMemo(() => {
     const set = new Set<string>(PRESET_YEARS);
     students.forEach((s) => {
-      if (s.year && s.year.trim()) set.add(s.year.trim());
+      const norm = normalizeYear(s.year);
+      if (norm) {
+        set.add(norm);
+      } else if (s.year && s.year.trim()) {
+        set.add(s.year.trim());
+      }
     });
-    return Array.from(set).sort();
+    const standardOrder = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
+    return Array.from(set).sort((a, b) => {
+      const ia = standardOrder.indexOf(a);
+      const ib = standardOrder.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
+    });
   }, [students]);
 
   // Filter students by query (name or register number), department, and year
@@ -1280,8 +1318,8 @@ export default function StudentManagementTab() {
       // 3. Year filter
       if (selectedYearFilter !== "ALL") {
         if (selectedYearFilter === "NONE") {
-          if (s.year) return false;
-        } else if (s.year !== selectedYearFilter) {
+          if (s.year && s.year.trim()) return false;
+        } else if (!matchesYear(s.year, selectedYearFilter)) {
           return false;
         }
       }
@@ -1620,7 +1658,7 @@ export default function StudentManagementTab() {
                       <td className="py-3 px-4 whitespace-nowrap">
                         {st.year ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                            {st.year}
+                            {normalizeYear(st.year) || st.year}
                           </span>
                         ) : (
                           <span className="text-slate-400">—</span>

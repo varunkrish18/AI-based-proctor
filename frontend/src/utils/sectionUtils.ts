@@ -23,6 +23,19 @@ export function getYearRoman(yearStr?: string | null): string {
   return y;
 }
 
+// Normalize any year variation ("2nd year", "2nd Year", "2", "II", etc.) to standard title-case ("2nd Year")
+export function normalizeYear(yearStr?: string | null): string {
+  if (!yearStr) return "";
+  const y = yearStr.trim().toUpperCase();
+  if (!y) return "";
+  if (y.includes("4") || y.includes("IV") || y.includes("FOURTH")) return "4th Year";
+  if (y.includes("3") || y.includes("III") || y.includes("THIRD")) return "3rd Year";
+  if (y.includes("2") || y.includes("II") || y.includes("SECOND")) return "2nd Year";
+  if (y.includes("1") || y.includes("I") || y.includes("FIRST")) return "1st Year";
+  return yearStr.trim();
+}
+
+
 // Convert department name to standard short code (AIML -> AIML, AIDS -> AIDS, Computer Science -> CSE, etc.)
 // Specialized sub-departments MUST be evaluated before generic CSE/IT!
 export function getDeptShortCode(dept?: string | null): string {
@@ -83,6 +96,10 @@ export function getDeptShortCode(dept?: string | null): string {
 
 export function matchesYear(studentYear?: string | null, targetYear?: string | null): boolean {
   if (!targetYear || targetYear === "ALL") return true;
+  if (targetYear === "NONE") return !studentYear || !studentYear.trim();
+  const norm1 = normalizeYear(studentYear);
+  const norm2 = normalizeYear(targetYear);
+  if (norm1 && norm2) return norm1 === norm2;
   const r1 = getYearRoman(studentYear);
   const r2 = getYearRoman(targetYear);
   return r1 === r2;
